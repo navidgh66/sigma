@@ -8,9 +8,11 @@ this to real subprocesses.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
+
+from cli.runner import AgentRunner, write_artifact
 
 # A task line in tasks.md, e.g.:
 #   - [ ] T1 (nlp): tokenize corpus
@@ -133,3 +135,113 @@ def append_loop_log(workspace: Path, message: str) -> Path:
     with log.open("a") as fh:
         fh.write(f"- {message}\n")
     return log
+
+
+# --------------------------------------------------------------------------- #
+# Cycle execution (maker → checker → ratchet)
+# --------------------------------------------------------------------------- #
+IMPLEMENT_PROMPT = (
+    "Implement this sigma task in domain '{domain}':\n{title}\n\n"
+    "Follow the domain implementer guidance. Make the smallest correct change."
+)
+VERIFY_PROMPT = (
+    "Independently verify the implementation of this task (you are the CHECKER, "
+    "a different agent from the implementer — do not assume it is correct):\n"
+    "Domain: {domain}\nTask: {title}\n\n"
+    "Apply the domain verifier checks. Reply with a final line exactly:\n"
+    "VERDICT: PASS  or  VERDICT: FAIL"
+)
+
+
+@dataclass
+class CycleOutcome:
+    task_title: str
+    implemented: bool
+    verified: bool
+    ratcheted_skill: Optional[Path] = None
+    notes: List[str] = field(default_factory=list)
+
+
+def _verdict_pass(verify_output: str) -> bool:
+    """Parse the checker's verdict line. Defaults to FAIL if absent (skeptical)."""
+    for line in reversed(verify_output.splitlines()):
+        line = line.strip().upper()
+        if line.startswith("VERDICT:"):
+            return "PASS" in line
+    return False
+
+
+def execute_cycle(
+    plan: CyclePlan,
+    workspace: Path,
+    skills_dir: Path,
+    implementer: AgentRunner,
+    verifier: AgentRunner,
+) -> CycleOutcome:
+    """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
+
+    `implementer` and `verifier` MUST be distinct runner instances (maker ≠
+    checker). They are injectable, so this is testable with fakes.
+    """
+    if implementer is verifier:
+        raise ValueError("maker and checker must be distinct agents")
+
+    title = plan.task.title
+    domain = plan.implementer_domain
+    outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
+
+    impl = implementer.run(IMPLEMENT_PROMPT.format(domain=domain, title=title), cwd=workspace)
+    outcome.implemented = impl.ok
+    if not impl.ok:
+        outcome.notes.append(f"implement failed: {impl.error}")
+        outcome.ratcheted_skill = ratchet_to_skills(
+            skills_dir, f"implement failed: {title}", impl.error or "unknown", domain
+        )
+        append_loop_log(workspace, f"{title}: implement FAILED ({impl.error})")
+        return outcome
+
+    write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl.output)
+
+    chk = verifier.run(VERIFY_PROMPT.format(domain=domain, title=title), cwd=workspace)
+    write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
+    passed = chk.ok and _verdict_pass(chk.output)
+    outcome.verified = passed
+
+    if passed:
+        append_loop_log(workspace, f"{title}: PASS")
+    else:
+        reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
+        outcome.notes.append(f"verify failed: {reason}")
+        outcome.ratcheted_skill = ratchet_to_skills(
+            skills_dir, f"verify failed: {title}", reason, domain
+        )
+        append_loop_log(workspace, f"{title}: verify FAILED ({reason})")
+    return outcome
+
+
+def run_loop(
+    tasks: List[Task],
+    workspace: Path,
+    skills_dir: Path,
+    max_cycles: int,
+    make_implementer,
+    make_verifier,
+) -> List[CycleOutcome]:
+    """Drive cycles until tasks are exhausted or the budget cap is hit.
+
+    `make_implementer` / `make_verifier` are factories returning fresh, distinct
+    AgentRunner instances per cycle (maker ≠ checker).
+    """
+    outcomes: List[CycleOutcome] = []
+    completed = 0
+    for task in incomplete_tasks(tasks):
+        if completed >= max_cycles:
+            append_loop_log(workspace, f"budget cap reached ({max_cycles} cycles)")
+            break
+        plan = plan_cycle(task)
+        outcome = execute_cycle(
+            plan, workspace, skills_dir, make_implementer(), make_verifier()
+        )
+        outcomes.append(outcome)
+        completed += 1
+    return outcomes
