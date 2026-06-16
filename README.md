@@ -83,7 +83,14 @@ sigma               # launch Claude Code with sigma context loaded
 
 ## Status
 
-🚧 **Early scaffold.** See [`docs/`](docs/) for the design doc and roadmap.
+✅ **Core + execution complete.** All 8 pipeline stages run through a single
+injectable `AgentRunner`; the loop executes real maker→checker cycles with
+distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures
+into `skills/`. 65 tests green, ruff clean. See [`docs/`](docs/).
+
+Stage execution: `sigma spec --topic <t>` runs the stage and writes its artifact
+(prior-stage artifact is chained in as context). Loop: `sigma loop --topic <t>`
+plans by default; `--execute` runs the maker→checker cycles.
 
 ## License
 

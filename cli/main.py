@@ -25,10 +25,17 @@ from cli.loop import (
     incomplete_tasks,
     parse_tasks,
     plan_cycle,
+    run_loop,
 )
 from cli.models import available_models
-from cli.paths import DOMAINS, spec_workspace
-from cli.pipeline import STAGE_NAMES, load_stage, render_invocation
+from cli.paths import DOMAINS, sigma_home, spec_workspace
+from cli.pipeline import (
+    STAGE_NAMES,
+    execute_stage,
+    load_stage,
+    next_stage,
+    render_invocation,
+)
 from cli.research import research
 
 
@@ -104,11 +111,18 @@ def cmd_stage(args: argparse.Namespace) -> int:
     if ws is None:
         _print("✗ provide --topic to locate the spec workspace")
         return 1
-    invocation = render_invocation(stage, ws)
     if args.dry_run:
-        _print(invocation)
+        _print(render_invocation(stage, ws))
         return 0
-    return _run_claude(invocation)
+    result = execute_stage(args._name, ws)
+    if not result.ok:
+        _print(f"✗ {args._name} failed: {result.error}")
+        return 1
+    _print(f"✓ {args._name} → {ws / stage.artifact}")
+    nxt = next_stage(args._name)
+    if nxt:
+        _print(f"→ next: /{nxt}")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -128,17 +142,41 @@ def cmd_loop(args: argparse.Namespace) -> int:
     if not pending:
         _print("✓ all tasks complete")
         return 0
-    # Plan (dry by default — real agent execution is wired separately).
-    shown = 0
-    for t in pending:
-        if shown >= cfg.loop.max_cycles:
-            _print(f"  … {len(pending) - shown} more (capped at max_cycles)")
-            break
-        plan = plan_cycle(t)
-        _print(f"  • {t.id or '-'} [{plan.implementer_domain}] {t.title}")
-        _print(f"    worktree={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
-        shown += 1
-    append_loop_log(ws, f"planned {min(len(pending), cfg.loop.max_cycles)} cycle(s)")
+
+    if not args.execute:
+        # Plan-only (default, safe): show what the loop would do.
+        shown = 0
+        for t in pending:
+            if shown >= cfg.loop.max_cycles:
+                _print(f"  … {len(pending) - shown} more (capped at max_cycles)")
+                break
+            plan = plan_cycle(t)
+            _print(f"  • {t.id or '-'} [{plan.implementer_domain}] {t.title}")
+            _print(f"    worktree={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
+            shown += 1
+        append_loop_log(ws, f"planned {min(len(pending), cfg.loop.max_cycles)} cycle(s)")
+        _print("  (plan only — pass --execute to run maker→checker cycles)")
+        return 0
+
+    # Execute: real maker→checker cycles with distinct agents.
+    from cli.runner import AgentRunner
+
+    skills_dir = sigma_home() / "skills"
+    outcomes = run_loop(
+        tasks,
+        ws,
+        skills_dir,
+        cfg.loop.max_cycles,
+        make_implementer=lambda: AgentRunner(),
+        make_verifier=lambda: AgentRunner(),
+    )
+    passed = sum(1 for o in outcomes if o.verified)
+    _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
+    for o in outcomes:
+        mark = "✓" if o.verified else "✗"
+        _print(f"  {mark} {o.task_title}")
+        if o.ratcheted_skill:
+            _print(f"    ratcheted → {o.ratcheted_skill}")
     return 0
 
 
@@ -196,8 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--dry-run", action="store_true", help="print invocation, do not run claude")
         sp.set_defaults(func=cmd_stage, _name=name)
 
-    pl = sub.add_parser("loop", help="Autonomous loop planner")
+    pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
     pl.add_argument("--topic", required=True)
+    pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
     pl.set_defaults(func=cmd_loop)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")

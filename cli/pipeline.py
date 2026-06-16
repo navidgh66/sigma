@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from cli.paths import sigma_home
+from cli.runner import AgentResult, AgentRunner, write_artifact
 
 # Ordered pipeline. Each stage maps to commands/<name>.md and an output artifact.
 STAGES: List[Dict[str, str]] = [
@@ -60,16 +61,75 @@ def next_stage(name: str) -> Optional[str]:
     return None
 
 
+# Each stage reads the prior stage's artifact as input context.
+PRIOR_ARTIFACT: Dict[str, str] = {
+    "propose": "research.md",
+    "blueprint": "proposals.md",
+    "spec": "architecture.md",
+    "tasks": "spec.md",
+    "implement-task": "tasks.md",
+    "verify": "spec.md",
+}
+
+
+def prior_context(stage_name: str, workspace: Path) -> Optional[str]:
+    """Read the upstream artifact this stage depends on, if present."""
+    upstream = PRIOR_ARTIFACT.get(stage_name)
+    if not upstream:
+        return None
+    path = workspace / upstream
+    if path.exists():
+        return path.read_text()
+    return None
+
+
 def render_invocation(stage: Stage, workspace: Path) -> str:
     """Produce the prompt to hand Claude Code for a stage.
 
-    Embeds the command template and points it at the workspace. The CLI passes
-    this to `claude`; here we just build the string so it is testable.
+    Embeds the command template, the upstream artifact (context chaining), and
+    points it at the workspace. Built as a string so it is testable.
     """
     template = stage.template_path.read_text() if stage.exists else f"# /{stage.name}\n(template missing)"
+    context = prior_context(stage.name, workspace)
+    context_block = ""
+    if context:
+        upstream = PRIOR_ARTIFACT.get(stage.name)
+        context_block = f"\n--- input: {upstream} ---\n{context}\n"
     return (
         f"Execute the sigma '{stage.name}' stage.\n"
         f"Workspace: {workspace}\n"
-        f"Write artifact: {workspace / stage.artifact}\n\n"
+        f"Write artifact: {workspace / stage.artifact}\n"
+        f"{context_block}\n"
         f"--- command template ---\n{template}\n"
     )
+
+
+def execute_stage(
+    stage_name: str,
+    workspace: Path,
+    agent: Optional[AgentRunner] = None,
+) -> AgentResult:
+    """Run a pipeline stage through the agent runner and persist its artifact.
+
+    For file-artifact stages (research.md, spec.md, ...) the agent output is
+    written to the artifact path. Directory artifacts (impl/, verify/) are left
+    for the agent to populate; we still capture a run log.
+    """
+    stage = load_stage(stage_name)
+    if stage is None:
+        return AgentResult(ok=False, output="", error=f"unknown stage: {stage_name}")
+    if not stage.exists:
+        return AgentResult(ok=False, output="", error=f"template missing: {stage.template_path}")
+
+    agent = agent or AgentRunner()
+    prompt = render_invocation(stage, workspace)
+    result = agent.run(prompt, cwd=workspace)
+
+    if result.ok and result.output:
+        if stage.artifact.endswith("/"):
+            # Directory artifact: record a run log alongside the dir.
+            workspace.joinpath(stage.artifact).mkdir(parents=True, exist_ok=True)
+            write_artifact(workspace / f"{stage.name}.log.md", result.output)
+        else:
+            write_artifact(workspace / stage.artifact, result.output)
+    return result
