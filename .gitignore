@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+.python-version
+
+# State / runtime
+.sigma/
+.state/
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Sessions / scratch
+scratch/
+*.local.yml
+
+# Lint caches
+.ruff_cache/
+.mypy_cache/
