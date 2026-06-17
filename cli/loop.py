@@ -151,6 +151,16 @@ VERIFY_PROMPT = (
     "Apply the domain verifier checks. Reply with a final line exactly:\n"
     "VERDICT: PASS  or  VERDICT: FAIL"
 )
+LOGIC_PROMPT = (
+    "You are the LOGIC EVALUATOR — a third agent, distinct from both the "
+    "implementer and the code-quality checker. Do NOT grade style or lint. "
+    "Grade whether the reasoning is sound and the implementation matches the "
+    "plan/spec, per the domain logic-evaluator guidance.\n"
+    "Domain: {domain}\nTask: {title}\n\n"
+    "Check: plan↔implementation coherence, logical soundness, hidden "
+    "assumptions, ignored edge cases, reasoning gaps. Reply with a final line "
+    "exactly:\nVERDICT: PASS  or  VERDICT: FAIL"
+)
 
 
 @dataclass
@@ -158,6 +168,7 @@ class CycleOutcome:
     task_title: str
     implemented: bool
     verified: bool
+    logic_ok: Optional[bool] = None
     ratcheted_skill: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
 
@@ -177,14 +188,24 @@ def execute_cycle(
     skills_dir: Path,
     implementer: AgentRunner,
     verifier: AgentRunner,
+    logic_checker: Optional[AgentRunner] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
     `implementer` and `verifier` MUST be distinct runner instances (maker ≠
     checker). They are injectable, so this is testable with fakes.
+
+    When `logic_checker` is provided it runs a SECOND, independent verify axis:
+    the logic evaluator grades reasoning + plan-coherence (not code quality). It
+    must be distinct from both implementer and verifier. The cycle passes only
+    when BOTH the code-quality verifier and the logic evaluator pass.
     """
     if implementer is verifier:
         raise ValueError("maker and checker must be distinct agents")
+    if logic_checker is not None and (
+        logic_checker is implementer or logic_checker is verifier
+    ):
+        raise ValueError("logic checker must be distinct from maker and checker")
 
     title = plan.task.title
     domain = plan.implementer_domain
@@ -204,13 +225,26 @@ def execute_cycle(
 
     chk = verifier.run(VERIFY_PROMPT.format(domain=domain, title=title), cwd=workspace)
     write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
-    passed = chk.ok and _verdict_pass(chk.output)
+    quality_passed = chk.ok and _verdict_pass(chk.output)
+
+    # Second axis: logic evaluator (optional, independent agent).
+    logic_passed = True
+    if logic_checker is not None:
+        logic = logic_checker.run(LOGIC_PROMPT.format(domain=domain, title=title), cwd=workspace)
+        write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
+        logic_passed = logic.ok and _verdict_pass(logic.output)
+        outcome.logic_ok = logic_passed
+
+    passed = quality_passed and logic_passed
     outcome.verified = passed
 
     if passed:
         append_loop_log(workspace, f"{title}: PASS")
     else:
-        reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
+        if not quality_passed:
+            reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
+        else:
+            reason = "logic evaluator returned VERDICT: FAIL"
         outcome.notes.append(f"verify failed: {reason}")
         outcome.ratcheted_skill = ratchet_to_skills(
             skills_dir, f"verify failed: {title}", reason, domain
@@ -226,11 +260,14 @@ def run_loop(
     max_cycles: int,
     make_implementer,
     make_verifier,
+    make_logic_checker=None,
 ) -> List[CycleOutcome]:
     """Drive cycles until tasks are exhausted or the budget cap is hit.
 
     `make_implementer` / `make_verifier` are factories returning fresh, distinct
-    AgentRunner instances per cycle (maker ≠ checker).
+    AgentRunner instances per cycle (maker ≠ checker). `make_logic_checker`, when
+    provided, adds a third distinct agent that grades logic/plan coherence — a
+    cycle then passes only when both verify axes pass.
     """
     outcomes: List[CycleOutcome] = []
     completed = 0
@@ -239,8 +276,9 @@ def run_loop(
             append_loop_log(workspace, f"budget cap reached ({max_cycles} cycles)")
             break
         plan = plan_cycle(task)
+        logic = make_logic_checker() if make_logic_checker else None
         outcome = execute_cycle(
-            plan, workspace, skills_dir, make_implementer(), make_verifier()
+            plan, workspace, skills_dir, make_implementer(), make_verifier(), logic
         )
         outcomes.append(outcome)
         completed += 1

@@ -39,6 +39,13 @@ from cli.pipeline import (
 from cli.research import research
 
 
+def _now_iso() -> str:
+    """Current timestamp for event stamping (kept in one place)."""
+    from datetime import datetime
+
+    return datetime.now().isoformat(timespec="seconds")
+
+
 def _print(msg: str) -> None:
     print(msg)
 
@@ -181,6 +188,54 @@ def cmd_loop(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# hermes (conductor: route plain language → run stage(s))
+# --------------------------------------------------------------------------- #
+def cmd_hermes(args: argparse.Namespace) -> int:
+    from cli.hermes import run_hermes
+    from cli.runner import AgentRunner
+
+    ws = spec_workspace(args.topic)
+    ws.mkdir(parents=True, exist_ok=True)
+    mode = "auto" if args.auto else "single-step"
+    _print(f"σ hermes — topic={args.topic!r} mode={mode}{' terse' if args.terse else ''}")
+    result = run_hermes(
+        args.message,
+        ws,
+        auto=args.auto,
+        terse=args.terse,
+        make_runner=lambda: AgentRunner(),
+        now=_now_iso(),
+    )
+    for stage in result.stages_run:
+        _print(f"  • ran {stage}")
+    if result.gate:
+        _print(f"→ stopped at gate: {result.gate}")
+    if not result.ok:
+        _print("✗ hermes stopped on failure")
+        return 1
+    _print(f"✓ hermes ran {len(result.stages_run)} stage(s)")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# board (kanban projection over tasks + events)
+# --------------------------------------------------------------------------- #
+def cmd_board(args: argparse.Namespace) -> int:
+    from cli import board
+
+    ws = spec_workspace(args.topic)
+    if not ws.exists():
+        _print(f"✗ no spec workspace at {ws}. Run a stage or hermes first.")
+        return 1
+    if args.watch:
+        _print(f"σ board — watching {ws} (Ctrl-C to stop)")
+        board.render_live(ws)
+    else:
+        board.render_static(ws)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -238,6 +293,18 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--topic", required=True)
     pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
     pl.set_defaults(func=cmd_loop)
+
+    ph = sub.add_parser("hermes", help="Conductor: route plain language to a stage and run it")
+    ph.add_argument("message", help="what you want, in plain language")
+    ph.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    ph.add_argument("--auto", action="store_true", help="run the full chain, pausing only at human gates")
+    ph.add_argument("--terse", action="store_true", help="compress output (caveman skill)")
+    ph.set_defaults(func=cmd_hermes)
+
+    pb = sub.add_parser("board", help="Kanban board over tasks + events")
+    pb.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    pb.add_argument("--watch", action="store_true", help="live redraw as agents progress")
+    pb.set_defaults(func=cmd_board)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
