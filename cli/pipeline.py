@@ -108,12 +108,16 @@ def execute_stage(
     stage_name: str,
     workspace: Path,
     agent: Optional[AgentRunner] = None,
+    prompt_prefix: str = "",
 ) -> AgentResult:
     """Run a pipeline stage through the agent runner and persist its artifact.
 
     For file-artifact stages (research.md, spec.md, ...) the agent output is
     written to the artifact path. Directory artifacts (impl/, verify/) are left
     for the agent to populate; we still capture a run log.
+
+    `prompt_prefix` lets a caller (e.g. Hermes) prepend skill context to the
+    stage prompt without changing how the artifact is persisted.
     """
     stage = load_stage(stage_name)
     if stage is None:
@@ -123,6 +127,8 @@ def execute_stage(
 
     agent = agent or AgentRunner()
     prompt = render_invocation(stage, workspace)
+    if prompt_prefix:
+        prompt = f"{prompt_prefix}\n\n{prompt}"
     result = agent.run(prompt, cwd=workspace)
 
     if result.ok and result.output:

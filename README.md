@@ -83,14 +83,22 @@ sigma               # launch Claude Code with sigma context loaded
 
 ## Status
 
-✅ **Core + execution complete.** All 8 pipeline stages run through a single
-injectable `AgentRunner`; the loop executes real maker→checker cycles with
-distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures
-into `skills/`. 65 tests green, ruff clean. See [`docs/`](docs/).
+✅ **Core + execution + conductor complete.** All 8 pipeline stages run through a
+single injectable `AgentRunner`; the loop executes real maker→checker cycles with
+distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures into
+`skills/`. 117 tests green, ruff clean. See [`docs/`](docs/).
 
 Stage execution: `sigma spec --topic <t>` runs the stage and writes its artifact
 (prior-stage artifact is chained in as context). Loop: `sigma loop --topic <t>`
 plans by default; `--execute` runs the maker→checker cycles.
+
+**Hermes** (optional conductor) routes plain language to the right stage and runs
+it — `sigma hermes "continue" --topic <t>` (one hop) or `--auto` (chain to a
+human gate). Standalone stage commands are untouched. A **kanban board** projects
+task + event state: `sigma board --topic <t>` (or `--watch`). The loop adds an
+optional **logic-evaluator** verify axis (reasoning + plan coherence, distinct
+from code quality). Bundled skills live in `skills/vendor/`; export any artifact
+to a shareable single-file HTML deck/report via the `sigma-present` skill.
 
 ## License
 

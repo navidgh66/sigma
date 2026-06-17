@@ -103,3 +103,52 @@ def test_run_loop_all_tasks(tmp_path):
     )
     assert len(outcomes) == 2
     assert all(o.verified for o in outcomes)
+
+
+# --------------------------- logic evaluator (second axis) --------------------------- #
+def test_logic_checker_pass_both_axes(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    logic = ScriptedRunner([AgentResult(ok=True, output="reasoning sound\nVERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, logic)
+    assert out.verified is True
+    assert out.logic_ok is True
+    assert (tmp_path / "verify" / f"{plan.worktree_name}.logic.md").exists()
+
+
+def test_logic_fail_fails_cycle_even_if_quality_passes(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    logic = ScriptedRunner([AgentResult(ok=True, output="wrong approach\nVERDICT: FAIL")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, logic)
+    assert out.verified is False
+    assert out.logic_ok is False
+    assert out.ratcheted_skill.exists()
+
+
+def test_logic_checker_must_be_distinct(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, chk)
+
+
+def test_run_loop_with_logic_checker(tmp_path):
+    tasks = parse_tasks(TASKS)
+    outcomes = run_loop(
+        tasks,
+        tmp_path,
+        tmp_path / "skills",
+        max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        make_logic_checker=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified and o.logic_ok for o in outcomes)
