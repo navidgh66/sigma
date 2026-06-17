@@ -68,3 +68,32 @@ def test_stage_dry_run(tmp_path, monkeypatch):
     # dry-run prints the invocation and exits 0 (no claude needed)
     assert res.returncode == 0
     assert "spec" in res.stdout
+
+
+def test_help_lists_hermes_and_board():
+    res = run_cli("--help")
+    assert "hermes" in res.stdout
+    assert "board" in res.stdout
+
+
+def test_parser_hermes_flags():
+    args = build_parser().parse_args(
+        ["hermes", "build it", "--topic", "demo", "--auto", "--terse"]
+    )
+    assert args.command == "hermes"
+    assert args.message == "build it"
+    assert args.auto is True
+    assert args.terse is True
+
+
+def test_parser_board_watch_flag():
+    args = build_parser().parse_args(["board", "--topic", "demo", "--watch"])
+    assert args.command == "board"
+    assert args.watch is True
+
+
+def test_board_missing_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = run_cli("board", "--topic", "nope")
+    assert res.returncode == 1
+    assert "no spec workspace" in res.stdout
