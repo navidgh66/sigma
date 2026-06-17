@@ -79,6 +79,34 @@ sigma init          # per-project: pick domains, write sigma.config.yml
 sigma               # launch Claude Code with sigma context loaded
 ```
 
+## Use inside Claude Code (as a plugin)
+
+sigma ships a Claude Code plugin so every stage is a native slash command and
+`sigma-present` is a native skill — no CLI calls needed for the in-session flow.
+
+```bash
+# add this repo as a plugin marketplace, then install
+/plugin marketplace add navidgh66/sigma
+/plugin install sigma@sigma
+# (local clone: /plugin marketplace add /path/to/sigma)
+```
+
+Then in any session:
+
+```
+/research <topic>     /propose   /blueprint   /spec   /tasks
+/implement-task       /verify    /loop        /hermes  /board
+```
+
+…and invoke the `sigma-present` skill to export an artifact to HTML.
+
+**Two layers, by design:**
+- **Slash commands** = the in-session flow — Claude follows the stage's markdown
+  directly (great for one-off, interactive work).
+- **CLI** (`sigma <stage>`) = the full engine — real multi-model subprocess
+  fan-out, git-worktree isolation, injectable maker→checker loop. Use it for
+  autonomous/parallel runs. The commands above mirror the CLI stages 1:1.
+
 ---
 
 ## Status

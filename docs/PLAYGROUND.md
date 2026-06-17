@@ -27,6 +27,19 @@ $ python3 -m pytest tests/ -q          # 127 passed
 $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
+### Or install as a Claude Code plugin (slash commands + skills)
+
+```
+/plugin marketplace add navidgh66/sigma     # or a local clone path
+/plugin install sigma@sigma
+```
+
+→ Every stage becomes a native slash command — `/research /propose /blueprint
+/spec /tasks /implement-task /verify /loop /hermes /board` — and `sigma-present`
+becomes a native skill. The slash commands are the lightweight in-session flow;
+the `sigma` CLI below is the full execution engine (model fan-out, worktrees,
+injected maker→checker loop). They mirror each other 1:1.
+
 ---
 
 ## 1. `sigma init` — scaffold a project
