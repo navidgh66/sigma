@@ -92,6 +92,16 @@ def test_parser_board_watch_flag():
     assert args.watch is True
 
 
+def test_parser_keep_awake_flags():
+    a = build_parser().parse_args(["hermes", "go", "--topic", "d", "--keep-awake"])
+    assert a.keep_awake is True
+    b = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--keep-awake"])
+    assert b.keep_awake is True
+    # default off
+    c = build_parser().parse_args(["loop", "--topic", "d"])
+    assert c.keep_awake is False
+
+
 def test_board_missing_workspace(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     res = run_cli("board", "--topic", "nope")

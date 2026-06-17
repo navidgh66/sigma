@@ -23,7 +23,7 @@ $ sigma --help
 $ python3 -m cli.main --help
 
 # dev checks (must stay green)
-$ python3 -m pytest tests/ -q          # 119 passed
+$ python3 -m pytest tests/ -q          # 127 passed
 $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
@@ -144,6 +144,17 @@ $ sigma loop --topic "$T" --execute
 - Verdict parsing is skeptical — a checker reply missing `VERDICT: PASS` = FAIL.
 - A failed cycle writes a `SKILL.md` lesson so it never recurs (the ratchet).
 
+**Keep the Mac awake** for a long run (macOS only — wraps `caffeinate`):
+
+```bash
+$ sigma loop --topic "$T" --execute --keep-awake
+→   ☕ keep-awake on (caffeinate)
+  ... cycles run without the display/idle sleep timer kicking in ...
+```
+
+→ No-ops cleanly off macOS or if `caffeinate` is missing, so it's always safe to
+pass. caffeinate is torn down when the run ends (even on error).
+
 ---
 
 ## 4. Logic-evaluator — the second verify axis
@@ -219,6 +230,16 @@ on a stage failure, or at the hop budget (`max_hops`, default 12).
 $ sigma hermes "continue" --topic "$T" --terse
 → injects the bundled caveman skill so stage output is ~75% smaller.
 ```
+
+### 5e. `--keep-awake` — don't let the Mac sleep
+
+```bash
+$ sigma hermes "build the whole thing" --topic fresh-idea --auto --keep-awake
+→   ☕ keep-awake on (caffeinate)
+  ... a long auto chain runs without the Mac sleeping ...
+```
+
+→ macOS only; wraps `caffeinate`. No-ops elsewhere. Same flag on `sigma loop`.
 
 **Stage → skill injection** (`cli/skill_map.py`): propose/blueprint→brainstorming,
 spec→writing-plans, implement-task→TDD, verify→systematic-debugging +
@@ -342,6 +363,7 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | `sigma <stage> --topic <t> --dry-run` | print prompt, don't run |
 | `sigma loop --topic <t>` | plan cycles (safe) |
 | `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
+| `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
 | `sigma hermes "<msg>" --topic <t>` | conductor: route + run one stage |
 | `sigma hermes "<msg>" --topic <t> --auto` | chain to a human gate |
 | `sigma hermes "<msg>" --topic <t> --terse` | compressed output |
