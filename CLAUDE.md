@@ -70,8 +70,21 @@ skills/             ratcheted lessons (SKILL.md), written on loop failures
 skills/vendor/      bundled skills (superpowers subset + caveman) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 installer/setup.sh  one-line global install
+.claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
+commands/           also serve as native CC slash commands (/research … /hermes /board)
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
 ```
+
+## Two ways to run
+
+- **CLI** (`sigma <stage>`) — the full engine: real subprocess model fan-out,
+  git-worktree isolation, injectable maker→checker loop. For autonomous runs.
+- **Claude Code plugin** — `commands/*.md` are native slash commands (`/research`
+  … `/hermes`, `/board`); `skills/sigma-present` is a native skill. Install with
+  `/plugin marketplace add navidgh66/sigma` then `/plugin install sigma@sigma`.
+  Slash commands are the lightweight in-session flow; they mirror CLI stages 1:1.
+  Command bodies carry extra frontmatter (`command:`, `stage:`, `inputs:`) beyond
+  CC's required `description:` — harmless, kept for the CLI's own use.
 
 ## Principles
 

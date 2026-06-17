@@ -1,0 +1,22 @@
+{
+  "name": "sigma",
+  "owner": {
+    "name": "Navid Ghayazi",
+    "url": "https://github.com/navidgh66"
+  },
+  "metadata": {
+    "description": "sigma — personal AI workflow toolkit: research-first, spec-driven, loop-engineered pipeline for data science & AI engineering.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "sigma",
+      "description": "8-stage pipeline (research → … → loop), Hermes conductor, kanban board, per-domain logic-evaluator, and HTML artifact export. Pairs with the sigma CLI for the full execution engine.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Navid Ghayazi"
+      },
+      "source": "."
+    }
+  ]
+}
