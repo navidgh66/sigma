@@ -10,12 +10,12 @@ research-first, spec-driven, loop-engineered pipeline. Core and execution are
 complete: all 8 stages run through one injectable agent runner; the loop runs
 real maker→checker cycles. **Hermes** (optional conductor) routes plain language
 to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 119 pytest tests, ruff clean.
+**logic-evaluator** verify axis. 127 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 119 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 127 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -62,6 +62,7 @@ cli/intent.py       hybrid routing: state-scan default + intent-override classif
 cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
+cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
 commands/           8 slash-command templates (one per stage), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md)
 subagents/researchers/  claude / gemini / gpt research subagents
@@ -112,3 +113,6 @@ docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to ever
 - All agent/model invocation passes the prompt via argv (never the shell) — no
   injection risk; preserve that when adding adapters.
 - `skills/vendor/` are unmodified upstream copies — don't edit in place; re-vendor.
+- `--keep-awake` (loop/hermes) wraps macOS `caffeinate` via `cli/keepawake.py`. It
+  no-ops off macOS or when caffeinate is absent, and is torn down on context exit
+  (even on exception) — best-effort, never fatal.

@@ -166,17 +166,21 @@ def cmd_loop(args: argparse.Namespace) -> int:
         return 0
 
     # Execute: real maker→checker cycles with distinct agents.
+    from cli.keepawake import keep_awake
     from cli.runner import AgentRunner
 
     skills_dir = sigma_home() / "skills"
-    outcomes = run_loop(
-        tasks,
-        ws,
-        skills_dir,
-        cfg.loop.max_cycles,
-        make_implementer=lambda: AgentRunner(),
-        make_verifier=lambda: AgentRunner(),
-    )
+    if args.keep_awake:
+        _print("  ☕ keep-awake on (caffeinate)")
+    with keep_awake(enabled=args.keep_awake):
+        outcomes = run_loop(
+            tasks,
+            ws,
+            skills_dir,
+            cfg.loop.max_cycles,
+            make_implementer=lambda: AgentRunner(),
+            make_verifier=lambda: AgentRunner(),
+        )
     passed = sum(1 for o in outcomes if o.verified)
     _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
     for o in outcomes:
@@ -192,20 +196,24 @@ def cmd_loop(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 def cmd_hermes(args: argparse.Namespace) -> int:
     from cli.hermes import run_hermes
+    from cli.keepawake import keep_awake
     from cli.runner import AgentRunner
 
     ws = spec_workspace(args.topic)
     ws.mkdir(parents=True, exist_ok=True)
     mode = "auto" if args.auto else "single-step"
     _print(f"σ hermes — topic={args.topic!r} mode={mode}{' terse' if args.terse else ''}")
-    result = run_hermes(
-        args.message,
-        ws,
-        auto=args.auto,
-        terse=args.terse,
-        make_runner=lambda: AgentRunner(),
-        now=_now_iso(),
-    )
+    if args.keep_awake:
+        _print("  ☕ keep-awake on (caffeinate)")
+    with keep_awake(enabled=args.keep_awake):
+        result = run_hermes(
+            args.message,
+            ws,
+            auto=args.auto,
+            terse=args.terse,
+            make_runner=lambda: AgentRunner(),
+            now=_now_iso(),
+        )
     for stage in result.stages_run:
         _print(f"  • ran {stage}")
     if result.gate:
@@ -292,6 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
     pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
     pl.add_argument("--topic", required=True)
     pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
+    pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.set_defaults(func=cmd_loop)
 
     ph = sub.add_parser("hermes", help="Conductor: route plain language to a stage and run it")
@@ -299,6 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--topic", required=True, help="topic/slug locating the workspace")
     ph.add_argument("--auto", action="store_true", help="run the full chain, pausing only at human gates")
     ph.add_argument("--terse", action="store_true", help="compress output (caveman skill)")
+    ph.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     ph.set_defaults(func=cmd_hermes)
 
     pb = sub.add_parser("board", help="Kanban board over tasks + events")
