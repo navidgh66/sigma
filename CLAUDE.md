@@ -10,12 +10,12 @@ research-first, spec-driven, loop-engineered pipeline. Core and execution are
 complete: all 8 stages run through one injectable agent runner; the loop runs
 real maker→checker cycles. **Hermes** (optional conductor) routes plain language
 to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 117 pytest tests, ruff clean.
+**logic-evaluator** verify axis. 119 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 117 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 119 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -69,7 +69,7 @@ skills/             ratcheted lessons (SKILL.md), written on loop failures
 skills/vendor/      bundled skills (superpowers subset + caveman) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 installer/setup.sh  one-line global install
-docs/               design doc + roadmap
+docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
 ```
 
 ## Principles
