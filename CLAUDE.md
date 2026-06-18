@@ -10,18 +10,21 @@ research-first, spec-driven, loop-engineered pipeline. Core and execution are
 complete: all 8 stages run through one injectable agent runner; the loop runs
 real maker→checker cycles. **Hermes** (optional conductor) routes plain language
 to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 232 pytest tests, ruff clean.
+**logic-evaluator** verify axis. 281 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 232 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 281 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
 python3 -m cli.main --help           # CLI help
 sigma init --domains nlp,rl          # scaffold sigma.config.yml for a project
 sigma research "topic"               # multi-model research → research.md
+sigma research "topic" --deep        # web-grounded deep research (web search; slower)
+sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour
+sigma learn --persona "new dev" --dry-run  # print the invocation, don't run claude
 sigma spec --topic <t>               # run one pipeline stage (writes artifact)
 sigma spec --topic <t> --dry-run     # print the invocation, don't run claude
 sigma loop --topic <t>               # plan cycles (safe default)
@@ -55,11 +58,13 @@ Each stage reads the prior stage's artifact as context. Artifacts live under
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / doctor / onboard / launch
+cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / doctor / onboard / learn / launch
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
-cli/models.py       research model adapters (claude/gemini/gpt), graceful skip
-cli/research.py     parallel fan-out + cited aggregation → research.md
+cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
+cli/research.py     parallel fan-out + cited aggregation → research.md; --deep web-grounded brief
+cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
+cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
 cli/pipeline.py     execute_stage: run stage, chain prior artifact, persist
 cli/loop.py         parse tasks, execute_cycle (maker→checker + logic axis), run_loop
@@ -70,19 +75,20 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/rtk)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/rtk/caveman)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update
-cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK
+cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
+cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
 cli/render.py       σ logo + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
-commands/           8 slash-command templates (one per stage), YAML frontmatter
+commands/           slash-command templates (one per stage + /learn), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md)
 subagents/researchers/  claude / gemini / gpt research subagents
 skills/             ratcheted lessons (SKILL.md), written on loop failures
-skills/vendor/      bundled skills (superpowers subset + caveman) — self-contained
+skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + codebase-onboarding) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
@@ -151,6 +157,22 @@ docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to ever
 - RTK install/activate (`cli/rtk.py`) is **confirm-gated** — it touches the global
   `~/.claude/settings.json` via `rtk init -g`, so onboard/doctor always ask first.
   `rtk_status` checks `rtk gain` works to catch the name-collision binary.
+- Caveman (`cli/caveman.py`) mirrors RTK exactly: confirm-gated, idempotent, touches
+  global plugin/settings state. `setup_caveman` no-ops when already active or when
+  the `claude` CLI is absent. Wired into `sigma onboard` (step 7) + `check_caveman`.
+- Research is **subscription-backed, no API credit**: gpt runs via `codex exec`
+  (ChatGPT login, read-only sandbox), gemini via `gemini -p --output-format json`,
+  claude via `claude -p`. `clean_output` normalizes each CLI's raw stdout. The old
+  `openai api chat...` adapter was dead (pre-1.0 CLI) and is gone. `check_models`
+  probes the real binary (`codex` for gpt), not the model name.
+- `sigma research --deep` enables web search/grounding (codex `tools.web_search=true`,
+  deep brief demanding live citations), bumps timeout 300s→900s, marks `Mode: deep`
+  in the header. `run_research`'s `_call_runner` tolerates 2-arg test fakes (no `deep` kwarg).
+- `sigma learn` (`cli/learn.py`) drives the AgentRunner to emit ARCHITECTURE.md + a
+  CodeTour `.tours/<slug>.tour`, validated by the pure `cli/codetour.py` (anchors
+  must resolve). **No graph engine** — Graphify/tree-sitter need py3.10; we stay 3.9.
+  Gotcha: the agent prompt must NOT start with `-` (claude -p reads it positionally
+  and a leading dash parses as an option flag); skill blocks use `### skill:` headers.
 - `installer/setup.sh` is non-interactive (TTY-safe under `curl|sh`): no `read`.
   All prompts live in `sigma onboard`. Targets Python 3.9 (not 3.10).
 - `--gate <script>` (loop/hermes) is a **fail-safe** wakeAgent pre-check: the

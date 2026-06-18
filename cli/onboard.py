@@ -13,6 +13,7 @@ from __future__ import annotations
 from getpass import getpass
 from typing import Callable, List, Optional
 
+from cli import caveman as caveman_mod
 from cli import checks as checks_mod
 from cli import render, rtk, secrets
 from cli.config import SigmaConfig, write_config
@@ -42,6 +43,7 @@ def run_onboard(
     secret_input: Optional[Callable[[str], str]] = None,
     confirm: Optional[Callable[[str], bool]] = None,
     rtk_status_fn: Optional[Callable] = None,
+    caveman_status_fn: Optional[Callable] = None,
     spawn: Optional[Callable] = None,
     which: Optional[Callable] = None,
     run_all: Optional[Callable] = None,
@@ -89,5 +91,12 @@ def run_onboard(
     )
     if changed:
         print("  ✓ RTK set up — restart Claude Code for it to take effect")
+
+    # 7. Caveman — confirm-gated terse-output mode (also touches global state).
+    cave_changed = caveman_mod.setup_caveman(
+        status_fn=caveman_status_fn, confirm=confirm, which=which, spawn=spawn
+    )
+    if cave_changed:
+        print("  ✓ caveman set up — restart Claude Code for it to take effect")
 
     print("\n✓ onboarding complete. Try:  sigma research \"your topic\"")

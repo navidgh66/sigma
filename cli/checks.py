@@ -28,13 +28,14 @@ FAIL = "fail"
 
 Fix = Tuple[str, Callable[[], bool]]
 
-# Model CLIs sigma can fan out to during research.
-_MODEL_CLIS = ["claude", "gemini", "gpt"]
+# Model CLIs sigma can fan out to during research, keyed by sigma model name with
+# the actual executable to probe on PATH (gpt is driven via the Codex CLI).
+_MODEL_EXES = {"claude": "claude", "gemini": "gemini", "gpt": "codex"}
 # How to authenticate each, shown as guidance (never auto-run).
 _AUTH_HINT = {
-    "gemini": "gemini auth",
-    "gpt": "gpt auth login",
-    "claude": "claude (already authed if you're running it)",
+    "gemini": "gemini  (sign in with Google / GEMINI_API_KEY)",
+    "gpt": "codex login  (uses your ChatGPT subscription)",
+    "claude": "claude  (already authed if you're running it)",
 }
 
 
@@ -79,7 +80,7 @@ def check_deps(probe: Optional[Callable[[str], bool]] = None) -> Check:
 
 def check_models(which: Optional[Callable] = None) -> Check:
     which = which or shutil.which
-    present = [m for m in _MODEL_CLIS if which(m)]
+    present = [m for m, exe in _MODEL_EXES.items() if which(exe)]
     if not present:
         return Check("models", WARN, "no model CLIs found (research degrades gracefully)")
     return Check("models", OK, f"model CLIs: {', '.join(present)}")
@@ -87,7 +88,7 @@ def check_models(which: Optional[Callable] = None) -> Check:
 
 def check_model_auth(which: Optional[Callable] = None) -> Check:
     which = which or shutil.which
-    present = [m for m in _MODEL_CLIS if which(m)]
+    present = [m for m, exe in _MODEL_EXES.items() if which(exe)]
     if not present:
         return Check("model-auth", WARN, "no model CLIs to authenticate")
     hints = "; ".join(f"{m}: `{_AUTH_HINT[m]}`" for m in present)
@@ -198,6 +199,34 @@ def check_rtk(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("rtk", OK, "RTK installed + activated for Claude")
 
 
+def check_caveman(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
+    """Caveman terse-output mode: plugin installed? SessionStart hook active?"""
+    if status_fn is None:
+        from cli.caveman import caveman_status
+
+        status_fn = caveman_status
+    st = status_fn()
+
+    def _fix() -> bool:
+        from cli.caveman import setup_caveman
+
+        return setup_caveman(status_fn=status_fn, confirm=lambda _msg: True)
+
+    if not st.get("claude_cli"):
+        return Check("caveman", WARN, "no `claude` CLI — can't install the caveman plugin")
+    if not st.get("installed"):
+        return Check(
+            "caveman", WARN, "caveman not installed (optional ~75% token saver)",
+            fix=("install caveman plugin for Claude", _fix),
+        )
+    if not st.get("hook_active"):
+        return Check(
+            "caveman", WARN, "caveman installed but its session hook is not active",
+            fix=("re-install caveman to register its hook", _fix),
+        )
+    return Check("caveman", OK, "caveman installed + active for Claude")
+
+
 # --------------------------------------------------------------------------- #
 # aggregate
 # --------------------------------------------------------------------------- #
@@ -206,6 +235,7 @@ def run_all(
     root: Optional[Path] = None,
     which: Optional[Callable] = None,
     rtk_status_fn: Optional[Callable] = None,
+    caveman_status_fn: Optional[Callable] = None,
 ) -> List[Check]:
     """Run every probe and return the results in display order."""
     return [
@@ -219,6 +249,7 @@ def run_all(
         check_config(root=root),
         check_workspaces(root=root),
         check_rtk(status_fn=rtk_status_fn),
+        check_caveman(status_fn=caveman_status_fn),
     ]
 
 

@@ -97,6 +97,8 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         secret_input=lambda key: "",
         confirm=lambda msg: True,                     # yes to rtk
         rtk_status_fn=lambda: {"installed": True, "hook_active": False, "gain_ok": True},
+        # caveman already active → its step is a no-op, isolating the rtk assertion.
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
         which=lambda n: "/usr/bin/rtk" if n == "rtk" else None,
@@ -104,6 +106,49 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         domains=["nlp"],
     )
     assert ["rtk", "init", "-g"] in spawned
+
+
+# --------------------------- caveman --------------------------- #
+def test_onboard_sets_up_caveman_on_confirm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,                     # yes to everything
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    # caveman install ran (marketplace add + plugin install).
+    assert any("marketplace" in a for a in spawned)
+    assert any("install" in a for a in spawned)
+
+
+def test_onboard_skips_caveman_when_declined(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: False,
+        rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert spawned == []
 
 
 def test_onboard_skips_rtk_when_declined(tmp_path, monkeypatch):
