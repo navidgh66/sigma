@@ -60,3 +60,40 @@ def test_research_end_to_end_writes_file(tmp_path):
     body = out.read_text()
     assert "claude says hi" in body
     assert out.name == "research.md"
+
+
+def test_build_prompt_deep_demands_web_search():
+    quick = build_prompt("t", deep=False)
+    deep = build_prompt("t", deep=True)
+    assert "web-search" in deep or "web search" in deep.lower()
+    assert "do NOT answer from memory" in deep
+    # Quick brief stays lean (no web-search demand).
+    assert "do NOT answer from memory" not in quick
+
+
+def test_aggregate_marks_deep_mode():
+    results = [ModelResult("claude", True, "x")]
+    quick_doc = aggregate("t", results, today=date(2026, 6, 16), deep=False)
+    deep_doc = aggregate("t", results, today=date(2026, 6, 16), deep=True)
+    assert "Mode: quick" in quick_doc
+    assert "Mode: deep (web-grounded)" in deep_doc
+
+
+def test_run_research_forwards_deep_to_runner():
+    seen = {}
+
+    def runner(model, prompt, deep=False):
+        seen[model] = deep
+        return ModelResult(model, True, "ok")
+
+    run_research("t", ["claude", "gpt"], runner=runner, deep=True)
+    assert seen == {"claude": True, "gpt": True}
+
+
+def test_run_research_tolerates_two_arg_runner():
+    # Legacy/fake runners with no `deep` kwarg still work (TypeError fallback).
+    def runner(model, prompt):
+        return ModelResult(model, True, "ok")
+
+    results = run_research("t", ["claude"], runner=runner, deep=True)
+    assert results[0].ok is True
