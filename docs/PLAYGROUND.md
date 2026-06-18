@@ -23,7 +23,7 @@ $ sigma --help
 $ python3 -m cli.main --help
 
 # dev checks (must stay green)
-$ python3 -m pytest tests/ -q          # 204 passed
+$ python3 -m pytest tests/ -q          # 232 passed
 $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
@@ -193,6 +193,46 @@ $ sed -n '1,20p' context-engines/rl/verifiers/logic-evaluator.md
 
 In code (how the loop wires it), see `run_loop(..., make_logic_checker=...)` in
 `cli/loop.py`. NLP and RL evaluators are deep; the other 7 are lean.
+
+---
+
+## 4a. wakeAgent gate — skip work, spend zero tokens
+
+A cheap pre-check before a loop run or hermes hop. Your gate script prints
+`{"wakeAgent": true|false}`; false = nothing to do = skip (no agents, no tokens).
+
+```bash
+# a gate that only wakes when the inbox has files
+$ cat check-inbox.sh
+#!/bin/sh
+[ -n "$(ls ~/research/inbox/*.md 2>/dev/null)" ] \
+  && echo '{"wakeAgent": true}' || echo '{"wakeAgent": false}'
+
+$ sigma loop --topic "$T" --execute --gate ./check-inbox.sh
+→ sigma loop — 1 pending / 1 total
+  gate: nothing to do — skipped (0 tokens)
+
+$ sigma hermes "continue" --topic "$T" --gate ./check-inbox.sh
+→ stops before the hop if the gate says skip
+```
+
+→ **Fail-safe:** a missing / erroring / unparseable gate defaults to WAKE — a
+broken gate never silently blocks the pipeline. Gating is opt-in (`--gate`).
+
+## 4b. Contradiction flagging — lessons that disagree
+
+When the loop ratchets a new lesson that conflicts with an existing one (same
+domain + same topic), it flags rather than piles up silently.
+
+```bash
+$ sigma loop --topic "$T" --execute
+→ ✗ tokenize corpus
+    ratcheted → skills/verify-failed-tokenize-corpus/SKILL.md
+    ⚠ contradiction flagged → skills/CONTRADICTIONS.md
+```
+
+→ The new SKILL.md gets a `⚠ CONTRADICTION` marker; `skills/CONTRADICTIONS.md`
+logs the conflict. Never auto-resolved, never deleted — you decide.
 
 ---
 
@@ -416,6 +456,7 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | `sigma loop --topic <t>` | plan cycles (safe) |
 | `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
 | `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
+| `... --gate <script>` | (loop/hermes) skip work if wakeAgent says nothing to do |
 | `sigma hermes "<msg>" --topic <t>` | conductor: route + run one stage |
 | `sigma hermes "<msg>" --topic <t> --auto` | chain to a human gate |
 | `sigma hermes "<msg>" --topic <t> --terse` | compressed output |
