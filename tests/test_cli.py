@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -67,20 +68,28 @@ def test_stage_subcommands_retired(tmp_path, monkeypatch):
     # Those flows live only as plugin slash commands now. The CLI must reject
     # them rather than shelling out an amnesiac subprocess.
     monkeypatch.chdir(tmp_path)
-    for stage in ("propose", "blueprint", "spec", "tasks", "verify"):
+    # All six retired stages (full set from the design spec).
+    for stage in ("propose", "blueprint", "spec", "tasks", "implement-task", "verify"):
         res = run_cli(stage, "--topic", "demo", "--dry-run")
         assert res.returncode != 0, f"{stage} should be retired from the CLI"
 
 
+def _subcommands():
+    """The registered CLI subcommand names (from the argparse choices)."""
+    parser = build_parser()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
 def test_help_omits_retired_stages():
-    res = run_cli("--help")
-    # Retired stage wrappers must not appear as CLI subcommands.
-    assert "spec" not in res.stdout
-    assert "blueprint" not in res.stdout
+    commands = _subcommands()
+    # No retired stage wrapper may be a registered CLI subcommand.
+    for stage in ("propose", "blueprint", "spec", "tasks", "implement-task", "verify"):
+        assert stage not in commands, f"{stage} must not be a CLI subcommand"
     # But the kept commands remain.
-    assert "research" in res.stdout
-    assert "loop" in res.stdout
-    assert "weave" in res.stdout
+    assert {"research", "loop", "hermes", "board", "weave"} <= commands
 
 
 def test_help_lists_hermes_and_board():

@@ -112,7 +112,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
     tasks = parse_tasks(tasks_file.read_text())
     pending = incomplete_tasks(tasks)
     _print(f"sigma loop — {len(pending)} pending / {len(tasks)} total")
-    _print(f"  max_cycles: {cfg.loop.max_cycles}  worktrees: {cfg.loop.worktrees}")
+    _print(f"  max_cycles: {cfg.loop.max_cycles}  (sequential cycles, one workspace)")
     if not pending:
         _print("✓ all tasks complete")
         return 0
@@ -126,7 +126,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
                 break
             plan = plan_cycle(t)
             _print(f"  • {t.id or '-'} [{plan.implementer_domain}] {t.title}")
-            _print(f"    worktree={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
+            _print(f"    cycle={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
             shown += 1
         append_loop_log(ws, f"planned {min(len(pending), cfg.loop.max_cycles)} cycle(s)")
         _print("  (plan only — pass --execute to run maker→checker cycles)")
