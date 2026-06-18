@@ -314,6 +314,38 @@ def cmd_learn(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# weave (weave stage artifacts → chain.html + chain.json)
+# --------------------------------------------------------------------------- #
+def cmd_weave(args: argparse.Namespace) -> int:
+    from cli.weave import run_weave
+
+    ws = spec_workspace(args.topic)
+    if not args.dry_run and not ws.exists():
+        _print(f"✗ no spec workspace at {ws}. Run a stage first.")
+        return 1
+    _print(f"σ weave — topic={args.topic!r}")
+    res = run_weave(ws, topic=args.topic, slug=ws.name, dry_run=args.dry_run)
+    if args.dry_run:
+        _print("--- invocation (dry run) ---")
+        _print(res.prompt)
+        return 0
+    if res.manifest_path:
+        _print(f"✓ wrote {res.manifest_path}")
+    if not res.ok:
+        _print(f"✗ weave failed: {res.error}")
+        return 1
+    if res.html_path:
+        _print(f"✓ wrote {res.html_path}")
+        if res.html_problems:
+            _print(f"  ⚠ {len(res.html_problems)} HTML issue(s):")
+            for p in res.html_problems:
+                _print(f"    - {p}")
+        else:
+            _print("  ✓ chain.html valid")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -405,6 +437,11 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--persona", help="who the walkthrough is for (e.g. 'new backend dev')")
     plearn.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     plearn.set_defaults(func=cmd_learn)
+
+    pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
+    pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    pw.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    pw.set_defaults(func=cmd_weave)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
