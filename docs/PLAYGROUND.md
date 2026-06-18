@@ -23,7 +23,7 @@ $ sigma --help
 $ python3 -m cli.main --help
 
 # dev checks (must stay green)
-$ python3 -m pytest tests/ -q          # 127 passed
+$ python3 -m pytest tests/ -q          # 204 passed
 $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
@@ -350,6 +350,45 @@ $ sigma                     # no subcommand → same as launch (prints context)
 
 ---
 
+## 9a. `sigma onboard` — friendly first-run setup
+
+Interactive (real TTY). The curl|sh installer points you here.
+
+```bash
+$ sigma onboard
+→ σ logo + a health snapshot (same checks as `sigma doctor`)
+  1. classic-ml   2. deep-learning   …   9. llm-engineering
+  Domains (e.g. 1,3 — blank = all): 3,4
+  ✓ wrote sigma.config.yml (nlp, rl)
+  GEMINI_API_KEY (blank to skip): ******      # hidden; → ~/.sigma/.env (chmod 600)
+  OPENAI_API_KEY (blank to skip):             # blank = skipped
+  ℹ present CLIs (auth as needed) — claude: …; gpt: `gpt auth login`
+  Install RTK (60-90% token saver) and activate it for Claude? [y/N] y
+  ✓ RTK set up — restart Claude Code for it to take effect
+  ✓ onboarding complete.
+```
+
+→ Secrets go to `~/.sigma/.env` (chmod 600, git-ignored), **never** the committed
+config. RTK install/activate is confirm-gated (it edits global `settings.json`).
+Idempotent — safe to re-run.
+
+## 9b. `sigma doctor` — diagnose + repair
+
+```bash
+$ sigma doctor                 # full report; confirm each fix
+$ sigma doctor --check         # read-only; exit 1 if anything fails (CI gate)
+$ sigma doctor --yes           # apply every fix without prompting
+$ sigma doctor --update        # pull sigma + re-vendor skills, then check
+→ ✓ python · ✓ deps · ✓ models · ⚠ secrets · ✓ vendored-skills · ✓ plugin
+  ✓ config · ✓ workspaces · ✓ rtk
+```
+
+→ Checks: Python 3.9+, pyyaml+rich, model CLIs + auth, API keys, vendored skills,
+plugin manifest, config validity, workspace/events integrity, and RTK status
+(installed + hook active + `rtk gain` works — catches the name-collision binary).
+
+---
+
 ## 10. End-to-end example (cold start → board)
 
 ```bash
@@ -382,6 +421,10 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | `sigma hermes "<msg>" --topic <t> --terse` | compressed output |
 | `sigma board --topic <t>` | kanban snapshot |
 | `sigma board --topic <t> --watch` | live kanban |
+| `sigma onboard` | first-run setup: domains, API keys, RTK |
+| `sigma doctor` | diagnose + confirm-gated fixes |
+| `sigma doctor --check` | read-only health (CI gate, exit 1 on fail) |
+| `sigma doctor --yes` / `--update` | auto-fix / pull+re-vendor then check |
 | `sigma launch` | open Claude Code with context |
 
 See [`CLAUDE.md`](../CLAUDE.md) for layout + gotchas, and the

@@ -10,12 +10,12 @@ research-first, spec-driven, loop-engineered pipeline. Core and execution are
 complete: all 8 stages run through one injectable agent runner; the loop runs
 real maker→checker cycles. **Hermes** (optional conductor) routes plain language
 to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 127 pytest tests, ruff clean.
+**logic-evaluator** verify axis. 204 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 127 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 204 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -35,6 +35,13 @@ sigma hermes "..." --topic <t> --terse      # compress output (caveman skill)
 # Kanban board — projection over tasks.md + events.jsonl
 sigma board --topic <t>              # static snapshot (rich)
 sigma board --topic <t> --watch      # live redraw as agents progress
+
+# Setup & health
+sigma onboard                        # friendly first-run: domains, API keys, RTK
+sigma doctor                         # diagnose + confirm-gated fixes
+sigma doctor --check                 # read-only, exit 1 on any failure (CI)
+sigma doctor --yes                   # apply all fixes without prompting
+sigma doctor --update                # pull sigma + re-vendor before checking
 ```
 
 ## Pipeline
@@ -63,6 +70,12 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/rtk)
+cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update
+cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK
+cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
+cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
+cli/render.py       σ logo + rich/plain check output + confirm prompt
 commands/           8 slash-command templates (one per stage), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md)
 subagents/researchers/  claude / gemini / gpt research subagents
@@ -129,3 +142,13 @@ docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to ever
 - `--keep-awake` (loop/hermes) wraps macOS `caffeinate` via `cli/keepawake.py`. It
   no-ops off macOS or when caffeinate is absent, and is torn down on context exit
   (even on exception) — best-effort, never fatal.
+- `cli/checks.py` probes are **pure** (return `Check`, never print/mutate); a fix
+  is a `(description, callable)` the caller applies. `sigma doctor` confirms each
+  fix unless `--yes`; `--check` is read-only (exit 1 on any FAIL — CI gate).
+- Secrets (`cli/secrets.py`) go ONLY to `~/.sigma/.env` (chmod 600, git-ignored),
+  NEVER `sigma.config.yml`. An ambient env var of the same name counts as present.
+- RTK install/activate (`cli/rtk.py`) is **confirm-gated** — it touches the global
+  `~/.claude/settings.json` via `rtk init -g`, so onboard/doctor always ask first.
+  `rtk_status` checks `rtk gain` works to catch the name-collision binary.
+- `installer/setup.sh` is non-interactive (TTY-safe under `curl|sh`): no `read`.
+  All prompts live in `sigma onboard`. Targets Python 3.9 (not 3.10).
