@@ -87,12 +87,24 @@ EOF
 chmod +x "$BIN_DIR/sigma"
 ok "installed $BIN_DIR/sigma"
 
-# --- 4. deps hint ---------------------------------------------------------- #
-step 4 "Checking runtime deps…"
+# --- 4. deps (auto-install) ------------------------------------------------ #
+step 4 "Installing runtime deps…"
 if python3 -c 'import yaml, rich' >/dev/null 2>&1; then
   ok "pyyaml + rich present"
 else
-  warn "missing deps — run: python3 -m pip install pyyaml rich"
+  # Try the safest installer available, in order: pipx-managed venv is overkill
+  # for libs, so use pip with --user; fall back to a plain pip; never fatal.
+  _pip_ok=0
+  if python3 -m pip install --user --quiet pyyaml rich >/dev/null 2>&1; then
+    _pip_ok=1
+  elif python3 -m pip install --quiet pyyaml rich >/dev/null 2>&1; then
+    _pip_ok=1
+  fi
+  if [ "$_pip_ok" = 1 ] && python3 -c 'import yaml, rich' >/dev/null 2>&1; then
+    ok "installed pyyaml + rich"
+  else
+    warn "could not auto-install — run: python3 -m pip install pyyaml rich"
+  fi
 fi
 
 # --- 5. Claude Code plugin (best-effort; skip cleanly if claude absent) ----- #
