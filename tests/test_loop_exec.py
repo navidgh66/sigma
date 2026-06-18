@@ -152,3 +152,74 @@ def test_run_loop_with_logic_checker(tmp_path):
     )
     assert len(outcomes) == 2
     assert all(o.verified and o.logic_ok for o in outcomes)
+
+
+# --------------------------- contradiction flagging --------------------------- #
+def test_ratchet_flags_contradiction(tmp_path):
+    from cli.loop import ratchet_to_skills
+
+    skills = tmp_path / "skills"
+    # First lesson for nlp/tokenize-corpus.
+    ratchet_to_skills(skills, "verify failed: tokenize corpus", "lesson A", "nlp")
+    # Second, same domain+topic → contradiction flagged.
+    out2 = ratchet_to_skills(skills, "verify failed: tokenize corpus", "lesson B", "nlp")
+    assert "⚠ CONTRADICTION" in out2.read_text()
+    assert (skills / "CONTRADICTIONS.md").exists()
+
+
+def test_ratchet_no_contradiction_different_topic(tmp_path):
+    from cli.loop import ratchet_to_skills
+
+    skills = tmp_path / "skills"
+    ratchet_to_skills(skills, "verify failed: tokenize corpus", "A", "nlp")
+    out2 = ratchet_to_skills(skills, "verify failed: train classifier", "B", "nlp")
+    assert "⚠ CONTRADICTION" not in out2.read_text()
+    assert not (skills / "CONTRADICTIONS.md").exists()
+
+
+def test_execute_cycle_sets_contradiction(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    skills = tmp_path / "skills"
+    # Pre-seed an existing lesson for the same task topic + domain (nlp/tokenize-corpus).
+    from cli.loop import ratchet_to_skills
+
+    ratchet_to_skills(skills, "verify failed: tokenize corpus", "old", "nlp")
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out = execute_cycle(plan, tmp_path, skills, impl, chk)
+    assert out.verified is False
+    assert out.contradiction is not None
+
+
+# --------------------------- gate in run_loop --------------------------- #
+def _gate_script(tmp_path, wake: bool):
+    """Write a tiny executable gate script that prints a wakeAgent decision."""
+    p = tmp_path / "gate.sh"
+    p.write_text(f'#!/bin/sh\necho \'{{"wakeAgent": {"true" if wake else "false"}}}\'\n')
+    p.chmod(0o755)
+    return str(p)
+
+
+def test_run_loop_gate_skips(tmp_path):
+    tasks = parse_tasks(TASKS)
+    ran = []
+    outcomes = run_loop(
+        tasks, tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ran.append("i") or ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        gate=_gate_script(tmp_path, wake=False),
+    )
+    assert outcomes == []   # gate said skip → no cycles
+    assert ran == []        # no agents constructed → zero tokens
+
+
+def test_run_loop_gate_wakes(tmp_path):
+    tasks = parse_tasks(TASKS)
+    outcomes = run_loop(
+        tasks, tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        gate=_gate_script(tmp_path, wake=True),
+    )
+    assert len(outcomes) == 2  # gate said wake → ran normally

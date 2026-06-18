@@ -56,12 +56,16 @@ def run_hermes(
     make_runner: Optional[Callable] = None,
     vendor: Optional[Path] = None,
     now: Optional[str] = None,
+    gate: Optional[str] = None,
 ) -> HermesResult:
     """Route + run one stage (default) or chain until a gate (auto).
 
     `execute(stage_name, workspace, agent=None)` runs a stage and returns an
     AgentResult. `make_runner()` yields a fresh runner for routing/execution.
     Both are injectable for tests.
+
+    `gate`, when set, is a wakeAgent script checked before each hop; a skip
+    decision stops the run before spending tokens on that hop.
     """
     execute = execute or _real_execute_stage
     make_runner = make_runner or (lambda: None)
@@ -75,6 +79,15 @@ def run_hermes(
             result.gate = "budget-cap"
             _log(workspace, f"stopped: budget cap ({max_hops} hops)")
             break
+
+        if gate:
+            from cli.gate import run_gate
+
+            decision = run_gate(gate, cwd=workspace)
+            if not decision.wake:
+                result.gate = "wake-gate"
+                _log(workspace, f"stopped: {decision.reason}")
+                break
 
         route = intent.route(message, workspace, make_runner())
         stage = route.stage
