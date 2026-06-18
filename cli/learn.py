@@ -1,0 +1,193 @@
+"""`sigma learn` — learn a codebase, persist durable understanding artifacts.
+
+Drives the AgentRunner (the single execution chokepoint) to produce two artifacts
+that survive the session:
+
+  - ARCHITECTURE.md       — an onboarding architecture map (CLAUDE.md-style)
+  - .tours/<slug>.tour    — a CodeTour JSON walkthrough anchored to real files
+
+No graph engine is bundled: the maintained tree-sitter / Graphify stack requires
+Python 3.10+, which conflicts with sigma's 3.9 floor. Instead the agent reads the
+repo and emits both artifacts, and we validate the tour's anchors with the pure
+cli/codetour validator. The bundled `code-tour` + `codebase-onboarding` skills are
+injected so the agent follows their conventions (and they also work standalone in
+Claude Code).
+
+Output parsing, prompt building, and validation are pure/injectable so the whole
+flow is testable without spawning a real agent.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
+
+from cli.codetour import validate_tour
+from cli.paths import slugify
+from cli.runner import AgentRunner, write_artifact
+from cli.skill_map import vendor_dir
+
+# Sentinel that separates the architecture map from the tour JSON block in the
+# agent's output. The agent is instructed to emit exactly this structure.
+ARCH_HEADER = "=== ARCHITECTURE.md ==="
+TOUR_HEADER = "=== TOUR.json ==="
+
+# Bundled skills that teach the agent the two artifact formats.
+LEARN_SKILLS = ["codebase-onboarding", "code-tour"]
+
+LEARN_INSTRUCTIONS = """Learn this codebase and produce TWO artifacts in one reply.
+
+{persona_line}Read the project under: {root}
+
+Emit your reply in EXACTLY this structure, nothing before or after:
+
+{arch_header}
+<a Markdown architecture map: purpose, entry points, module layout, data flow,
+key conventions, and where a newcomer should start. Be concrete and specific to
+THIS repo — name real files and directories.>
+
+{tour_header}
+<a single JSON object in the Microsoft CodeTour format: an object with "title"
+(string) and "steps" (array). Each step has "description" (Markdown) and, when it
+anchors to code, "file" (a path RELATIVE to the project root) plus EITHER "line"
+(1-based) OR "pattern" (a substring that appears on the target line). Anchor every
+code step to a file that really exists. Output ONLY the JSON object here — no code
+fence, no commentary.>
+"""
+
+
+@dataclass
+class LearnResult:
+    ok: bool
+    architecture_path: Optional[Path] = None
+    tour_path: Optional[Path] = None
+    tour_problems: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+    prompt: str = ""
+
+
+def build_learn_prompt(root: Path, persona: Optional[str], vendor: Optional[Path] = None) -> str:
+    """Build the learn prompt, injecting the bundled learn skills."""
+    persona_line = f"Target audience / persona: {persona}\n\n" if persona else ""
+    body = LEARN_INSTRUCTIONS.format(
+        persona_line=persona_line,
+        root=root,
+        arch_header=ARCH_HEADER,
+        tour_header=TOUR_HEADER,
+    )
+    vendor = vendor or vendor_dir()
+    return _inject_learn_skills(body, vendor)
+
+
+def _inject_learn_skills(prompt: str, vendor: Path) -> str:
+    """Prepend the learn skills' bodies. They live top-level under skills/vendor/.
+
+    LEARN_SKILLS aren't pipeline stages, so we read them directly from
+    skills/vendor/<slug>/SKILL.md rather than through skill_map's stage mapping.
+    """
+    blocks: List[str] = []
+    for slug in LEARN_SKILLS:
+        f = vendor / slug / "SKILL.md"
+        if f.exists():
+            blocks.append(f"--- skill: {slug} ---\n{f.read_text()}")
+    if not blocks:
+        return prompt
+    return "\n\n".join(blocks) + f"\n\n--- task ---\n{prompt}"
+
+
+def split_output(output: str) -> tuple:
+    """Split agent output into (architecture_md, tour_json_str).
+
+    Returns (arch_text, tour_text); either may be empty if its header is absent.
+    Tolerant of a fenced ```json block around the tour.
+    """
+    arch_text = ""
+    tour_text = ""
+    if ARCH_HEADER in output:
+        after_arch = output.split(ARCH_HEADER, 1)[1]
+        if TOUR_HEADER in after_arch:
+            arch_text, tour_text = after_arch.split(TOUR_HEADER, 1)
+        else:
+            arch_text = after_arch
+    elif TOUR_HEADER in output:
+        tour_text = output.split(TOUR_HEADER, 1)[1]
+    return arch_text.strip(), _strip_fence(tour_text.strip())
+
+
+def _strip_fence(text: str) -> str:
+    """Remove a surrounding ```json ... ``` fence if the agent added one."""
+    if text.startswith("```"):
+        # Drop the first fence line and a trailing fence.
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
+def run_learn(
+    root: Path,
+    persona: Optional[str] = None,
+    topic: Optional[str] = None,
+    agent: Optional[AgentRunner] = None,
+    vendor: Optional[Path] = None,
+    dry_run: bool = False,
+) -> LearnResult:
+    """Drive the agent to learn `root`, then write + validate the artifacts."""
+    root = root.resolve()
+    prompt = build_learn_prompt(root, persona, vendor=vendor)
+
+    if dry_run:
+        return LearnResult(ok=True, prompt=prompt)
+
+    agent = agent or AgentRunner()
+    result = agent.run(prompt, cwd=root)
+    if not result.ok:
+        return LearnResult(ok=False, error=result.error or "agent run failed", prompt=prompt)
+
+    arch_text, tour_text = split_output(result.output)
+    if not arch_text and not tour_text:
+        return LearnResult(
+            ok=False,
+            error="agent output had neither an ARCHITECTURE.md nor a TOUR.json section",
+            prompt=prompt,
+        )
+
+    arch_path: Optional[Path] = None
+    if arch_text:
+        arch_path = write_artifact(root / "ARCHITECTURE.md", arch_text + "\n")
+
+    tour_path: Optional[Path] = None
+    problems: List[str] = []
+    if tour_text:
+        tour_path, problems = _write_tour(root, tour_text, topic)
+
+    return LearnResult(
+        ok=True,
+        architecture_path=arch_path,
+        tour_path=tour_path,
+        tour_problems=problems,
+        prompt=prompt,
+    )
+
+
+def _write_tour(root: Path, tour_text: str, topic: Optional[str]) -> tuple:
+    """Parse, validate, and write the .tour file. Returns (path|None, problems)."""
+    try:
+        data = json.loads(tour_text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return None, [f"tour JSON did not parse: {exc}"]
+
+    problems = validate_tour(data, root)
+    title = data.get("title") if isinstance(data, dict) else None
+    slug = slugify(topic or (title if isinstance(title, str) else "") or "codebase")
+    tours_dir = root / ".tours"
+    path = tours_dir / f"{slug}.tour"
+    # Persist even with anchor problems — the caller surfaces them; a tour that
+    # mostly anchors is more useful than none, and the problems list is the signal.
+    write_artifact(path, json.dumps(data, indent=2) + "\n")
+    return path, problems
