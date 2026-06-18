@@ -112,6 +112,16 @@ def test_parser_onboard():
     assert a.name == "proj"
 
 
+def test_parser_gate_flags():
+    a = build_parser().parse_args(["loop", "--topic", "d", "--gate", "check.py"])
+    assert a.gate == "check.py"
+    b = build_parser().parse_args(["hermes", "go", "--topic", "d", "--gate", "g.sh"])
+    assert b.gate == "g.sh"
+    # default None
+    c = build_parser().parse_args(["loop", "--topic", "d"])
+    assert c.gate is None
+
+
 def test_parser_keep_awake_flags():
     a = build_parser().parse_args(["hermes", "go", "--topic", "d", "--keep-awake"])
     assert a.keep_awake is True

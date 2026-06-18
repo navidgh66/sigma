@@ -180,7 +180,11 @@ def cmd_loop(args: argparse.Namespace) -> int:
             cfg.loop.max_cycles,
             make_implementer=lambda: AgentRunner(),
             make_verifier=lambda: AgentRunner(),
+            gate=args.gate,
         )
+    if not outcomes and args.gate:
+        _print("  gate: nothing to do — skipped (0 tokens)")
+        return 0
     passed = sum(1 for o in outcomes if o.verified)
     _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
     for o in outcomes:
@@ -188,6 +192,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print(f"  {mark} {o.task_title}")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
+        if o.contradiction:
+            _print(f"    ⚠ contradiction flagged → {o.contradiction}")
     return 0
 
 
@@ -213,6 +219,7 @@ def cmd_hermes(args: argparse.Namespace) -> int:
             terse=args.terse,
             make_runner=lambda: AgentRunner(),
             now=_now_iso(),
+            gate=args.gate,
         )
     for stage in result.stages_run:
         _print(f"  • ran {stage}")
@@ -324,6 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--topic", required=True)
     pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
+    pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)
 
     ph = sub.add_parser("hermes", help="Conductor: route plain language to a stage and run it")
@@ -332,6 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--auto", action="store_true", help="run the full chain, pausing only at human gates")
     ph.add_argument("--terse", action="store_true", help="compress output (caveman skill)")
     ph.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
+    ph.add_argument("--gate", help="wakeAgent script: skip a hop if it reports nothing to do")
     ph.set_defaults(func=cmd_hermes)
 
     pb = sub.add_parser("board", help="Kanban board over tasks + events")

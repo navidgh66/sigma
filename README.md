@@ -123,7 +123,7 @@ Then in any session:
 ✅ **Core + execution + conductor complete.** All 8 pipeline stages run through a
 single injectable `AgentRunner`; the loop executes real maker→checker cycles with
 distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures into
-`skills/`. 204 tests green, ruff clean. See [`docs/`](docs/).
+`skills/`. 232 tests green, ruff clean. See [`docs/`](docs/).
 
 Stage execution: `sigma spec --topic <t>` runs the stage and writes its artifact
 (prior-stage artifact is chained in as context). Loop: `sigma loop --topic <t>`

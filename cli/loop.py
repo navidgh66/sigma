@@ -117,13 +117,44 @@ def render_skill(failure_title: str, lesson: str, domain: Optional[str] = None) 
 
 
 def ratchet_to_skills(skills_dir: Path, failure_title: str, lesson: str, domain: Optional[str] = None) -> Path:
-    """Write a ratcheted lesson into skills/ so the loop never repeats it."""
+    """Write a ratcheted lesson into skills/ so the loop never repeats it.
+
+    Before writing, check for an existing lesson on the same domain + topic. If
+    found, flag a contradiction (in the new skill + a central CONTRADICTIONS.md)
+    for human review — never auto-resolve or delete the existing lesson.
+    """
+    from cli.skills_index import find_contradictions, topic_key
+
     slug = re.sub(r"[^a-z0-9]+", "-", failure_title.lower()).strip("-") or "lesson"
     target = skills_dir / slug
     target.mkdir(parents=True, exist_ok=True)
     out = target / "SKILL.md"
-    out.write_text(render_skill(failure_title, lesson, domain))
+
+    conflicts = find_contradictions(skills_dir, domain, topic_key(failure_title))
+    body = render_skill(failure_title, lesson, domain)
+    if conflicts:
+        marker = (
+            "\n> ⚠ CONTRADICTION: this lesson may conflict with "
+            + ", ".join(str(p.relative_to(skills_dir)) for p in conflicts)
+            + " — human review needed.\n"
+        )
+        body = body + marker
+        flag_contradiction(skills_dir, out, conflicts, domain)
+    out.write_text(body)
     return out
+
+
+def flag_contradiction(
+    skills_dir: Path, new_skill: Path, conflicts: List[Path], domain: Optional[str]
+) -> Path:
+    """Append a flag to skills/CONTRADICTIONS.md. Never resolves — humans decide."""
+    flag = skills_dir / "CONTRADICTIONS.md"
+    if not flag.exists():
+        flag.write_text("# Contradictions (human review)\n\n")
+    existing = ", ".join(str(p.relative_to(skills_dir)) for p in conflicts)
+    with flag.open("a") as fh:
+        fh.write(f"- [{domain or '-'}] {new_skill.relative_to(skills_dir)} vs {existing}\n")
+    return flag
 
 
 def append_loop_log(workspace: Path, message: str) -> Path:
@@ -170,6 +201,7 @@ class CycleOutcome:
     verified: bool
     logic_ok: Optional[bool] = None
     ratcheted_skill: Optional[Path] = None
+    contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
 
 
@@ -218,6 +250,7 @@ def execute_cycle(
         outcome.ratcheted_skill = ratchet_to_skills(
             skills_dir, f"implement failed: {title}", impl.error or "unknown", domain
         )
+        outcome.contradiction = _contradiction_flag(skills_dir, outcome.ratcheted_skill)
         append_loop_log(workspace, f"{title}: implement FAILED ({impl.error})")
         return outcome
 
@@ -249,8 +282,17 @@ def execute_cycle(
         outcome.ratcheted_skill = ratchet_to_skills(
             skills_dir, f"verify failed: {title}", reason, domain
         )
+        outcome.contradiction = _contradiction_flag(skills_dir, outcome.ratcheted_skill)
         append_loop_log(workspace, f"{title}: verify FAILED ({reason})")
     return outcome
+
+
+def _contradiction_flag(skills_dir: Path, ratcheted: Optional[Path]) -> Optional[Path]:
+    """Return the CONTRADICTIONS.md path if the just-written skill flagged one."""
+    if ratcheted is None or "⚠ CONTRADICTION" not in ratcheted.read_text():
+        return None
+    flag = skills_dir / "CONTRADICTIONS.md"
+    return flag if flag.exists() else None
 
 
 def run_loop(
@@ -261,6 +303,7 @@ def run_loop(
     make_implementer,
     make_verifier,
     make_logic_checker=None,
+    gate: Optional[str] = None,
 ) -> List[CycleOutcome]:
     """Drive cycles until tasks are exhausted or the budget cap is hit.
 
@@ -268,7 +311,18 @@ def run_loop(
     AgentRunner instances per cycle (maker ≠ checker). `make_logic_checker`, when
     provided, adds a third distinct agent that grades logic/plan coherence — a
     cycle then passes only when both verify axes pass.
+
+    `gate`, when set, is a wakeAgent script run once before the batch; if it
+    reports nothing to do, the whole run is skipped (zero tokens).
     """
+    if gate:
+        from cli.gate import run_gate
+
+        decision = run_gate(gate, cwd=workspace)
+        if not decision.wake:
+            append_loop_log(workspace, decision.reason)
+            return []
+
     outcomes: List[CycleOutcome] = []
     completed = 0
     for task in incomplete_tasks(tasks):

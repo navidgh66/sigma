@@ -150,3 +150,36 @@ def test_stage_failure_stops_and_reports(tmp_path):
     )
     assert not result.ok
     assert result.gate == "stage-failed"
+
+
+# --------------------------- gate --------------------------- #
+def _gate(tmp_path, wake):
+    p = tmp_path / "g.sh"
+    p.write_text(f'#!/bin/sh\necho \'{{"wakeAgent": {"true" if wake else "false"}}}\'\n')
+    p.chmod(0o755)
+    return str(p)
+
+
+def test_hermes_gate_skips_before_hop(tmp_path):
+    ws = _ws(tmp_path, ["research.md"])
+    calls = []
+    result = hermes.run_hermes(
+        "continue", ws,
+        execute=_recording_executor(calls),
+        make_runner=lambda: FakeRunner(),
+        gate=_gate(tmp_path, wake=False),
+    )
+    assert calls == []              # gate skipped the hop — no stage ran
+    assert result.gate == "wake-gate"
+
+
+def test_hermes_gate_wakes(tmp_path):
+    ws = _ws(tmp_path, ["research.md"])
+    calls = []
+    hermes.run_hermes(
+        "continue", ws,
+        execute=_recording_executor(calls),
+        make_runner=lambda: FakeRunner(),
+        gate=_gate(tmp_path, wake=True),
+    )
+    assert calls == ["propose"]     # gate woke → ran the hop
