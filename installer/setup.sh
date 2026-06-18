@@ -23,37 +23,32 @@ else
   C_CYAN=""; C_GREEN=""; C_YEL=""; C_MAG=""; C_BLU=""; C_DIM=""; C_RST=""; C_B=""
 fi
 
-# Tiny "animation": a sparkle line that draws in if we have a TTY (else one print).
-sparkle_line() {
-  if [ -t 1 ]; then
-    _s='. : ✦ ✧ ⋆ ✶ ✷ ✦ ✧ ⋆ ✦ · ✦ ⋆ ✧ ✦ ·'
-    printf "  %s" "$C_MAG"
-    for _c in $_s; do printf "%s " "$_c"; sleep 0.02 2>/dev/null || true; done
-    printf "%s\n" "$C_RST"
-  else
-    printf "  %s✦ ⋆ ✧ ✦ ⋆ ✧ ✦ ⋆ ✧ ✦ ⋆ ✧%s\n" "$C_MAG" "$C_RST"
-  fi
-}
-
 step() { printf "%s[%s/6]%s %s\n" "$C_DIM" "$1" "$C_RST" "$2"; }
 ok()   { printf "      %s✓%s %s\n" "$C_GREEN" "$C_RST" "$1"; }
 warn() { printf "      %s⚠%s %s\n" "$C_YEL" "$C_RST" "$1"; }
 
 # --- banner ---------------------------------------------------------------- #
-sparkle_line
-printf "%s%s" "$C_MAG" "$C_B"
-cat <<'LOGO'
-     ___ _
-    / __(_)__ _ _ __  __ _
-    \__ \ / _` | '  \/ _` |      σ
-    |___/_\__, |_|_|_\__,_|
-          |___/
-LOGO
-printf "%s" "$C_RST"
-printf "   %s%s✦ sigma%s %s— personal AI workflow toolkit%s\n" "$C_B" "$C_CYAN" "$C_RST" "$C_DIM" "$C_RST"
-printf "   %sby %s%s ⋆ %s%s%s\n" "$C_DIM" "$C_RST$C_B" "$AUTHOR" "$C_RST$C_DIM" "$REPO_SLUG" "$C_RST"
-sparkle_line
-printf "\n"
+# Bold block SIGMA (figlet "ANSI Shadow" style, like an internal tool). Drawn line by
+# line for a quick reveal on a TTY; printed at once under curl|sh.
+print_banner() {
+  printf "\n%s%s" "$C_CYAN" "$C_B"
+  # shellcheck disable=SC2016
+  _l1='  ███████╗██╗ ██████╗ ███╗   ███╗ █████╗'
+  _l2='  ██╔════╝██║██╔════╝ ████╗ ████║██╔══██╗'
+  _l3='  ███████╗██║██║  ███╗██╔████╔██║███████║'
+  _l4='  ╚════██║██║██║   ██║██║╚██╔╝██║██╔══██║'
+  _l5='  ███████║██║╚██████╔╝██║ ╚═╝ ██║██║  ██║'
+  _l6='  ╚══════╝╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝'
+  for _line in "$_l1" "$_l2" "$_l3" "$_l4" "$_l5" "$_l6"; do
+    printf "%s\n" "$_line"
+    [ -t 1 ] && { sleep 0.04 2>/dev/null || true; }
+  done
+  printf "%s" "$C_RST"
+  printf "  %s%spersonal AI workflow toolkit%s\n" "$C_B" "$C_CYAN" "$C_RST"
+  printf "  %sby %s   ·   github.com/%s%s\n\n" "$C_DIM" "$AUTHOR" "$REPO_SLUG" "$C_RST"
+}
+
+print_banner
 
 # --- 1. fetch -------------------------------------------------------------- #
 step 1 "Fetching sigma…"
@@ -132,8 +127,7 @@ case ":$PATH:" in
 esac
 
 # --- summary card ---------------------------------------------------------- #
-sparkle_line
-printf "%s%s  ✦ sigma is installed.%s\n" "$C_GREEN" "$C_B" "$C_RST"
+printf "\n%s%s  sigma is installed.%s\n" "$C_GREEN" "$C_B" "$C_RST"
 printf "  %s•%s Finish setup (domains, API keys, RTK):  %ssigma onboard%s\n" "$C_CYAN" "$C_RST" "$C_B" "$C_RST"
 printf "  %s•%s Health check anytime:                    %ssigma doctor%s\n" "$C_CYAN" "$C_RST" "$C_B" "$C_RST"
 printf "  %s•%s In Claude Code:  type %s/research%s, %s/hermes%s, %s/board%s … (restart to load)\n" \
