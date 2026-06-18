@@ -62,12 +62,25 @@ def test_cmd_init_no_overwrite(tmp_path, monkeypatch):
     assert cmd_init(ns) == 1
 
 
-def test_stage_dry_run(tmp_path, monkeypatch):
+def test_stage_subcommands_retired(tmp_path, monkeypatch):
+    # Plugin-first pivot: per-stage CLI wrappers (propose..verify) are retired.
+    # Those flows live only as plugin slash commands now. The CLI must reject
+    # them rather than shelling out an amnesiac subprocess.
     monkeypatch.chdir(tmp_path)
-    res = run_cli("spec", "--topic", "demo", "--dry-run")
-    # dry-run prints the invocation and exits 0 (no claude needed)
-    assert res.returncode == 0
-    assert "spec" in res.stdout
+    for stage in ("propose", "blueprint", "spec", "tasks", "verify"):
+        res = run_cli(stage, "--topic", "demo", "--dry-run")
+        assert res.returncode != 0, f"{stage} should be retired from the CLI"
+
+
+def test_help_omits_retired_stages():
+    res = run_cli("--help")
+    # Retired stage wrappers must not appear as CLI subcommands.
+    assert "spec" not in res.stdout
+    assert "blueprint" not in res.stdout
+    # But the kept commands remain.
+    assert "research" in res.stdout
+    assert "loop" in res.stdout
+    assert "weave" in res.stdout
 
 
 def test_help_lists_hermes_and_board():

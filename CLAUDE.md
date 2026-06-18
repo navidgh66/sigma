@@ -25,12 +25,15 @@ sigma research "topic"               # multi-model research → research.md
 sigma research "topic" --deep        # web-grounded deep research (web search; slower)
 sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour
 sigma learn --persona "new dev" --dry-run  # print the invocation, don't run claude
-sigma spec --topic <t>               # run one pipeline stage (writes artifact)
-sigma spec --topic <t> --dry-run     # print the invocation, don't run claude
-sigma loop --topic <t>               # plan cycles (safe default)
+# Pipeline stages (propose..verify) run IN-SESSION as plugin slash commands
+# (/propose .. /verify). They are NOT standalone CLI subcommands — running a
+# stage in Claude Code loads the domain context-engine and is steerable; an
+# amnesiac `claude -p` subprocess is strictly weaker. See "Two ways to run".
+
+sigma loop --topic <t>               # plan cycles (safe default; autonomous escape hatch)
 sigma loop --topic <t> --execute     # run maker→checker cycles
 
-# Hermes — optional conductor (standalone `sigma <stage>` stays untouched)
+# Hermes — autonomous CLI conductor (escape hatch for hands-off runs)
 sigma hermes "continue" --topic <t>         # route → run ONE stage, then stop
 sigma hermes "build it" --topic <t> --auto  # chain stages until a human gate
 sigma hermes "..." --topic <t> --terse      # compress output (caveman skill)
@@ -70,11 +73,11 @@ cli/research.py     parallel fan-out + cited aggregation → research.md; --deep
 cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
-cli/pipeline.py     execute_stage: run stage, chain prior artifact, persist; verify reads full chain via chain.json
+cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
-cli/loop.py         parse tasks, execute_cycle (maker→checker + logic axis), run_loop
-cli/worktree.py     git worktree create/remove for parallel-safe loop isolation
+cli/domains_index.py  pure: resolve each domain → implementer/verifier/logic-evaluator files; powers skills/sigma-domains
+cli/loop.py         parse tasks, execute_cycle (maker→checker + logic axis), run_loop (sequential, one workspace)
 cli/hermes.py       conductor: route → inject skill → execute_stage → emit event
 cli/intent.py       hybrid routing: state-scan default + intent-override classify
 cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
@@ -90,36 +93,54 @@ cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK
 cli/render.py       σ logo + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
-commands/           slash-command templates (one per stage + /learn), YAML frontmatter
-context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md)
-subagents/researchers/  claude / gemini / gpt research subagents
+commands/           slash-command templates (one per stage + /learn + /weave), YAML frontmatter
+context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
+subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md), written on loop failures
 skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + codebase-onboarding) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
+skills/sigma-domains/  skill: auto-surface the right domain context-engine (indexes context-engines/, no duplication)
 installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
 ```
 
-## Two ways to run
+## Two ways to run (plugin-first)
 
-- **CLI** (`sigma <stage>`) — the full engine: real subprocess model fan-out,
-  git-worktree isolation, injectable maker→checker loop. For autonomous runs.
-- **Claude Code plugin** — `commands/*.md` are native slash commands (`/research`
-  … `/hermes`, `/board`); `skills/sigma-present` is a native skill. Install with
+sigma is **plugin-first**: a Claude Code plugin you carry everywhere. The CLI
+keeps only what Claude Code cannot do in-session, plus setup.
+
+- **Claude Code plugin (primary)** — `commands/*.md` are native slash commands
+  (`/research`, `/propose` … `/verify`, `/hermes`, `/board`, `/weave`, `/learn`);
+  `skills/sigma-present` + `skills/sigma-domains` are native skills (the latter
+  auto-surfaces the right domain context-engine). Install with
   `/plugin marketplace add navidgh66/sigma` then `/plugin install sigma@sigma`.
-  Slash commands are the lightweight in-session flow; they mirror CLI stages 1:1.
-  Command bodies carry extra frontmatter (`command:`, `stage:`, `inputs:`) beyond
-  CC's required `description:` — harmless, kept for the CLI's own use.
+  The pipeline **stages run here** — in-session they load the domain context and
+  are steerable. Command bodies carry extra frontmatter (`command:`, `stage:`,
+  `inputs:`) beyond CC's required `description:` — harmless.
+- **CLI (power tools + escape hatch)** — only:
+  - `sigma research` — real parallel multi-model fan-out (ThreadPoolExecutor →
+    concurrent claude/gemini/codex subprocesses; impossible in one session).
+  - `sigma loop` / `sigma hermes` — autonomous, hands-off runs (sequential cycles
+    in one workspace; auto-chain + ratchet). The escape hatch when you want to
+    walk away, even though most work happens in-session.
+  - `sigma board` / `sigma weave` — live TUI projection / HTML artifact chain.
+  - setup: `onboard`, `doctor`, `rtk`, `caveman`.
+  The per-stage CLI wrappers (`sigma spec` …) were **retired** — those flows are
+  plugin slash commands now. `pipeline.execute_stage` stays as the library
+  hermes/loop call internally.
 
 ## Principles
 
 - **Loop engineering** — design loops, stay the engineer. Failures ratchet into `skills/`.
 - **Maker ≠ checker** — implementer and verifier are always distinct agents. The
   optional logic-evaluator is a third distinct agent (separation enforced).
-- **Hermes is additive** — the conductor never replaces standalone `sigma <stage>`
-  commands; each stage and bundled skill stays usable on its own.
-- **Lean context** — load only the domain a task needs.
+- **Plugin-first** — the Claude Code plugin (slash commands + skills, incl.
+  `sigma-domains`) is the primary surface. The CLI keeps only what Claude Code
+  cannot do in-session (parallel `research`), the autonomous escape hatch
+  (`loop`/`hermes`), `board`/`weave`, and setup.
+- **Lean context** — load only the domain a task needs (`skills/sigma-domains`
+  surfaces it in-session).
 - **Multi-model research** — Claude + Gemini + GPT in parallel, aggregated, cited.
 - **YAGNI** — no dashboard/telemetry/TS port until the single-user core proves out.
 
