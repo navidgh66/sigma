@@ -55,7 +55,7 @@ Each stage reads the prior stage's artifact as context. Artifacts live under
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / <stages> / loop / launch
+cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / doctor / onboard / launch
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research model adapters (claude/gemini/gpt), graceful skip
@@ -84,9 +84,8 @@ subagents/researchers/  claude / gemini / gpt research subagents
 skills/             ratcheted lessons (SKILL.md), written on loop failures
 skills/vendor/      bundled skills (superpowers subset + caveman) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
-installer/setup.sh  one-line global install
+installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
-commands/           also serve as native CC slash commands (/research … /hermes /board)
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
 ```
 
