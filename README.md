@@ -66,16 +66,25 @@ engineer — reviewing, steering, and ratcheting failures into permanent knowled
 ## Install
 
 ```bash
-# one command, global
+# one command, global — σ logo + staged install
 curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
 export PATH="$PATH:$HOME/.local/bin"
-sigma --help
+sigma onboard       # friendly setup: pick domains, capture API keys, set up RTK
 ```
+
+The installer is non-interactive (works under `curl | sh`); the fun part —
+choosing domains, entering Gemini/OpenAI keys (stored in `~/.sigma/.env`, never
+committed), and optionally installing + activating
+[RTK](https://github.com/rtk-ai/rtk) (60-90% token savings) for Claude — happens
+in `sigma onboard`. Run `sigma doctor` anytime to health-check and repair the
+install.
 
 ## Use
 
 ```bash
-sigma init          # per-project: pick domains, write sigma.config.yml
+sigma onboard       # first-run: domains, API keys, RTK (interactive)
+sigma init          # or just scaffold sigma.config.yml non-interactively
+sigma doctor        # diagnose + repair (env, deps, models, skills, plugin, RTK)
 sigma               # launch Claude Code with sigma context loaded
 ```
 
@@ -114,7 +123,7 @@ Then in any session:
 ✅ **Core + execution + conductor complete.** All 8 pipeline stages run through a
 single injectable `AgentRunner`; the loop executes real maker→checker cycles with
 distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures into
-`skills/`. 127 tests green, ruff clean. See [`docs/`](docs/).
+`skills/`. 204 tests green, ruff clean. See [`docs/`](docs/).
 
 Stage execution: `sigma spec --topic <t>` runs the stage and writes its artifact
 (prior-stage artifact is chained in as context). Loop: `sigma loop --topic <t>`
