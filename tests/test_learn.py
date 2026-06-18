@@ -45,6 +45,15 @@ def test_prompt_injects_skills_and_headers(tmp_path):
     assert "new dev" in prompt
 
 
+def test_prompt_does_not_start_with_dash(tmp_path):
+    # Regression: a leading '-' makes `claude -p <prompt>` parse the prompt as an
+    # option flag and the agent run fails. The injected prompt must never lead
+    # with a dash.
+    vendor = _vendor(tmp_path)
+    prompt = build_learn_prompt(tmp_path, persona=None, vendor=vendor)
+    assert not prompt.lstrip().startswith("-")
+
+
 # --------------------------- output splitting --------------------------- #
 def test_split_output_separates_sections():
     out = f"{ARCH_HEADER}\n# Arch\nbody\n{TOUR_HEADER}\n{{\"title\": \"T\"}}"

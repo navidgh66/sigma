@@ -91,10 +91,12 @@ def _inject_learn_skills(prompt: str, vendor: Path) -> str:
     for slug in LEARN_SKILLS:
         f = vendor / slug / "SKILL.md"
         if f.exists():
-            blocks.append(f"--- skill: {slug} ---\n{f.read_text()}")
+            # Header must NOT start with '-' — a leading dash makes the agent CLI
+            # parse the prompt as an option flag (claude -p reads it positionally).
+            blocks.append(f"### skill: {slug}\n{f.read_text()}")
     if not blocks:
         return prompt
-    return "\n\n".join(blocks) + f"\n\n--- task ---\n{prompt}"
+    return "\n\n".join(blocks) + f"\n\n### task\n{prompt}"
 
 
 def split_output(output: str) -> tuple:
