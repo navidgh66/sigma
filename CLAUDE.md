@@ -39,6 +39,10 @@ sigma hermes "..." --topic <t> --terse      # compress output (caveman skill)
 sigma board --topic <t>              # static snapshot (rich)
 sigma board --topic <t> --watch      # live redraw as agents progress
 
+# Weave — stage artifacts → one self-contained HTML chain + machine manifest
+sigma weave --topic <t>              # → chain.html (human) + chain.json (machine)
+sigma weave --topic <t> --dry-run    # print the invocation, don't run claude
+
 # Setup & health
 sigma onboard                        # friendly first-run: domains, API keys, RTK
 sigma doctor                         # diagnose + confirm-gated fixes
@@ -58,7 +62,7 @@ Each stage reads the prior stage's artifact as context. Artifacts live under
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / doctor / onboard / learn / launch
+cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / weave / doctor / onboard / learn / launch
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
@@ -66,7 +70,9 @@ cli/research.py     parallel fan-out + cited aggregation → research.md; --deep
 cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
-cli/pipeline.py     execute_stage: run stage, chain prior artifact, persist
+cli/pipeline.py     execute_stage: run stage, chain prior artifact, persist; verify reads full chain via chain.json
+cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
+cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
 cli/loop.py         parse tasks, execute_cycle (maker→checker + logic axis), run_loop
 cli/worktree.py     git worktree create/remove for parallel-safe loop isolation
 cli/hermes.py       conductor: route → inject skill → execute_stage → emit event
@@ -183,3 +189,19 @@ docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to ever
   same domain + normalized topic_key. A hit adds a `⚠ CONTRADICTION` marker to the
   new skill + a line in `skills/CONTRADICTIONS.md`. Never auto-resolves or deletes
   — humans decide (`CycleOutcome.contradiction` surfaces it).
+- `sigma weave` (`cli/weave.py`) produces TWO **derived** outputs in the spec
+  workspace — markdown stays the source of truth, so deleting them never affects
+  the pipeline. `chain.json` (machine manifest) is written FIRST by the pure
+  `weave_manifest.build_manifest` and is **agent-independent** — it exists even if
+  the `claude -p` HTML run fails. `chain.html` is agent-emitted and validated by
+  the pure `validate_chain_html` guard (structural sanity, never exact bytes).
+  `build_manifest` is deterministic: **no timestamp in the pure path** (same
+  discipline as `board.Event.ts`). It imports `pipeline.STAGES` (single source);
+  `pipeline.py` therefore must NOT import `weave_manifest` (it reads `chain.json`
+  directly to avoid the circular import).
+- The `verify` STAGE reads the whole artifact chain: `pipeline.chain_context`
+  inlines every present file artifact from `chain.json`. **Fail-safe**: missing /
+  unreadable `chain.json` → falls back to the single `PRIOR_ARTIFACT` (`spec.md`),
+  never hard-fails (a missing derived artifact never blocks the pipeline). Scope is
+  stage-verify ONLY — `loop.py`'s per-task `VERIFY_PROMPT` (maker→checker) is
+  untouched, so the maker≠checker contract is unchanged.
