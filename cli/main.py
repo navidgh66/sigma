@@ -277,6 +277,43 @@ def cmd_onboard(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# learn (learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour)
+# --------------------------------------------------------------------------- #
+def cmd_learn(args: argparse.Namespace) -> int:
+    from cli.learn import run_learn
+    from cli.paths import project_root
+
+    root = project_root()
+    _print(f"sigma learn — codebase at {root}")
+    if args.persona:
+        _print(f"  persona: {args.persona}")
+    res = run_learn(
+        root,
+        persona=args.persona,
+        topic=args.topic,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        _print("--- invocation (dry run) ---")
+        _print(res.prompt)
+        return 0
+    if not res.ok:
+        _print(f"✗ learn failed: {res.error}")
+        return 1
+    if res.architecture_path:
+        _print(f"✓ wrote {res.architecture_path}")
+    if res.tour_path:
+        _print(f"✓ wrote {res.tour_path}")
+        if res.tour_problems:
+            _print(f"  ⚠ {len(res.tour_problems)} tour anchor issue(s):")
+            for p in res.tour_problems:
+                _print(f"    - {p}")
+        else:
+            _print("  ✓ all tour anchors valid")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -362,6 +399,12 @@ def build_parser() -> argparse.ArgumentParser:
     po = sub.add_parser("onboard", help="Friendly first-run setup (domains, API keys, RTK)")
     po.add_argument("--name", help="project name")
     po.set_defaults(func=cmd_onboard)
+
+    plearn = sub.add_parser("learn", help="Learn the codebase → ARCHITECTURE.md + a CodeTour")
+    plearn.add_argument("--topic", help="slug for the .tour file (default: from tour title)")
+    plearn.add_argument("--persona", help="who the walkthrough is for (e.g. 'new backend dev')")
+    plearn.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    plearn.set_defaults(func=cmd_learn)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
