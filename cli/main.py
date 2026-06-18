@@ -93,11 +93,14 @@ def cmd_research(args: argparse.Namespace) -> int:
         else cfg.models
     )
     ws = spec_workspace(args.topic)
-    _print(f"sigma research — topic={args.topic!r}")
+    deep = getattr(args, "deep", False)
+    _print(f"sigma research — topic={args.topic!r}" + ("  [deep]" if deep else ""))
     _print(f"  models requested: {', '.join(models)}")
     avail = available_models(models)
     _print(f"  models available: {', '.join(avail) or '(none)'}")
-    out = research(args.topic, models, ws)
+    if deep:
+        _print("  mode: deep (web-grounded — this may take a few minutes)")
+    out = research(args.topic, models, ws, deep=deep)
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
     return 0
@@ -317,6 +320,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("research", help="Multi-model research")
     pr.add_argument("topic")
     pr.add_argument("--models", help="comma list: claude,gemini,gpt")
+    pr.add_argument("--deep", action="store_true",
+                    help="web-grounded deep research (live web search; slower)")
     pr.set_defaults(func=cmd_research)
 
     for name in STAGE_NAMES:
