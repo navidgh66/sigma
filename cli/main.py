@@ -29,13 +29,6 @@ from cli.loop import (
 )
 from cli.models import available_models
 from cli.paths import DOMAINS, sigma_home, spec_workspace
-from cli.pipeline import (
-    STAGE_NAMES,
-    execute_stage,
-    load_stage,
-    next_stage,
-    render_invocation,
-)
 from cli.research import research
 
 
@@ -107,35 +100,6 @@ def cmd_research(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# generic pipeline stage (propose..verify)
-# --------------------------------------------------------------------------- #
-def cmd_stage(args: argparse.Namespace) -> int:
-    stage = load_stage(args._name)
-    if stage is None:
-        _print(f"✗ unknown stage: {args._name}")
-        return 1
-    if not stage.exists:
-        _print(f"✗ command template missing: {stage.template_path}")
-        return 1
-    ws = spec_workspace(args.topic) if args.topic else None
-    if ws is None:
-        _print("✗ provide --topic to locate the spec workspace")
-        return 1
-    if args.dry_run:
-        _print(render_invocation(stage, ws))
-        return 0
-    result = execute_stage(args._name, ws)
-    if not result.ok:
-        _print(f"✗ {args._name} failed: {result.error}")
-        return 1
-    _print(f"✓ {args._name} → {ws / stage.artifact}")
-    nxt = next_stage(args._name)
-    if nxt:
-        _print(f"→ next: /{nxt}")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
 # loop
 # --------------------------------------------------------------------------- #
 def cmd_loop(args: argparse.Namespace) -> int:
@@ -148,7 +112,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
     tasks = parse_tasks(tasks_file.read_text())
     pending = incomplete_tasks(tasks)
     _print(f"sigma loop — {len(pending)} pending / {len(tasks)} total")
-    _print(f"  max_cycles: {cfg.loop.max_cycles}  worktrees: {cfg.loop.worktrees}")
+    _print(f"  max_cycles: {cfg.loop.max_cycles}  (sequential cycles, one workspace)")
     if not pending:
         _print("✓ all tasks complete")
         return 0
@@ -162,7 +126,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
                 break
             plan = plan_cycle(t)
             _print(f"  • {t.id or '-'} [{plan.implementer_domain}] {t.title}")
-            _print(f"    worktree={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
+            _print(f"    cycle={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
             shown += 1
         append_loop_log(ws, f"planned {min(len(pending), cfg.loop.max_cycles)} cycle(s)")
         _print("  (plan only — pass --execute to run maker→checker cycles)")
@@ -392,14 +356,6 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--deep", action="store_true",
                     help="web-grounded deep research (live web search; slower)")
     pr.set_defaults(func=cmd_research)
-
-    for name in STAGE_NAMES:
-        if name in ("research", "loop"):
-            continue
-        sp = sub.add_parser(name, help=f"Pipeline stage: {name}")
-        sp.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-        sp.add_argument("--dry-run", action="store_true", help="print invocation, do not run claude")
-        sp.set_defaults(func=cmd_stage, _name=name)
 
     pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
     pl.add_argument("--topic", required=True)

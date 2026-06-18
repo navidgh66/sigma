@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -62,12 +63,33 @@ def test_cmd_init_no_overwrite(tmp_path, monkeypatch):
     assert cmd_init(ns) == 1
 
 
-def test_stage_dry_run(tmp_path, monkeypatch):
+def test_stage_subcommands_retired(tmp_path, monkeypatch):
+    # Plugin-first pivot: per-stage CLI wrappers (propose..verify) are retired.
+    # Those flows live only as plugin slash commands now. The CLI must reject
+    # them rather than shelling out an amnesiac subprocess.
     monkeypatch.chdir(tmp_path)
-    res = run_cli("spec", "--topic", "demo", "--dry-run")
-    # dry-run prints the invocation and exits 0 (no claude needed)
-    assert res.returncode == 0
-    assert "spec" in res.stdout
+    # All six retired stages (full set from the design spec).
+    for stage in ("propose", "blueprint", "spec", "tasks", "implement-task", "verify"):
+        res = run_cli(stage, "--topic", "demo", "--dry-run")
+        assert res.returncode != 0, f"{stage} should be retired from the CLI"
+
+
+def _subcommands():
+    """The registered CLI subcommand names (from the argparse choices)."""
+    parser = build_parser()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
+def test_help_omits_retired_stages():
+    commands = _subcommands()
+    # No retired stage wrapper may be a registered CLI subcommand.
+    for stage in ("propose", "blueprint", "spec", "tasks", "implement-task", "verify"):
+        assert stage not in commands, f"{stage} must not be a CLI subcommand"
+    # But the kept commands remain.
+    assert {"research", "loop", "hermes", "board", "weave"} <= commands
 
 
 def test_help_lists_hermes_and_board():

@@ -34,11 +34,13 @@ $ python3 -m ruff check cli/ tests/    # All checks passed!
 /plugin install sigma@sigma
 ```
 
-→ Every stage becomes a native slash command — `/research /propose /blueprint
-/spec /tasks /implement-task /verify /loop /hermes /board` — and `sigma-present`
-becomes a native skill. The slash commands are the lightweight in-session flow;
-the `sigma` CLI below is the full execution engine (model fan-out, worktrees,
-injected maker→checker loop). They mirror each other 1:1.
+→ **sigma is plugin-first.** Every stage is a native slash command — `/research
+/propose /blueprint /spec /tasks /implement-task /verify /loop /hermes /board
+/weave` — and `sigma-present` + `sigma-domains` are native skills. The pipeline
+**stages run in-session** (they load the domain context-engine and are steerable).
+The `sigma` CLI keeps only what Claude Code can't do in-session: parallel
+`research`, the autonomous escape hatch (`loop`/`hermes`), `board`/`weave`, and
+setup. The per-stage CLI wrappers were retired.
 
 ---
 
@@ -72,7 +74,10 @@ research → propose → blueprint → spec → tasks → implement-task → ver
 ```
 
 Each stage reads the **prior** stage's artifact as context and writes its own.
-Run a single stage with `sigma <stage> --topic <t>`.
+Run a stage **in-session** as a slash command (`/spec`, `/tasks`, …) — it loads
+the matching domain context-engine via the `sigma-domains` skill. (`sigma
+research` stays a CLI command for real parallel fan-out; `sigma loop`/`hermes`
+drive stages autonomously from the CLI.)
 
 ### 2a. `sigma research` — multi-model, cited
 
@@ -93,32 +98,25 @@ $ sigma research "topic" --models claude,gemini   # restrict models
 → Missing model CLIs degrade gracefully (skipped, not an error). Every claim in
 `research.md` is cited; fact and inference are separated.
 
-### 2b. Generic stages: propose → verify
+### 2b. Stages propose → verify (in-session slash commands)
 
-```bash
-T="active learning for imbalanced fraud labels"
-$ sigma propose       --topic "$T"     # research.md  → proposals.md
-$ sigma blueprint     --topic "$T"     # proposals.md → architecture.md
-$ sigma spec          --topic "$T"     # architecture.md → spec.md
-$ sigma tasks         --topic "$T"     # spec.md → tasks.md  (domain-routed checklist)
-$ sigma implement-task --topic "$T"    # tasks.md → impl/
-$ sigma verify        --topic "$T"     # spec.md → verify/
-→ ✓ spec → .../spec.md
-  → next: /tasks
+These run **inside Claude Code** as slash commands — each reads the prior
+artifact and loads the right domain context-engine (`sigma-domains` skill):
+
+```
+/propose          # research.md   → proposals.md
+/blueprint        # proposals.md  → architecture.md
+/spec             # architecture.md → spec.md
+/tasks            # spec.md → tasks.md  (domain-routed checklist)
+/implement-task   # tasks.md → impl/
+/verify           # spec.md (+ full chain via chain.json) → verify/
 ```
 
-**Dry run** — see the exact prompt sigma would hand Claude, without spawning it:
-
-```bash
-$ sigma spec --topic "$T" --dry-run
-→ Execute the sigma 'spec' stage.
-  Workspace: .../2026-06-17-.../
-  Write artifact: .../spec.md
-  --- input: architecture.md ---
-  <prior artifact chained in as context>
-  --- command template ---
-  <commands/spec.md>
-```
+Run them in the session for the topic's workspace. To drive the same stages
+**autonomously** from the terminal, use `sigma hermes`/`sigma loop` (below) —
+they call the stage library internally. (The old per-stage `sigma spec …`
+wrappers were retired; `claude -p` as an amnesiac subprocess was strictly
+weaker than running `/spec` in-session.)
 
 `tasks.md` lines look like this (parsed by the loop + board):
 
@@ -139,9 +137,9 @@ per task, ratchets failures into `skills/`.
 # Plan only (safe default) — shows what it WOULD do, runs nothing.
 $ sigma loop --topic "$T"
 → sigma loop — 2 pending / 3 total
-    max_cycles: 20  worktrees: True
+    max_cycles: 20  (sequential cycles, one workspace)
     • T1 [nlp] tokenize corpus
-      worktree=sigma-loop-t1 maker≠checker=True
+      cycle=sigma-loop-t1 maker≠checker=True
   (plan only — pass --execute to run maker→checker cycles)
 
 # Execute real cycles.
@@ -436,7 +434,7 @@ $ sigma init --name demo --domains nlp,rl
 $ sigma hermes "research and draft a spec for a sentiment classifier" \
       --topic sentiment-clf --auto
 → runs research → propose → blueprint → spec, stops at spec-approval gate
-$ sigma tasks --topic sentiment-clf          # human-approved: break into tasks
+# in Claude Code: /tasks                      # human-approved: break into tasks
 $ sigma board --topic sentiment-clf          # see the task columns
 $ sigma loop  --topic sentiment-clf --execute   # maker→checker (+ logic axis)
 $ sigma board --topic sentiment-clf --watch  # watch cycles land live
@@ -450,9 +448,8 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | Command | What |
 |---------|------|
 | `sigma init --domains a,b` | scaffold config |
-| `sigma research "<t>"` | multi-model cited research |
-| `sigma <stage> --topic <t>` | run one pipeline stage |
-| `sigma <stage> --topic <t> --dry-run` | print prompt, don't run |
+| `sigma research "<t>"` | multi-model cited research (real parallel CLI fan-out) |
+| `/propose` … `/verify` (in Claude Code) | run a pipeline stage in-session (loads domain context) |
 | `sigma loop --topic <t>` | plan cycles (safe) |
 | `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
 | `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
@@ -462,6 +459,7 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | `sigma hermes "<msg>" --topic <t> --terse` | compressed output |
 | `sigma board --topic <t>` | kanban snapshot |
 | `sigma board --topic <t> --watch` | live kanban |
+| `sigma weave --topic <t>` | weave artifacts → chain.html + chain.json |
 | `sigma onboard` | first-run setup: domains, API keys, RTK |
 | `sigma doctor` | diagnose + confirm-gated fixes |
 | `sigma doctor --check` | read-only health (CI gate, exit 1 on fail) |
