@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from cli.paths import sigma_home
 from cli.runner import AgentResult, AgentRunner, write_artifact
+
+# Machine manifest the weave step writes (see cli/weave.py). The verify stage
+# reads it for full-chain review. Read directly (not via cli.weave_manifest) to
+# avoid a circular import: weave_manifest imports STAGES from this module.
+CHAIN_MANIFEST = "chain.json"
 
 # Ordered pipeline. Each stage maps to commands/<name>.md and an output artifact.
 STAGES: List[Dict[str, str]] = [
@@ -83,18 +89,68 @@ def prior_context(stage_name: str, workspace: Path) -> Optional[str]:
     return None
 
 
+def chain_context(stage_name: str, workspace: Path) -> Optional[str]:
+    """Full-chain review context for the verify stage, from chain.json.
+
+    The verify stage reviews against the WHOLE artifact chain, not just its single
+    upstream artifact. When a weave manifest (chain.json) is present, assemble a
+    context block inlining every present FILE artifact in pipeline order. Returns
+    None when the stage is not verify, the manifest is absent/unreadable, or no
+    file artifacts exist — callers then fall back to `prior_context` (fail-safe:
+    a missing derived artifact never blocks the pipeline).
+    """
+    if stage_name != "verify":
+        return None
+    manifest_path = workspace / CHAIN_MANIFEST
+    if not manifest_path.exists():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, ValueError, OSError):
+        return None
+    stages = manifest.get("stages") if isinstance(manifest, dict) else None
+    if not isinstance(stages, list):
+        return None
+
+    blocks: List[str] = []
+    for entry in stages:
+        if not isinstance(entry, dict):
+            continue
+        if not entry.get("exists") or entry.get("is_dir"):
+            continue
+        artifact = entry.get("artifact")
+        if not isinstance(artifact, str):
+            continue
+        path = workspace / artifact
+        if not path.exists():
+            continue
+        cites = entry.get("citations")
+        cite_note = f"  ({cites} citations)" if cites else ""
+        blocks.append(f"[{entry.get('name')}] {artifact}{cite_note}\n{path.read_text()}")
+    if not blocks:
+        return None
+    body = "\n\n".join(blocks)
+    return f"\n--- artifact chain (review against ALL of these) ---\n{body}\n--- end chain ---\n"
+
+
 def render_invocation(stage: Stage, workspace: Path) -> str:
     """Produce the prompt to hand Claude Code for a stage.
 
-    Embeds the command template, the upstream artifact (context chaining), and
-    points it at the workspace. Built as a string so it is testable.
+    Embeds the command template, context chaining, and points it at the
+    workspace. Built as a string so it is testable. The verify stage prefers a
+    full-chain context block (from chain.json) when available, falling back to
+    its single upstream artifact.
     """
     template = stage.template_path.read_text() if stage.exists else f"# /{stage.name}\n(template missing)"
-    context = prior_context(stage.name, workspace)
     context_block = ""
-    if context:
-        upstream = PRIOR_ARTIFACT.get(stage.name)
-        context_block = f"\n--- input: {upstream} ---\n{context}\n"
+    chain = chain_context(stage.name, workspace)
+    if chain:
+        context_block = chain
+    else:
+        context = prior_context(stage.name, workspace)
+        if context:
+            upstream = PRIOR_ARTIFACT.get(stage.name)
+            context_block = f"\n--- input: {upstream} ---\n{context}\n"
     return (
         f"Execute the sigma '{stage.name}' stage.\n"
         f"Workspace: {workspace}\n"
