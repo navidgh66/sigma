@@ -10,12 +10,12 @@ research-first, spec-driven, loop-engineered pipeline. Core and execution are
 complete: all 8 stages run through one injectable agent runner; the loop runs
 real maker→checker cycles. **Hermes** (optional conductor) routes plain language
 to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 204 pytest tests, ruff clean.
+**logic-evaluator** verify axis. 232 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 204 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 232 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -76,6 +76,8 @@ cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-i
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/render.py       σ logo + rich/plain check output + confirm prompt
+cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
+cli/skills_index.py topic-key + contradiction detection across ratcheted skills
 commands/           8 slash-command templates (one per stage), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md)
 subagents/researchers/  claude / gemini / gpt research subagents
@@ -152,3 +154,11 @@ docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to ever
   `rtk_status` checks `rtk gain` works to catch the name-collision binary.
 - `installer/setup.sh` is non-interactive (TTY-safe under `curl|sh`): no `read`.
   All prompts live in `sigma onboard`. Targets Python 3.9 (not 3.10).
+- `--gate <script>` (loop/hermes) is a **fail-safe** wakeAgent pre-check: the
+  script prints `{"wakeAgent": true|false}`; false skips work (0 tokens). A
+  missing/erroring/unparseable gate defaults to WAKE — a broken gate never
+  silently blocks the pipeline (the inverse of verdict parsing, which defaults FAIL).
+- Contradiction flagging: on ratchet, `skills_index.find_contradictions` matches
+  same domain + normalized topic_key. A hit adds a `⚠ CONTRADICTION` marker to the
+  new skill + a line in `skills/CONTRADICTIONS.md`. Never auto-resolves or deletes
+  — humans decide (`CycleOutcome.contradiction` surfaces it).
