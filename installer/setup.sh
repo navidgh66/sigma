@@ -43,11 +43,11 @@ warn() { printf "      %s⚠%s %s\n" "$C_YEL" "$C_RST" "$1"; }
 sparkle_line
 printf "%s%s" "$C_MAG" "$C_B"
 cat <<'LOGO'
-        __     ✦              ⋆
-   ✧   / _\ ___ _ __ ___   __ _    ✦
-      \ \  / __| '_ ` _ \ / _` |        ✦
-   ✦  _\ \ \__ \ | | | | | (_| |   ⋆
-      \__/ |___/_| |_| |_|\__,_|   ✧      σ
+     ___ _
+    / __(_)__ _ _ __  __ _
+    \__ \ / _` | '  \/ _` |      σ
+    |___/_\__, |_|_|_\__,_|
+          |___/
 LOGO
 printf "%s" "$C_RST"
 printf "   %s%s✦ sigma%s %s— personal AI workflow toolkit%s\n" "$C_B" "$C_CYAN" "$C_RST" "$C_DIM" "$C_RST"
