@@ -92,6 +92,26 @@ def test_parser_board_watch_flag():
     assert args.watch is True
 
 
+def test_help_lists_doctor_and_onboard():
+    res = run_cli("--help")
+    assert "doctor" in res.stdout
+    assert "onboard" in res.stdout
+
+
+def test_parser_doctor_flags():
+    a = build_parser().parse_args(["doctor", "--check", "--yes", "--update"])
+    assert a.command == "doctor"
+    assert a.check is True
+    assert a.yes is True
+    assert a.update is True
+
+
+def test_parser_onboard():
+    a = build_parser().parse_args(["onboard", "--name", "proj"])
+    assert a.command == "onboard"
+    assert a.name == "proj"
+
+
 def test_parser_keep_awake_flags():
     a = build_parser().parse_args(["hermes", "go", "--topic", "d", "--keep-awake"])
     assert a.keep_awake is True

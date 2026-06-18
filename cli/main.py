@@ -244,6 +244,29 @@ def cmd_board(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# doctor (diagnose + repair the install)
+# --------------------------------------------------------------------------- #
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from cli.doctor import run_doctor
+
+    return run_doctor(
+        check_only=args.check,
+        auto_yes=args.yes,
+        update=args.update,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# onboard (friendly first-run setup)
+# --------------------------------------------------------------------------- #
+def cmd_onboard(args: argparse.Namespace) -> int:
+    from cli.onboard import run_onboard
+
+    run_onboard(name=args.name)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -315,6 +338,16 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument("--topic", required=True, help="topic/slug locating the workspace")
     pb.add_argument("--watch", action="store_true", help="live redraw as agents progress")
     pb.set_defaults(func=cmd_board)
+
+    pd = sub.add_parser("doctor", help="Diagnose (and optionally repair) the sigma install")
+    pd.add_argument("--check", action="store_true", help="read-only; exit 1 if anything fails")
+    pd.add_argument("--yes", action="store_true", help="apply all fixes without prompting")
+    pd.add_argument("--update", action="store_true", help="pull sigma + re-vendor skills before checking")
+    pd.set_defaults(func=cmd_doctor)
+
+    po = sub.add_parser("onboard", help="Friendly first-run setup (domains, API keys, RTK)")
+    po.add_argument("--name", help="project name")
+    po.set_defaults(func=cmd_onboard)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
