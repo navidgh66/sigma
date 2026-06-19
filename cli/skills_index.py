@@ -14,7 +14,15 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Ratchet prefixes that describe the failure mode, not the topic itself.
-_NOISE_PREFIXES = ("verify failed:", "implement failed:", "logic failed:")
+# "session lesson:" is the manual /sigma-learn-lesson prefix — stripping it means a
+# manually-captured lesson and a loop-born lesson on the same topic share a key
+# (so they collide for contradiction detection + recall).
+_NOISE_PREFIXES = (
+    "verify failed:",
+    "implement failed:",
+    "logic failed:",
+    "session lesson:",
+)
 
 
 def topic_key(title: str) -> str:
