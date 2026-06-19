@@ -13,12 +13,12 @@ parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
 `weave`, and setup. **Hermes** routes plain language to stages; a **kanban board**
 projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 **closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
-and are recalled by domain on the next run). 321 pytest tests, ruff clean.
+and are recalled by domain on the next run). 399 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 321 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 399 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -84,7 +84,7 @@ cli/main.py         argparse CLI: init / research / loop / hermes / board / weav
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
-cli/research.py     parallel fan-out + cited aggregation → research.md; --deep web-grounded brief
+cli/research.py     parallel fan-out + cited aggregation → research.md; --web quick / --deep exhaustive web-grounded brief
 cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
@@ -92,7 +92,7 @@ cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chai
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
 cli/domains_index.py  pure: resolve each domain → implementer/verifier/logic-evaluator files; powers skills/sigma-domains
-cli/loop.py         parse tasks, execute_cycle (maker→checker + logic axis), run_loop (sequential, one workspace)
+cli/loop.py         parse tasks, execute_cycle (maker→checker + logic + optional TDD test-writer), run_loop (sequential or --team parallel)
 cli/hermes.py       conductor: route → inject skill → execute_stage → emit event
 cli/intent.py       hybrid routing: state-scan default + intent-override classify
 cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
