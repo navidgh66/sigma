@@ -1,6 +1,6 @@
 ---
 command: /research
-description: Multi-model parallel research (Claude + Gemini + GPT) into a single cited research.md
+description: Multi-model parallel research (Claude + Gemini + GPT) into a single cited research.md; supports web-grounded and deep (exhaustive) depth modes
 stage: 1
 inputs: ["topic"]
 outputs: ["sigma/specs/{date}-{slug}/research.md"]

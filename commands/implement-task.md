@@ -1,6 +1,6 @@
 ---
 command: /implement-task
-description: Implement one task with its domain context-engine loaded
+description: Implement one task with its domain context-engine loaded; supports test-first (TDD, distinct test-writer) and parallel multi-task work
 stage: 6
 inputs: ["sigma/specs/{date}-{slug}/tasks.md", "task_id"]
 outputs: ["implementation", "sigma/specs/{date}-{slug}/impl/{task_id}.md"]
