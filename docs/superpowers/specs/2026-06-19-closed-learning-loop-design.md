@@ -40,10 +40,11 @@ New pure module **`cli/skills_recall.py`** (mirrors `cli/skills_index.py`):
   `skills/**/SKILL.md`, return those whose frontmatter `domain:` matches. Skills
   without a `domain:` (vendor, sigma-present, sigma-domains) are naturally
   excluded. Reuses `skills_index.parse_skill_meta`.
-- `render_recall_block(lessons, limit=N) -> str` — compact "Past lessons (avoid
-  repeating)" block: each lesson's title + the `**Lesson (ratcheted):**` line +
-  the how-to-apply line. Deterministic; capped at the most-recent N to bound
-  prompt size (caller `log()`s if truncated). Empty list → "".
+- `render_recall_block(recall) -> str` — compact "Past lessons (avoid
+  repeating)" block from a `Recall` (the `limit`/cap lives in `recall_lessons`,
+  which returns a `Recall{lessons, truncated}`): each lesson's title + the
+  `**Lesson (ratcheted):**` line + the how-to-apply line. Deterministic; notes
+  truncation when lessons were dropped. Empty → "".
 
 Data flow (now a closed loop):
 
