@@ -8,7 +8,7 @@ disciplined pipeline built for data scientists and AI engineers — from classic
 to deep learning, NLP, reinforcement learning, data engineering, MLOps, LLM
 engineering, and AI-agent-harness engineering.
 
-It is inspired by [an internal tool](https://github.com/internal/an internal tool),
+It is inspired by 
 [Loop Engineering (Addy Osmani)](https://addyosmani.com/blog/loop-engineering/),
 the [Anthropic agentic playbook](https://www.anthropic.com/research/building-effective-agents),
 and meta-harness ideas from OmniGent.
