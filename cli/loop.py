@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from cli.runner import AgentRunner, write_artifact
 
@@ -214,6 +214,17 @@ def _verdict_pass(verify_output: str) -> bool:
     return False
 
 
+def _with_recall(prompt: str, recall: str) -> str:
+    """Prepend the past-lessons recall block to a prompt (no-op when empty).
+
+    Empty recall leaves the prompt byte-identical to the no-lessons case, so
+    recall is a strict, fail-safe addition.
+    """
+    if not recall:
+        return prompt
+    return f"{recall}\n\n{prompt}"
+
+
 def execute_cycle(
     plan: CyclePlan,
     workspace: Path,
@@ -221,6 +232,7 @@ def execute_cycle(
     implementer: AgentRunner,
     verifier: AgentRunner,
     logic_checker: Optional[AgentRunner] = None,
+    recall: str = "",
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -231,6 +243,11 @@ def execute_cycle(
     the logic evaluator grades reasoning + plan-coherence (not code quality). It
     must be distinct from both implementer and verifier. The cycle passes only
     when BOTH the code-quality verifier and the logic evaluator pass.
+
+    `recall` is an optional past-lessons block (from cli.skills_recall) prepended
+    to the implement + verify prompts so the maker avoids prior mistakes and the
+    checker checks against them. It is NOT added to the logic prompt (that grades
+    reasoning, not domain patterns). Empty `recall` → prompts unchanged.
     """
     if implementer is verifier:
         raise ValueError("maker and checker must be distinct agents")
@@ -243,7 +260,10 @@ def execute_cycle(
     domain = plan.implementer_domain
     outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
 
-    impl = implementer.run(IMPLEMENT_PROMPT.format(domain=domain, title=title), cwd=workspace)
+    impl = implementer.run(
+        _with_recall(IMPLEMENT_PROMPT.format(domain=domain, title=title), recall),
+        cwd=workspace,
+    )
     outcome.implemented = impl.ok
     if not impl.ok:
         outcome.notes.append(f"implement failed: {impl.error}")
@@ -256,7 +276,10 @@ def execute_cycle(
 
     write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl.output)
 
-    chk = verifier.run(VERIFY_PROMPT.format(domain=domain, title=title), cwd=workspace)
+    chk = verifier.run(
+        _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
+        cwd=workspace,
+    )
     write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
     quality_passed = chk.ok and _verdict_pass(chk.output)
 
@@ -323,6 +346,19 @@ def run_loop(
             append_loop_log(workspace, decision.reason)
             return []
 
+    from cli.skills_recall import recall_lessons, render_recall_block
+
+    recall_cache: Dict[str, str] = {}
+
+    def recall_for(domain: str) -> str:
+        """Past-lessons block for a domain, built once and cached for the batch."""
+        if domain not in recall_cache:
+            block = render_recall_block(recall_lessons(skills_dir, domain))
+            recall_cache[domain] = block
+            if block:
+                append_loop_log(workspace, f"recalled past lessons for domain '{domain}'")
+        return recall_cache[domain]
+
     outcomes: List[CycleOutcome] = []
     completed = 0
     for task in incomplete_tasks(tasks):
@@ -332,7 +368,8 @@ def run_loop(
         plan = plan_cycle(task)
         logic = make_logic_checker() if make_logic_checker else None
         outcome = execute_cycle(
-            plan, workspace, skills_dir, make_implementer(), make_verifier(), logic
+            plan, workspace, skills_dir, make_implementer(), make_verifier(), logic,
+            recall=recall_for(plan.implementer_domain),
         )
         outcomes.append(outcome)
         completed += 1
