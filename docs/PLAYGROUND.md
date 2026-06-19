@@ -94,10 +94,16 @@ $ sigma research "active learning for imbalanced fraud labels"
   → next: /propose
 
 $ sigma research "topic" --models claude,gemini   # restrict models
+$ sigma research "topic" --web                     # quick web-grounded pass
+$ sigma research "topic" --deep                    # exhaustive web research (slower, 900s)
 ```
 
 → Missing model CLIs degrade gracefully (skipped, not an error). Every claim in
 `research.md` is cited; fact and inference are separated.
+
+**Three depths:** plain (from memory, fast), `--web` (quick live web search,
+lighter brief), `--deep` (exhaustive web research, long timeout). `--deep` wins if
+both `--web` and `--deep` are given. The header marks the mode used.
 
 ### 2b. Stages propose → verify (in-session slash commands)
 
@@ -167,6 +173,42 @@ $ sigma loop --topic "$T" --execute --keep-awake
 
 → No-ops cleanly off macOS or if `caffeinate` is missing, so it's always safe to
 pass. caffeinate is torn down when the run ends (even on error).
+
+### 3a. TDD mode — `--tdd` (test-first cycles)
+
+A distinct **test-writer** agent pens a FAILING test (RED) *before* the
+implementer exists; the implementer's prompt is then prefixed with that test and
+told to make it pass without weakening it (GREEN). One agent codes, another tests,
+a third checks — all enforced distinct.
+
+```bash
+$ sigma loop --topic "$T" --execute --tdd
+→   🧪 TDD mode: a distinct agent writes a failing test before each implementer
+  ✓ tokenize corpus
+    test-first: ✓ written
+```
+
+→ If test-writing fails, the cycle aborts (nothing to build against) and ratchets
+the failure — the implementer never runs. Test artifacts land in `tests/`.
+
+### 3b. Team mode — `--team` (parallel tasks)
+
+Independent tasks run **concurrently**, each its own full cycle. The past-lessons
+recall snapshot is pre-built before fan-out, so parallel threads only read it
+(race-free, deterministic). Result order matches task order.
+
+```bash
+$ sigma loop --topic "$T" --execute --team
+→   👥 team mode: independent tasks run in parallel
+  ✓ tokenize corpus
+  ✓ train agent
+
+# Compose: parallel tasks, each test-first, triple-checked.
+$ sigma loop --topic "$T" --execute --team --tdd --logic
+```
+
+→ `--logic` adds the logic-evaluator axis (next section). Combine any of
+`--team --tdd --logic` freely.
 
 ---
 
@@ -504,16 +546,91 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 
 ---
 
+## 11. Team-change review — `sigma profile` + `sigma review` + `sigma cost`
+
+Distinct from the `verify` STAGE (which grades sigma's OWN pipeline artifacts):
+this reviews **team-authored changes** — a local diff or a PR — through three
+distinct agents, grounded in the codebase's own logic invariants.
+
+### 11a. `sigma profile` — capture the codebase's invariants
+
+Run **once per repo** (refresh after big logic changes). Walks the code and writes
+`sigma/profile/logic-profile.md`: ML-logic invariants (splits, leakage guards,
+metrics, reward, eval-determinism) + system-logic invariants (control flow, data
+contracts, concurrency, API boundaries).
+
+```bash
+$ sigma profile
+→ σ profile — codebase at /path/to/repo
+  ✓ wrote sigma/profile/logic-profile.md
+    ✓ both invariant sections present
+
+$ sigma profile --dry-run     # print the prompt, spend zero tokens
+```
+
+### 11b. `sigma review` — three-axis review of a change set
+
+```bash
+$ sigma review                 # local uncommitted vs HEAD
+$ sigma review main..HEAD      # a git range
+$ sigma review 42              # PR #42 (gh pr diff) — also posts a summary comment
+$ sigma review --check         # CI gate: exit 1 on CRITICAL/HIGH or inconclusive axis
+```
+
+Three **distinct** agents (maker≠checker analog), same context bundle, different
+lens: **code** (bugs/security/quality), **ml-logic** (leakage/metrics/reward vs the
+profile + the domain `logic-evaluator.md`), **system-logic** (control flow,
+contracts, concurrency, API boundaries).
+
+```
+→ σ review — main..HEAD
+  ✓ wrote sigma/reviews/main-head/review.md
+    domains: classic-ml
+    verdict: ❌ FAIL — 3 blocking (CRITICAL/HIGH) finding(s)
+      ratcheted → skills/review-finding-target-leakage-.../SKILL.md
+```
+
+- **Gate** fails on any CRITICAL/HIGH finding OR an inconclusive axis (a dead axis
+  is never a silent pass — skeptical).
+- **Grounding fail-safe:** no profile → reviews on diff + lessons only (with a
+  banner); stale profile → warns, proceeds.
+- CRITICAL/HIGH findings **ratchet into `skills/`** and are recalled next review
+  (closed loop, like the loop's lessons).
+
+### 11c. `sigma cost` — the heavy-op cost ledger
+
+```bash
+$ sigma cost
+→ # sigma cost
+  Total recorded: ~24,000 tokens across 2 run(s).
+  - review: ~24,000 tokens over 2 run(s) (est drift +0)
+```
+
+Heavy ops (review/profile/loop/research) estimate cost up front (with per-axis
+model-tier routing — cheap model for `code`, strong for `ml-logic`) and record
+actual spend into `sigma/costs.jsonl`. Calibrates over time. The `sigma-cost` skill
+surfaces the same advice in-session; composes with RTK/caveman, never duplicates.
+
+> Plugin: `/profile` and `/review` are the in-session slash-command equivalents.
+
+---
+
 ## Cheat sheet
 
 | Command | What |
 |---------|------|
 | `sigma init --domains a,b` | scaffold config |
 | `sigma research "<t>"` | multi-model cited research (real parallel CLI fan-out) |
+| `sigma research "<t>" --web` / `--deep` | quick / exhaustive web-grounded research |
 | `/propose` … `/verify` (in Claude Code) | run a pipeline stage in-session (loads domain context) |
 | `/sigma-learn-lesson` (in Claude Code) | capture a lesson from this session → ratcheted skill |
 | `sigma loop --topic <t>` | plan cycles (safe) |
 | `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
+| `... --tdd` / `--team` / `--logic` | test-first / parallel tasks / add logic axis (combine) |
+| `sigma profile` | walk codebase → logic-profile.md (grounds review) |
+| `sigma review [PR\|a..b]` | three-axis review (code/ml-logic/system-logic) |
+| `sigma review --check` | CI gate: exit 1 on CRITICAL/HIGH or inconclusive axis |
+| `sigma cost` | token-cost ledger for heavy ops |
 | `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
 | `... --gate <script>` | (loop/hermes) skip work if wakeAgent says nothing to do |
 | `sigma hermes "<msg>" --topic <t>` | conductor: route + run one stage |
