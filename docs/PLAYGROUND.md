@@ -36,8 +36,9 @@ $ python3 -m ruff check cli/ tests/    # All checks passed!
 
 → **sigma is plugin-first.** Every stage is a native slash command — `/research
 /propose /blueprint /spec /tasks /implement-task /verify /loop /hermes /board
-/weave` — and `sigma-present` + `sigma-domains` are native skills. The pipeline
-**stages run in-session** (they load the domain context-engine and are steerable).
+/weave /sigma-learn-lesson` — and `sigma-present`, `sigma-domains`, `sigma-lessons`
+are native skills. The pipeline **stages run in-session** (they load the domain
+context-engine and are steerable).
 The `sigma` CLI keeps only what Claude Code can't do in-session: parallel
 `research`, the autonomous escape hatch (`loop`/`hermes`), `board`/`weave`, and
 setup. The per-stage CLI wrappers were retired.
@@ -153,7 +154,8 @@ $ sigma loop --topic "$T" --execute
 **Rules enforced:**
 - Maker ≠ checker — passing the same runner instance raises `ValueError`.
 - Verdict parsing is skeptical — a checker reply missing `VERDICT: PASS` = FAIL.
-- A failed cycle writes a `SKILL.md` lesson so it never recurs (the ratchet).
+- A failed cycle writes a `SKILL.md` lesson AND that lesson is **recalled** into
+  future cycles in the same domain (the closed loop — see §4c).
 
 **Keep the Mac awake** for a long run (macOS only — wraps `caffeinate`):
 
@@ -231,6 +233,65 @@ $ sigma loop --topic "$T" --execute
 
 → The new SKILL.md gets a `⚠ CONTRADICTION` marker; `skills/CONTRADICTIONS.md`
 logs the conflict. Never auto-resolved, never deleted — you decide.
+
+---
+
+## 4c. The closed learning loop — lessons recalled, not just recorded
+
+Writing a lesson is only half the loop. sigma also **reads lessons back**: before
+each loop cycle it loads the past lessons for that task's domain and prepends them
+to the implementer + checker prompts — so a mistake made once is fed forward as
+"avoid repeating this."
+
+```bash
+$ sigma loop --topic "$T" --execute
+→   recalled past lessons for domain 'nlp'      # injected into the nlp cycle
+    ✓ tokenize corpus                            # maker saw prior nlp lessons
+```
+
+- **Selection is by domain** — a lesson tagged `domain: nlp` is recalled for nlp
+  tasks. Skills without a `domain:` (vendor, sigma-present, sigma-domains) are
+  never recalled.
+- **Fed to maker + checker, not the logic evaluator** (it grades reasoning, not
+  domain patterns). No lessons → prompts unchanged (fail-safe).
+- **In-session:** the `sigma-lessons` skill does the same recall when you work
+  via slash commands instead of the CLI loop.
+
+### `/sigma-learn-lesson` — capture a lesson outside the loop
+
+You don't need a loop failure to teach sigma. In Claude Code, after a mistake:
+
+```
+/sigma-learn-lesson
+→ agent reviews this session, extracts the mistake + lesson + domain,
+  writes skills/<slug>/SKILL.md (same format + contradiction check as the loop)
+```
+
+That lesson is then recalled on the next run in its domain, exactly like a
+loop-born one. Same store, same format, one recall path.
+
+---
+
+## 4d. `sigma weave` — weave artifacts into one HTML chain
+
+Turn the per-stage markdown artifacts into a single self-contained page (human
+view) plus a machine manifest.
+
+```bash
+$ sigma weave --topic "$T"
+→ ✓ wrote .../chain.json        # machine manifest (pure, deterministic)
+  ✓ wrote .../chain.html        # one navigable page, all stages cross-linked
+    ✓ chain.html valid
+```
+
+- **Derived, never authoritative** — markdown stays the source of truth; deleting
+  `chain.html`/`chain.json` never affects the pipeline.
+- `chain.json` is written FIRST and is agent-independent (exists even if the HTML
+  agent run fails).
+- The **verify stage** reads `chain.json` to review against the WHOLE chain, not
+  just `spec.md` (falls back to `spec.md` if no manifest — fail-safe).
+- In-session: the `sigma-present` skill exports a single artifact; `weave` chains
+  them all.
 
 ---
 
@@ -450,6 +511,7 @@ $ sigma board --topic sentiment-clf --watch  # watch cycles land live
 | `sigma init --domains a,b` | scaffold config |
 | `sigma research "<t>"` | multi-model cited research (real parallel CLI fan-out) |
 | `/propose` … `/verify` (in Claude Code) | run a pipeline stage in-session (loads domain context) |
+| `/sigma-learn-lesson` (in Claude Code) | capture a lesson from this session → ratcheted skill |
 | `sigma loop --topic <t>` | plan cycles (safe) |
 | `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
 | `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
