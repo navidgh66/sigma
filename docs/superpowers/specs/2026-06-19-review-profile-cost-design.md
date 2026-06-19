@@ -82,7 +82,7 @@ This design adds:
   - per-axis prompt builder (injects diff + profile + recalled lessons + staleness banner).
   - `aggregate(findings)` — dedup by `(file, line, message)`.
   - `gate(findings)` — FAIL if any severity in {CRITICAL, HIGH}.
-  - `infer_domains(paths, profile)` — reuse `paths.DOMAINS` + `domains_index`; default `ai-agent-engineering`.
+  - `infer_domains(paths, profile)` — reuse `paths.DOMAINS` + `domains_index`; default `classic-ml` (generic ML invariants — leakage/splits/metrics — not agent control-flow).
   - axis-distinctness guard (raise `ValueError` if a runner is reused across axes).
 - **`cli/profile_manifest.py`**
   - `logic-profile.md` skeleton contract (ML-logic section + system-logic section).

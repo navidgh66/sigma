@@ -49,6 +49,14 @@ sigma board --topic <t> --watch      # live redraw as agents progress
 sigma weave --topic <t>              # → chain.html (human) + chain.json (machine)
 sigma weave --topic <t> --dry-run    # print the invocation, don't run claude
 
+# Profile + review — team-change review grounded in codebase logic
+sigma profile                        # walk codebase → sigma/profile/logic-profile.md (ML + system invariants)
+sigma review                         # 3-axis review of local diff vs HEAD (code / ml-logic / system-logic)
+sigma review <PR#|url>               # review a PR (gh pr diff) + post a summary comment
+sigma review a..b                    # review a git range
+sigma review --check                 # CI gate: exit 1 on a CRITICAL/HIGH finding or an inconclusive axis
+sigma cost                           # report the token-cost ledger (sigma/costs.jsonl)
+
 # Setup & health
 sigma onboard                        # friendly first-run: domains, API keys, RTK
 sigma doctor                         # diagnose + confirm-gated fixes
@@ -68,7 +76,7 @@ Each stage reads the prior stage's artifact as context. Artifacts live under
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / launch (pipeline stages are plugin-only)
+cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / profile / review / cost / launch (pipeline stages are plugin-only)
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
@@ -97,7 +105,12 @@ cli/render.py       σ logo + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
 cli/skills_recall.py  pure: recall_lessons(skills_dir, domain) + render_recall_block — read side that closes the learning loop
-commands/           slash-command templates (one per stage + /learn + /weave + /sigma-learn-lesson), YAML frontmatter
+cli/review.py       pure: change-set parse, domain infer, 3-axis prompt build, finding parse/aggregate/dedup, gate (fail on CRIT/HIGH or inconclusive axis), distinct-axis guard
+cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3-axis fan-out, write report, PR comment, ratchet CRIT/HIGH → skills/, record cost
+cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
+cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
+cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
+commands/           slash-command templates (one per stage + /learn + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
@@ -105,6 +118,7 @@ skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + c
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 skills/sigma-domains/  skill: auto-surface the right domain context-engine (indexes context-engines/, no duplication)
 skills/sigma-lessons/  skill: recall past ratcheted lessons by domain in-session (read side of the loop)
+skills/sigma-cost/  skill: estimate/measure/route token cost for heavy ops (review/profile/loop/research); composes with RTK/caveman, never duplicates
 installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
@@ -246,3 +260,30 @@ keeps only what Claude Code cannot do in-session, plus setup.
   never hard-fails (a missing derived artifact never blocks the pipeline). Scope is
   stage-verify ONLY — `loop.py`'s per-task `VERIFY_PROMPT` (maker→checker) is
   untouched, so the maker≠checker contract is unchanged.
+- `sigma review` / `/review` review TEAM changes (local diff or PR), distinct from
+  the `verify` STAGE (which grades sigma's own pipeline artifacts). Three distinct
+  axes — code / ml-logic / system-logic — enforced distinct via
+  `review.ensure_distinct_axes` (the maker≠checker analog; `ValueError` on reuse).
+  Axes parse `FINDING | SEV | file:line | msg` lines; the gate FAILs on any
+  CRITICAL/HIGH finding **or** any inconclusive axis (a dead axis is never a silent
+  pass — skeptical, like `_verdict_pass`). CRITICAL/HIGH findings ratchet into
+  `skills/` (recalled next review) via the SAME `loop.ratchet_to_skills`.
+- `review.infer_domains` defaults to **`classic-ml`** (NOT ai-agent-engineering)
+  when no path hint matches — the ml-logic axis must grade generic ML invariants
+  (leakage/splits/metrics), and the agent logic-evaluator would be structurally
+  silent on those. Multi-domain changes union each domain's recall + logic-evaluator.
+- The logic profile (`sigma/profile/logic-profile.md`, built by `/profile`) grounds
+  review. **Fail-safe**: missing profile → review proceeds on diff + lessons with a
+  banner; stale profile (older than touched files, mtime-based) → warns, proceeds
+  (never blocks — Q3 freshness=staleness-flagged). `profile_manifest` is pure (no
+  clock/subprocess); both invariant sections are mandatory (`validate_profile`).
+- Cost loop (`cli/cost.py`, `skills/sigma-cost`): `estimate(op, units)` before a
+  heavy op (advisory + model-tier routing), `record` after into `sigma/costs.jsonl`
+  (append-only like `events.jsonl`; caller passes `ts`, never generated in pure
+  code), `calibrate` sharpens factors from the ledger. **Fail-safe**: missing/garbage
+  ledger → static factors, never blocks. Distinct LAYER from RTK (proxy token cut)
+  and caveman (output terseness) — it may recommend them, never duplicates them.
+- Live `sigma review`/`profile` write under `sigma/reviews/` + `sigma/profile/` +
+  `sigma/costs.jsonl` in the TARGET project (git-ignored here) — they are derived,
+  deleting them never affects the pipeline. A real review run also ratchets findings
+  into `skills/`; those are real lessons, not throwaway (unlike a smoke test's).
