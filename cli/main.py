@@ -87,13 +87,17 @@ def cmd_research(args: argparse.Namespace) -> int:
     )
     ws = spec_workspace(args.topic)
     deep = getattr(args, "deep", False)
-    _print(f"sigma research — topic={args.topic!r}" + ("  [deep]" if deep else ""))
+    web = getattr(args, "web", False) and not deep  # deep wins if both given
+    tag = "  [deep]" if deep else ("  [web]" if web else "")
+    _print(f"sigma research — topic={args.topic!r}{tag}")
     _print(f"  models requested: {', '.join(models)}")
     avail = available_models(models)
     _print(f"  models available: {', '.join(avail) or '(none)'}")
     if deep:
         _print("  mode: deep (web-grounded — this may take a few minutes)")
-    out = research(args.topic, models, ws, deep=deep)
+    elif web:
+        _print("  mode: web (quick web-grounded pass)")
+    out = research(args.topic, models, ws, deep=deep, web=web)
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
     return 0
@@ -139,6 +143,10 @@ def cmd_loop(args: argparse.Namespace) -> int:
     skills_dir = sigma_home() / "skills"
     if args.keep_awake:
         _print("  ☕ keep-awake on (caffeinate)")
+    if args.tdd:
+        _print("  🧪 TDD mode: a distinct agent writes a failing test before each implementer")
+    if args.team:
+        _print("  👥 team mode: independent tasks run in parallel")
     with keep_awake(enabled=args.keep_awake):
         outcomes = run_loop(
             tasks,
@@ -147,6 +155,9 @@ def cmd_loop(args: argparse.Namespace) -> int:
             cfg.loop.max_cycles,
             make_implementer=lambda: AgentRunner(),
             make_verifier=lambda: AgentRunner(),
+            make_logic_checker=(lambda: AgentRunner()) if args.logic else None,
+            make_test_writer=(lambda: AgentRunner()) if args.tdd else None,
+            team=args.team,
             gate=args.gate,
         )
     if not outcomes and args.gate:
@@ -157,6 +168,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
     for o in outcomes:
         mark = "✓" if o.verified else "✗"
         _print(f"  {mark} {o.task_title}")
+        if o.test_written is not None:
+            _print(f"    test-first: {'✓ written' if o.test_written else '✗ failed'}")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
         if o.contradiction:
@@ -439,12 +452,20 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("topic")
     pr.add_argument("--models", help="comma list: claude,gemini,gpt")
     pr.add_argument("--deep", action="store_true",
-                    help="web-grounded deep research (live web search; slower)")
+                    help="web-grounded deep research (exhaustive live web search; slower)")
+    pr.add_argument("--web", action="store_true",
+                    help="quick web-grounded pass (lighter than --deep; --deep wins if both)")
     pr.set_defaults(func=cmd_research)
 
     pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
     pl.add_argument("--topic", required=True)
     pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
+    pl.add_argument("--tdd", action="store_true",
+                    help="TDD: a distinct agent writes a failing test before the implementer")
+    pl.add_argument("--team", action="store_true",
+                    help="run independent tasks in parallel (each its own cycle)")
+    pl.add_argument("--logic", action="store_true",
+                    help="add the logic-evaluator axis (cycle passes only if logic also passes)")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)

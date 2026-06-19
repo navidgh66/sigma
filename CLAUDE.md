@@ -25,7 +25,8 @@ python3 -m ruff check --fix cli/ tests/
 python3 -m cli.main --help           # CLI help
 sigma init --domains nlp,rl          # scaffold sigma.config.yml for a project
 sigma research "topic"               # multi-model research → research.md
-sigma research "topic" --deep        # web-grounded deep research (web search; slower)
+sigma research "topic" --web         # quick web-grounded pass (light; --deep wins if both)
+sigma research "topic" --deep        # web-grounded deep research (exhaustive web search; slower)
 sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour
 sigma learn --persona "new dev" --dry-run  # print the invocation, don't run claude
 # Pipeline stages (propose..verify) run IN-SESSION as plugin slash commands
@@ -35,6 +36,9 @@ sigma learn --persona "new dev" --dry-run  # print the invocation, don't run cla
 
 sigma loop --topic <t>               # plan cycles (safe default; autonomous escape hatch)
 sigma loop --topic <t> --execute     # run maker→checker cycles
+sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN)
+sigma loop --topic <t> --execute --team   # independent tasks run in parallel
+sigma loop --topic <t> --execute --logic  # add logic-evaluator axis (combine: --team --tdd --logic)
 
 # Hermes — autonomous CLI conductor (escape hatch for hands-off runs)
 sigma hermes "continue" --topic <t>         # route → run ONE stage, then stop
@@ -184,6 +188,21 @@ keeps only what Claude Code cannot do in-session, plus setup.
   treated as FAIL. A loop cycle passes only when BOTH the code-quality verifier
   and (if provided) the logic-evaluator pass.
 - `sigma loop` plans by default; it only executes cycles with `--execute`.
+- `--tdd` adds a distinct TEST-WRITER agent that pens a FAILING test BEFORE the
+  implementer (RED), whose prompt is then prefixed with that test ("make it pass,
+  don't weaken it" = GREEN). Enforced distinct from maker/checker/logic
+  (`ValueError` on reuse — uses `is`, not `==`, because AgentRunner is a dataclass
+  and two fresh instances compare equal). A failed test-writing step aborts the
+  cycle (nothing to build against) and ratchets the failure; the maker never runs.
+  `CycleOutcome.test_written` is set only in TDD mode.
+- `--team` runs the capped task batch CONCURRENTLY (ThreadPoolExecutor). The recall
+  snapshot is pre-built for every batch domain BEFORE fan-out, so parallel threads
+  only READ it — no races, deterministic. Result order matches batch order.
+  Sequential (default) is unchanged. Combine `--team --tdd --logic` freely.
+- `sigma research --web` is a quick web-grounded pass (lighter brief, same web
+  toggle as `--deep`); `--deep` is exhaustive (900s). `--deep` wins if both given.
+  Both flip the SAME adapter web-search path (`run_research`'s `web_search = deep
+  or web`); only the brief + timeout differ.
 - `sigma hermes` runs ONE stage by default; `--auto` chains until a human gate
   (spec-approval, verify-failed), a stage failure, or the hop budget (`max_hops`).
 - The board is a **pure projection**: it never mutates state. Hermes/loop append

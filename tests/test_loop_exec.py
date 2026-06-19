@@ -284,3 +284,88 @@ def test_run_loop_gate_wakes(tmp_path):
         gate=_gate_script(tmp_path, wake=True),
     )
     assert len(outcomes) == 2  # gate said wake → ran normally
+
+
+# --------------------------- TDD mode (test-writer axis) --------------------------- #
+def test_tdd_writes_test_before_implement(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    test = ScriptedRunner([AgentResult(ok=True, output="def test_x(): assert tokenize")])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=test)
+    assert out.test_written is True
+    assert out.verified is True
+    # The implementer's prompt embeds the failing test it must satisfy.
+    assert "def test_x()" in impl.prompts[0]
+    assert (tmp_path / "tests" / f"{plan.worktree_name}.md").exists()
+
+
+def test_tdd_test_writing_failure_aborts_cycle(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    test = ScriptedRunner([AgentResult(ok=False, output="", error="no test")])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=test)
+    assert out.test_written is False
+    assert out.implemented is False  # implementer never ran
+    assert out.ratcheted_skill.exists()
+    assert impl.prompts == []  # maker not invoked when no test exists
+
+
+def test_tdd_test_writer_must_be_distinct(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=impl)
+
+
+def test_run_loop_tdd_mode(tmp_path):
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        make_test_writer=lambda: ScriptedRunner([AgentResult(ok=True, output="def test(): pass")]),
+    )
+    assert len(outcomes) == 2
+    assert all(o.test_written for o in outcomes)
+
+
+# --------------------------- team mode (parallel tasks) --------------------------- #
+def test_run_loop_team_runs_all_tasks(tmp_path):
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified for o in outcomes)
+    # Order preserved despite parallel execution.
+    assert outcomes[0].task_title == "tokenize corpus"
+    assert outcomes[1].task_title == "train agent"
+
+
+def test_run_loop_team_respects_budget(tmp_path):
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=1,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+    )
+    assert len(outcomes) == 1
+
+
+def test_run_loop_team_plus_tdd(tmp_path):
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        make_test_writer=lambda: ScriptedRunner([AgentResult(ok=True, output="def t(): pass")]),
+        team=True,
+    )
+    assert len(outcomes) == 2
+    assert all(o.test_written and o.verified for o in outcomes)

@@ -196,3 +196,20 @@ def test_cmd_profile_dry_run_prints_invocation(tmp_path, monkeypatch):
     res = run_cli("profile", "--dry-run")
     assert res.returncode == 0
     assert "ML-logic invariants" in res.stdout
+
+
+# --------------------------------------------------------------------------- #
+# loop --tdd / --team / --logic  and  research --web flags
+# --------------------------------------------------------------------------- #
+def test_parser_loop_tdd_team_logic_flags():
+    a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--tdd", "--team", "--logic"])
+    assert a.tdd is True and a.team is True and a.logic is True
+    b = build_parser().parse_args(["loop", "--topic", "d"])
+    assert b.tdd is False and b.team is False and b.logic is False
+
+
+def test_parser_research_web_flag():
+    a = build_parser().parse_args(["research", "topic", "--web"])
+    assert a.web is True
+    b = build_parser().parse_args(["research", "topic", "--deep"])
+    assert b.deep is True and b.web is False

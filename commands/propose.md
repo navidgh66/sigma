@@ -10,6 +10,16 @@ outputs: ["sigma/specs/{date}-{slug}/proposals.md"]
 
 Turn research into **decision-ready options**.
 
+## Optional front-end: brainstorm first
+
+`/propose` defaults to synthesizing the existing `research.md` one-shot. When the
+requirements themselves are still fuzzy (not just the approach), run the
+`superpowers:brainstorming` skill FIRST — an interactive, one-question-at-a-time
+dialogue that pins purpose, constraints, and success criteria before options are
+drawn. Use brainstorm when there is no clear spec yet; skip it (go straight to the
+behavior below) when `research.md` already frames the problem well. Brainstorming
+is a front-end to this stage, not a replacement — its output feeds the synthesis.
+
 ## Behavior
 
 1. Read `research.md`.
