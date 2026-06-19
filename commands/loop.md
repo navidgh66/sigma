@@ -26,16 +26,40 @@ outputs: ["implementations", "verify reports", "updated skills/", "human review 
 
 Repeat until tasks done, a budget cap is hit, or a task needs human judgment.
 
-## Modes (CLI: `sigma loop --execute [flags]`)
+## Modes
 
-- **default** — sequential cycles, maker→checker.
-- **`--tdd`** — a distinct TEST-WRITER agent pens a FAILING test (RED) before the
-  implementer, which must make it pass (GREEN) without weakening it. One agent
-  codes, another tests, a third checks — all enforced distinct.
-- **`--team`** — independent tasks run in PARALLEL (each its own full cycle). The
-  recall snapshot is pre-built before fan-out (deterministic, race-free).
-- **`--logic`** — add the logic-evaluator axis; a cycle passes only if it passes too.
-- Combine freely: `--team --tdd --logic` = parallel tasks, each test-first, triple-checked.
+These work BOTH in-session (here, via subagents) and from the CLI
+(`sigma loop --execute --tdd --team --logic`). When the user asks for a mode in
+Claude Code, apply it by dispatching the right subagents — no flags needed.
+
+### TDD (test-first) — when asked to "do it test-first" / "TDD"
+
+Per task, run a strict RED→GREEN with **distinct subagents**:
+
+1. **Test-writer subagent** — writes a FAILING test that pins the task's
+   acceptance criteria. It must NOT implement the feature; the test fails because
+   the feature is absent (not a syntax error). Save it under `tests/`.
+2. **Implementer subagent** (distinct) — receives that failing test and makes it
+   pass WITHOUT weakening what it checks (do not edit the test to fit the code).
+3. **Checker subagent** (distinct) — verifies, separate from both above.
+
+One agent tests, another codes, a third checks — never the same agent twice.
+
+### Team (parallel tasks) — when asked to "do these in parallel" / "as a team"
+
+For INDEPENDENT tasks (no shared files / ordering), dispatch their cycles
+concurrently — send the implementer subagents in a SINGLE message (multiple Task
+calls in one turn). Recall the domain's past lessons ONCE up front and pass the
+same block to each (so parallel work is consistent). Serialize any tasks that
+touch the same files.
+
+### Logic axis — when correctness of *reasoning* matters
+
+Add a third distinct **logic-evaluator subagent** (per the domain
+`logic-evaluator.md`): it grades plan↔implementation coherence, not style. The
+cycle passes only when BOTH the code checker AND the logic evaluator pass.
+
+Combine freely: parallel tasks, each test-first, each triple-checked.
 
 ## Guardrails (non-negotiable)
 

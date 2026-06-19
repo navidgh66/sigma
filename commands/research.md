@@ -35,6 +35,20 @@ CLIs via subprocess; this command is the in-session equivalent.)
 4. Write `research.md` with: executive summary, themed findings with inline
    citations, per-researcher contribution notes, key takeaways, source list, gaps.
 
+## Depth modes
+
+Match the CLI's three depths (`sigma research` / `--web` / `--deep`):
+
+- **default** — researchers may answer from knowledge; cite what they assert.
+- **web** (asked for "web" / "current" / "look it up) — each researcher MUST use
+  its web-search / grounding tools and cite real, resolvable URLs it actually
+  consulted; do not answer from memory alone. Keep it a quick pass.
+- **deep** (asked for "deep" / "exhaustive" / "thorough research") — same web
+  mandate, but exhaustive: multiple searches per theme, more sources, stronger
+  cross-checking, every theme web-grounded. Slower by design.
+
+When unsure which depth, ask once; otherwise default.
+
 ## Rules
 
 - Every claim cites a source. No unsourced assertions.
