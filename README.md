@@ -45,6 +45,11 @@ engineer — reviewing, steering, and ratcheting failures into permanent knowled
 /loop            autonomous: discover → implement → verify → ratchet failures
 ```
 
+Failures (and lessons you capture with `/sigma-learn-lesson`) ratchet into
+`skills/` and are **recalled by domain on the next run** — the loop is closed, not
+just recorded. Any time, `/weave` folds the stage artifacts into one shareable
+`chain.html` (+ a machine `chain.json`).
+
 ---
 
 ## Domains (context-engines)
@@ -88,10 +93,11 @@ sigma doctor        # diagnose + repair (env, deps, models, skills, plugin, RTK)
 sigma               # launch Claude Code with sigma context loaded
 ```
 
-## Use inside Claude Code (as a plugin)
+## Use inside Claude Code (plugin-first)
 
-sigma ships a Claude Code plugin so every stage is a native slash command and
-`sigma-present` is a native skill — no CLI calls needed for the in-session flow.
+sigma is **plugin-first**: every stage is a native slash command, and the domain
+knowledge + learning layer are native skills — no CLI calls needed for the
+in-session flow.
 
 ```bash
 # add this repo as a plugin marketplace, then install
@@ -103,39 +109,46 @@ sigma ships a Claude Code plugin so every stage is a native slash command and
 Then in any session:
 
 ```
-/research <topic>     /propose   /blueprint   /spec   /tasks
-/implement-task       /verify    /loop        /hermes  /board
+/research <topic>   /propose   /blueprint   /spec   /tasks
+/implement-task     /verify    /loop        /hermes  /board   /weave
+/sigma-learn-lesson                         # capture a lesson from this session
 ```
 
-…and invoke the `sigma-present` skill to export an artifact to HTML.
+Skills auto-surface as you work:
+- **`sigma-domains`** — loads the right domain context-engine for the task.
+- **`sigma-lessons`** — recalls past ratcheted lessons by domain.
+- **`sigma-present`** — exports an artifact to a single-file HTML deck/report.
 
-**Two layers, by design:**
-- **Slash commands** = the in-session flow — Claude follows the stage's markdown
-  directly (great for one-off, interactive work).
-- **CLI** (`sigma <stage>`) = the full engine — real multi-model subprocess
-  fan-out, git-worktree isolation, injectable maker→checker loop. Use it for
-  autonomous/parallel runs. The commands above mirror the CLI stages 1:1.
+**Two ways to run, by design:**
+- **Plugin (primary)** — stages run *in-session* as slash commands: they load the
+  domain context and stay steerable. This is where the work happens.
+- **CLI (power tools + escape hatch)** — only what Claude Code can't do
+  in-session: real parallel multi-model `research`, the autonomous `loop`/`hermes`
+  runs, live `board`, and `weave`. Plus setup (`onboard`/`doctor`).
 
 ---
 
 ## Status
 
-✅ **Core + execution + conductor complete.** All 8 pipeline stages run through a
-single injectable `AgentRunner`; the loop executes real maker→checker cycles with
-distinct agents, writes `impl/` + `verify/` artifacts, and ratchets failures into
-`skills/`. 232 tests green, ruff clean. See [`docs/`](docs/).
+✅ **Core + execution + conductor + closed learning loop complete.** All 8
+pipeline stages run through a single injectable `AgentRunner`; the loop executes
+real maker→checker cycles with distinct agents, writes `impl/` + `verify/`
+artifacts, ratchets failures into `skills/`, **and recalls those lessons by domain
+on the next run**. 321 tests green, ruff clean. See [`docs/`](docs/).
 
-Stage execution: `sigma spec --topic <t>` runs the stage and writes its artifact
-(prior-stage artifact is chained in as context). Loop: `sigma loop --topic <t>`
-plans by default; `--execute` runs the maker→checker cycles.
-
-**Hermes** (optional conductor) routes plain language to the right stage and runs
-it — `sigma hermes "continue" --topic <t>` (one hop) or `--auto` (chain to a
-human gate). Standalone stage commands are untouched. A **kanban board** projects
-task + event state: `sigma board --topic <t>` (or `--watch`). The loop adds an
-optional **logic-evaluator** verify axis (reasoning + plan coherence, distinct
-from code quality). Bundled skills live in `skills/vendor/`; export any artifact
-to a shareable single-file HTML deck/report via the `sigma-present` skill.
+- **Stages** run in-session as slash commands (`/spec`, `/tasks`, …) — they load
+  the matching domain context-engine via the `sigma-domains` skill.
+- **`sigma loop --topic <t>`** plans by default; `--execute` runs maker→checker
+  cycles (sequential, one workspace). On failure it ratchets a lesson; future
+  cycles in that domain recall it.
+- **Hermes** (CLI conductor) routes plain language to a stage and runs it:
+  `sigma hermes "continue" --topic <t>` (one hop) or `--auto` (chain to a human
+  gate). The loop adds an optional **logic-evaluator** axis (reasoning + plan
+  coherence, distinct from code quality).
+- **Kanban board** projects task + event state: `sigma board --topic <t>`
+  (`--watch` for live). **`sigma weave`** weaves the stage artifacts into one
+  self-contained `chain.html` + a machine `chain.json`. Bundled skills live in
+  `skills/vendor/`.
 
 ## Playground
 
