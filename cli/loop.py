@@ -192,6 +192,24 @@ LOGIC_PROMPT = (
     "assumptions, ignored edge cases, reasoning gaps. Reply with a final line "
     "exactly:\nVERDICT: PASS  or  VERDICT: FAIL"
 )
+# TDD axis: a distinct TEST WRITER pens a failing test (RED) BEFORE the
+# implementer exists. The implementer then sees this test and must make it pass
+# (GREEN) without weakening its intent — one agent codes, another tests.
+TEST_PROMPT = (
+    "You are the TEST WRITER — a distinct agent from the implementer, the "
+    "code-quality checker, and the logic evaluator. Write a FAILING test (RED) "
+    "that pins the acceptance criteria for this task BEFORE any implementation "
+    "exists. Do NOT implement the feature. The test must fail because the feature "
+    "is absent — not because of a syntax error.\n"
+    "Domain: {domain}\nTask: {title}\n\n"
+    "Output the test code and one line naming the behavior it pins."
+)
+# Prepended to the implementer prompt in TDD mode so the maker codes against the
+# already-written failing test.
+TDD_IMPLEMENT_PREFIX = (
+    "A failing test was written FIRST (TDD). Make it pass without weakening what "
+    "it checks — do not edit the test to fit the code:\n{test}\n\n"
+)
 
 
 @dataclass
@@ -200,6 +218,7 @@ class CycleOutcome:
     implemented: bool
     verified: bool
     logic_ok: Optional[bool] = None
+    test_written: Optional[bool] = None  # set only in TDD mode
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
@@ -233,6 +252,7 @@ def execute_cycle(
     verifier: AgentRunner,
     logic_checker: Optional[AgentRunner] = None,
     recall: str = "",
+    test_writer: Optional[AgentRunner] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -243,6 +263,11 @@ def execute_cycle(
     the logic evaluator grades reasoning + plan-coherence (not code quality). It
     must be distinct from both implementer and verifier. The cycle passes only
     when BOTH the code-quality verifier and the logic evaluator pass.
+
+    When `test_writer` is provided (TDD mode), a distinct agent writes a FAILING
+    test BEFORE the implementer runs; the implementer's prompt is then prefixed
+    with that test and told to make it pass without weakening it (one agent codes,
+    another tests). The test writer must be distinct from all other agents.
 
     `recall` is an optional past-lessons block (from cli.skills_recall) prepended
     to the implement + verify prompts so the maker avoids prior mistakes and the
@@ -255,13 +280,37 @@ def execute_cycle(
         logic_checker is implementer or logic_checker is verifier
     ):
         raise ValueError("logic checker must be distinct from maker and checker")
+    if test_writer is not None and (
+        test_writer is implementer
+        or test_writer is verifier
+        or test_writer is logic_checker
+    ):
+        raise ValueError("test writer must be distinct from maker, checker, and logic agents")
 
     title = plan.task.title
     domain = plan.implementer_domain
     outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
 
+    # TDD: a distinct agent writes the failing test FIRST. Its output is fed to the
+    # implementer. A failed test-writing step aborts the cycle (nothing to build
+    # against) and ratchets the failure.
+    implement_prompt = IMPLEMENT_PROMPT.format(domain=domain, title=title)
+    if test_writer is not None:
+        test = test_writer.run(TEST_PROMPT.format(domain=domain, title=title), cwd=workspace)
+        outcome.test_written = test.ok
+        if not test.ok:
+            outcome.notes.append(f"test-writing failed: {test.error}")
+            outcome.ratcheted_skill = ratchet_to_skills(
+                skills_dir, f"test-writing failed: {title}", test.error or "unknown", domain
+            )
+            outcome.contradiction = _contradiction_flag(skills_dir, outcome.ratcheted_skill)
+            append_loop_log(workspace, f"{title}: test-writing FAILED ({test.error})")
+            return outcome
+        write_artifact(workspace / "tests" / f"{plan.worktree_name}.md", test.output)
+        implement_prompt = TDD_IMPLEMENT_PREFIX.format(test=test.output) + implement_prompt
+
     impl = implementer.run(
-        _with_recall(IMPLEMENT_PROMPT.format(domain=domain, title=title), recall),
+        _with_recall(implement_prompt, recall),
         cwd=workspace,
     )
     outcome.implemented = impl.ok
@@ -327,6 +376,9 @@ def run_loop(
     make_verifier,
     make_logic_checker=None,
     gate: Optional[str] = None,
+    make_test_writer=None,
+    team: bool = False,
+    max_workers: int = 3,
 ) -> List[CycleOutcome]:
     """Drive cycles until tasks are exhausted or the budget cap is hit.
 
@@ -334,6 +386,15 @@ def run_loop(
     AgentRunner instances per cycle (maker ≠ checker). `make_logic_checker`, when
     provided, adds a third distinct agent that grades logic/plan coherence — a
     cycle then passes only when both verify axes pass.
+
+    `make_test_writer`, when provided (TDD mode), adds a distinct test-writer agent
+    that pens a failing test before each implementer runs.
+
+    `team`, when True, runs the (capped) batch of tasks CONCURRENTLY — independent
+    tasks proceed in parallel, each its own full cycle. The recall snapshot is
+    pre-built for every needed domain BEFORE fan-out, so the parallel phase only
+    reads it (no races, deterministic). Sequential (default) preserves the original
+    one-task-at-a-time behavior.
 
     `gate`, when set, is a wakeAgent script run once before the batch; if it
     reports nothing to do, the whole run is skipped (zero tokens).
@@ -348,34 +409,37 @@ def run_loop(
 
     from cli.skills_recall import recall_lessons, render_recall_block
 
-    recall_cache: Dict[str, str] = {}
+    # Select the capped batch up front (so recall can be pre-built for team mode).
+    batch = incomplete_tasks(tasks)[:max_cycles]
+    if len(incomplete_tasks(tasks)) > max_cycles:
+        append_loop_log(workspace, f"budget cap reached ({max_cycles} cycles)")
 
-    def recall_for(domain: str) -> str:
-        """Past-lessons block for a domain, built once per domain and cached for
-        the batch. Cached for the whole run, so a lesson ratcheted by a failed
-        cycle this batch surfaces on the NEXT RUN, not later same-domain tasks in
-        this batch (the cache is intentionally not invalidated mid-batch — recall
-        is a per-batch snapshot, keeping cost bounded and behavior deterministic).
-        """
+    # Pre-build the per-domain recall snapshot for the whole batch (one read per
+    # domain). In team mode this MUST happen before fan-out so threads only read it.
+    recall_cache: Dict[str, str] = {}
+    for task in batch:
+        domain = plan_cycle(task).implementer_domain
         if domain not in recall_cache:
             block = render_recall_block(recall_lessons(skills_dir, domain))
             recall_cache[domain] = block
             if block:
                 append_loop_log(workspace, f"recalled past lessons for domain '{domain}'")
-        return recall_cache[domain]
 
-    outcomes: List[CycleOutcome] = []
-    completed = 0
-    for task in incomplete_tasks(tasks):
-        if completed >= max_cycles:
-            append_loop_log(workspace, f"budget cap reached ({max_cycles} cycles)")
-            break
+    def run_one(task: Task) -> CycleOutcome:
         plan = plan_cycle(task)
-        logic = make_logic_checker() if make_logic_checker else None
-        outcome = execute_cycle(
-            plan, workspace, skills_dir, make_implementer(), make_verifier(), logic,
-            recall=recall_for(plan.implementer_domain),
+        return execute_cycle(
+            plan, workspace, skills_dir,
+            make_implementer(), make_verifier(),
+            make_logic_checker() if make_logic_checker else None,
+            recall=recall_cache.get(plan.implementer_domain, ""),
+            test_writer=make_test_writer() if make_test_writer else None,
         )
-        outcomes.append(outcome)
-        completed += 1
-    return outcomes
+
+    if team:
+        # Independent tasks run concurrently; preserve batch order in results.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            return list(pool.map(run_one, batch))
+
+    return [run_one(task) for task in batch]

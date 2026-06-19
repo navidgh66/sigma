@@ -26,6 +26,17 @@ outputs: ["implementations", "verify reports", "updated skills/", "human review 
 
 Repeat until tasks done, a budget cap is hit, or a task needs human judgment.
 
+## Modes (CLI: `sigma loop --execute [flags]`)
+
+- **default** — sequential cycles, maker→checker.
+- **`--tdd`** — a distinct TEST-WRITER agent pens a FAILING test (RED) before the
+  implementer, which must make it pass (GREEN) without weakening it. One agent
+  codes, another tests, a third checks — all enforced distinct.
+- **`--team`** — independent tasks run in PARALLEL (each its own full cycle). The
+  recall snapshot is pre-built before fan-out (deterministic, race-free).
+- **`--logic`** — add the logic-evaluator axis; a cycle passes only if it passes too.
+- Combine freely: `--team --tdd --logic` = parallel tasks, each test-first, triple-checked.
+
 ## Guardrails (non-negotiable)
 
 - **Maker/checker separation** — never let the implementer grade itself.

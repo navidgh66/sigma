@@ -40,9 +40,32 @@ Requirements:
 - Separate fact from inference; no unsourced assertions
 """
 
+WEB_RESEARCH_BRIEF = """You are a research subagent for the 'sigma' toolkit.
 
-def build_prompt(topic: str, deep: bool = False) -> str:
-    brief = DEEP_RESEARCH_BRIEF if deep else RESEARCH_BRIEF
+Do a QUICK web-grounded check on this topic — search the web for current facts,
+but keep it concise (this is the light web pass, not an exhaustive deep dive):
+
+TOPIC: {topic}
+
+Requirements:
+- Search the web for recent facts; do not answer from memory alone
+- A short list of themed findings, each with a real source URL you consulted
+- Prefer sources from the last 12 months
+- Flag anything single-source or uncertain
+- Separate fact from inference
+"""
+
+
+def build_prompt(topic: str, deep: bool = False, web: bool = False) -> str:
+    """Pick the brief by mode. `deep` = exhaustive web research; `web` = quick
+    web-grounded pass; neither = from-memory quick pass. `deep` wins if both set.
+    """
+    if deep:
+        brief = DEEP_RESEARCH_BRIEF
+    elif web:
+        brief = WEB_RESEARCH_BRIEF
+    else:
+        brief = RESEARCH_BRIEF
     return brief.format(topic=topic)
 
 
@@ -52,19 +75,23 @@ def run_research(
     runner: Callable = run_model,
     max_workers: int = 4,
     deep: bool = False,
+    web: bool = False,
 ) -> List[ModelResult]:
     """Fan out the research brief to each model in parallel.
 
     `runner` is injectable (defaults to models.run_model) for testing. `deep`
-    selects the web-grounded brief and is forwarded to the runner so each
-    adapter enables its web-search / grounding path.
+    selects the exhaustive web-grounded brief; `web` selects a lighter quick
+    web-grounded brief. Either one activates the adapters' web-search path (so the
+    runner is called with web search enabled). `deep` takes precedence if both set.
     """
-    prompt = build_prompt(topic, deep=deep)
+    prompt = build_prompt(topic, deep=deep, web=web)
     requested = list(models)
+    # Both deep and web need the adapter's web-search args turned on.
+    web_search = deep or web
     results: List[ModelResult] = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {m: pool.submit(_call_runner, runner, m, prompt, deep) for m in requested}
+        futures = {m: pool.submit(_call_runner, runner, m, prompt, web_search) for m in requested}
         for m in requested:
             results.append(futures[m].result())
     return results
@@ -87,13 +114,19 @@ def aggregate(
     results: List[ModelResult],
     today: Optional[date] = None,
     deep: bool = False,
+    web: bool = False,
 ) -> str:
     """Combine model results into a single cited research.md document."""
     day = (today or date.today()).isoformat()
     ran = [r for r in results if r.ok]
     skipped = [r for r in results if r.skipped]
     failed = [r for r in results if not r.ok and not r.skipped]
-    mode = "deep (web-grounded)" if deep else "quick"
+    if deep:
+        mode = "deep (web-grounded)"
+    elif web:
+        mode = "web (quick web-grounded)"
+    else:
+        mode = "quick"
 
     lines: List[str] = []
     lines.append(f"# Research: {topic}")
@@ -159,11 +192,12 @@ def research(
     runner: Callable = run_model,
     today: Optional[date] = None,
     deep: bool = False,
+    web: bool = False,
 ) -> Path:
     """End-to-end: resolve available models, fan out, aggregate, write file."""
     models = available_models(requested_models)
     # Still run requested-but-missing through runner so they record as skipped.
     to_run = requested_models if requested_models else models
-    results = run_research(topic, to_run, runner=runner, deep=deep)
-    content = aggregate(topic, results, today=today, deep=deep)
+    results = run_research(topic, to_run, runner=runner, deep=deep, web=web)
+    content = aggregate(topic, results, today=today, deep=deep, web=web)
     return write_research(workspace, content)

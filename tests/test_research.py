@@ -97,3 +97,37 @@ def test_run_research_tolerates_two_arg_runner():
 
     results = run_research("t", ["claude"], runner=runner, deep=True)
     assert results[0].ok is True
+
+
+# --------------------------- web mode (quick web-grounded) --------------------------- #
+def test_build_prompt_web_demands_search_but_lighter():
+    web = build_prompt("t", web=True)
+    quick = build_prompt("t", deep=False)
+    assert "search the web" in web.lower()
+    assert "QUICK" in web or "quick" in web
+    # Web brief differs from the from-memory quick brief.
+    assert web != quick
+
+
+def test_build_prompt_deep_wins_over_web():
+    both = build_prompt("t", deep=True, web=True)
+    deep = build_prompt("t", deep=True)
+    assert both == deep  # deep takes precedence
+
+
+def test_aggregate_marks_web_mode():
+    results = [ModelResult("claude", True, "x")]
+    doc = aggregate("t", results, today=date(2026, 6, 16), web=True)
+    assert "Mode: web (quick web-grounded)" in doc
+
+
+def test_run_research_web_enables_websearch_flag():
+    seen = {}
+
+    def runner(model, prompt, deep=False):
+        seen[model] = deep  # `deep` arg = web_search toggle in run_research
+        return ModelResult(model, True, "ok")
+
+    run_research("t", ["claude", "gpt"], runner=runner, web=True)
+    # web mode activates the adapter web-search path (passed as the deep arg).
+    assert seen == {"claude": True, "gpt": True}
