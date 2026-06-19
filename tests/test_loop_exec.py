@@ -16,16 +16,18 @@ TASKS = """
 
 
 class ScriptedRunner(AgentRunner):
-    """Returns a queued sequence of results."""
+    """Returns a queued sequence of results, recording prompts it received."""
 
     def __init__(self, results):
         super().__init__()
         self._results = list(results)
+        self.prompts = []
 
     def available(self):
         return True
 
     def run(self, prompt, cwd=None):
+        self.prompts.append(prompt)
         return self._results.pop(0)
 
 
@@ -190,6 +192,65 @@ def test_execute_cycle_sets_contradiction(tmp_path):
     out = execute_cycle(plan, tmp_path, skills, impl, chk)
     assert out.verified is False
     assert out.contradiction is not None
+
+
+# --------------------------- recall injection --------------------------- #
+RECALL = "--- past lessons (avoid repeating these mistakes) ---\n- use BPE\n--- end past lessons ---"
+
+
+def test_recall_prepended_to_implement_and_verify_not_logic(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    logic = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, logic, recall=RECALL)
+
+    # Maker + checker see the recall block; the logic evaluator does not.
+    assert RECALL in impl.prompts[0]
+    assert RECALL in chk.prompts[0]
+    assert RECALL not in logic.prompts[0]
+
+
+def test_empty_recall_leaves_prompts_unchanged(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl_a = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk_a = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl_a, chk_a)  # default recall=""
+
+    impl_b = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk_b = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl_b, chk_b, recall="")
+
+    # Empty recall must be byte-identical to not passing recall at all.
+    assert impl_a.prompts == impl_b.prompts
+    assert chk_a.prompts == chk_b.prompts
+
+
+def test_run_loop_injects_recall_from_prior_lessons(tmp_path):
+    from cli.loop import ratchet_to_skills
+
+    skills = tmp_path / "skills"
+    # A prior nlp lesson exists → it must surface in the nlp task's prompts.
+    ratchet_to_skills(skills, "verify failed: earlier nlp task", "use BPE not whitespace", "nlp")
+
+    seen = {"impl": []}
+
+    def mk_impl():
+        r = ScriptedRunner([AgentResult(ok=True, output="i")])
+        seen["impl"].append(r)
+        return r
+
+    run_loop(
+        parse_tasks(TASKS), tmp_path, skills, max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+    )
+    # The nlp implementer (first task) saw the recalled lesson.
+    nlp_impl = seen["impl"][0]
+    assert "use BPE not whitespace" in nlp_impl.prompts[0]
 
 
 # --------------------------- gate in run_loop --------------------------- #
