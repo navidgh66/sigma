@@ -70,11 +70,31 @@ just recorded. Any time, `/weave` folds the stage artifacts into one shareable
 
 ## Install
 
+**Public repo — one-liner:**
+
 ```bash
 # one command, global — σ logo + staged install
 curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
 export PATH="$PATH:$HOME/.local/bin"
 sigma onboard       # friendly setup: pick domains, capture API keys, set up RTK
+```
+
+**Private repo — clone first, then run the installer:**
+
+`raw.githubusercontent.com` (the `curl | sh` URL) does **not** send your git
+credentials, so it 404s on a private repo. Clone with an authenticated account,
+then run the bundled installer from the clone — its step 1 sees the existing
+`~/.sigma/.git` and just fast-forwards it:
+
+```bash
+# authenticate to the account that can see the private repo (gh example)
+gh auth login                       # or: gh auth switch --user <account>
+gh auth setup-git                   # let git use the gh credential helper
+
+git clone https://github.com/navidgh66/sigma.git ~/.sigma
+sh ~/.sigma/installer/setup.sh
+export PATH="$PATH:$HOME/.local/bin"
+sigma onboard
 ```
 
 The installer is non-interactive (works under `curl | sh`); the fun part —
@@ -100,10 +120,14 @@ knowledge + learning layer are native skills — no CLI calls needed for the
 in-session flow.
 
 ```bash
-# add this repo as a plugin marketplace, then install
+# public repo: add this repo as a plugin marketplace, then install
 /plugin marketplace add navidgh66/sigma
 /plugin install sigma@sigma
-# (local clone: /plugin marketplace add /path/to/sigma)
+
+# private repo: add the LOCAL CLONE as the marketplace instead (no GitHub fetch),
+# then install — this is also what installer/setup.sh does automatically:
+/plugin marketplace add ~/.sigma
+/plugin install sigma@sigma
 ```
 
 Then in any session:
