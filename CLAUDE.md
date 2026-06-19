@@ -5,17 +5,20 @@ Guide for AI assistants working in the sigma repo.
 ## What this is
 
 `sigma` is a personal, portable AI workflow toolkit for data science & AI
-engineering. A Python CLI + markdown templates that wrap Claude Code with a
-research-first, spec-driven, loop-engineered pipeline. Core and execution are
-complete: all 8 stages run through one injectable agent runner; the loop runs
-real maker→checker cycles. **Hermes** (optional conductor) routes plain language
-to stages; a **kanban board** projects task/event state; the loop adds a second
-**logic-evaluator** verify axis. 281 pytest tests, ruff clean.
+engineering — **plugin-first**: a Claude Code plugin (commands + domain
+context-engines as skills + skills) you carry into any repo, backed by a thin CLI
+for what Claude Code can't do in-session. Research-first, spec-driven,
+loop-engineered pipeline. Stages run in-session as slash commands; the CLI keeps
+parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
+`weave`, and setup. **Hermes** routes plain language to stages; a **kanban board**
+projects task/event state; the loop adds a **logic-evaluator** verify axis and a
+**closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
+and are recalled by domain on the next run). 321 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 281 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 321 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
