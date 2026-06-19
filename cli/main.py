@@ -310,6 +310,91 @@ def cmd_weave(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# profile (walk codebase → logic-profile.md grounding for review)
+# --------------------------------------------------------------------------- #
+def cmd_profile(args: argparse.Namespace) -> int:
+    from cli.paths import project_root
+    from cli.profile_run import run_profile
+
+    root = project_root()
+    _print(f"σ profile — codebase at {root}")
+    res = run_profile(root, project_name=root.name, dry_run=args.dry_run)
+    if args.dry_run:
+        _print("--- invocation (dry run) ---")
+        _print(res.prompt)
+        return 0
+    if not res.ok:
+        _print(f"✗ profile failed: {res.error}")
+        return 1
+    if res.profile_path:
+        _print(f"✓ wrote {res.profile_path}")
+    if res.problems:
+        _print(f"  ⚠ {len(res.problems)} issue(s):")
+        for p in res.problems:
+            _print(f"    - {p}")
+    else:
+        _print("  ✓ both invariant sections present")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# review (three-axis review of a change set: local diff or PR)
+# --------------------------------------------------------------------------- #
+def cmd_review(args: argparse.Namespace) -> int:
+    from cli.paths import project_root
+    from cli.review_run import run_review
+    from cli.runner import AgentRunner
+
+    root = project_root()
+    skills_dir = sigma_home() / "skills"
+    target = getattr(args, "target", None)
+    label = target or "local diff (HEAD)"
+    _print(f"σ review — {label}")
+    res = run_review(
+        target,
+        root,
+        skills_dir,
+        make_runner=lambda: AgentRunner(),
+        ts=_now_iso(),
+    )
+    if res.skipped_reason:
+        _print(f"  {res.skipped_reason}")
+        return 0
+    if not res.ok:
+        _print(f"✗ review failed: {res.error}")
+        return 1
+    if res.report_path:
+        _print(f"✓ wrote {res.report_path}")
+    if res.domains:
+        _print(f"  domains: {', '.join(res.domains)}")
+    decision = res.gate
+    if decision is not None:
+        mark = "✅ PASS" if decision.passed else "❌ FAIL"
+        _print(f"  verdict: {mark} — {decision.reason}")
+    for p in res.ratcheted:
+        _print(f"    ratcheted → {p}")
+    if res.pr_comment:
+        _print("  posted PR summary comment")
+    # CI gate: --check exits non-zero on FAIL.
+    if args.check and decision is not None and not decision.passed:
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# cost (report the cost ledger)
+# --------------------------------------------------------------------------- #
+def cmd_cost(args: argparse.Namespace) -> int:
+    from cli.cost import ledger_path, read_ledger, report
+    from cli.paths import project_root
+
+    root = project_root()
+    rows = read_ledger(ledger_path(root))
+    _print(report(rows))
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -398,6 +483,19 @@ def build_parser() -> argparse.ArgumentParser:
     pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")
     pw.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     pw.set_defaults(func=cmd_weave)
+
+    pprofile = sub.add_parser("profile", help="Walk the codebase → logic-profile.md (grounds review)")
+    pprofile.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    pprofile.set_defaults(func=cmd_profile)
+
+    preview = sub.add_parser("review", help="Three-axis review of a change set (local diff or PR)")
+    preview.add_argument("target", nargs="?",
+                         help="PR number/URL, a git range (a..b), or empty for local diff vs HEAD")
+    preview.add_argument("--check", action="store_true", help="exit 1 if the review gate FAILs (CI)")
+    preview.set_defaults(func=cmd_review)
+
+    pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
+    pcost.set_defaults(func=cmd_cost)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
