@@ -93,13 +93,15 @@ cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK
 cli/render.py       σ logo + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
-commands/           slash-command templates (one per stage + /learn + /weave), YAML frontmatter
+cli/skills_recall.py  pure: recall_lessons(skills_dir, domain) + render_recall_block — read side that closes the learning loop
+commands/           slash-command templates (one per stage + /learn + /weave + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
-skills/             ratcheted lessons (SKILL.md), written on loop failures
+skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
 skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + codebase-onboarding) — self-contained
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 skills/sigma-domains/  skill: auto-surface the right domain context-engine (indexes context-engines/, no duplication)
+skills/sigma-lessons/  skill: recall past ratcheted lessons by domain in-session (read side of the loop)
 installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
@@ -132,7 +134,10 @@ keeps only what Claude Code cannot do in-session, plus setup.
 
 ## Principles
 
-- **Loop engineering** — design loops, stay the engineer. Failures ratchet into `skills/`.
+- **Loop engineering** — design loops, stay the engineer. Failures ratchet into
+  `skills/` AND are recalled by domain on the next run (closed loop): the loop
+  injects past lessons into implement+verify prompts; `/sigma-learn-lesson` lets a
+  human ratchet a lesson from any session.
 - **Maker ≠ checker** — implementer and verifier are always distinct agents. The
   optional logic-evaluator is a third distinct agent (separation enforced).
 - **Plugin-first** — the Claude Code plugin (slash commands + skills, incl.
@@ -210,6 +215,18 @@ keeps only what Claude Code cannot do in-session, plus setup.
   same domain + normalized topic_key. A hit adds a `⚠ CONTRADICTION` marker to the
   new skill + a line in `skills/CONTRADICTIONS.md`. Never auto-resolves or deletes
   — humans decide (`CycleOutcome.contradiction` surfaces it).
+- Closed learning loop: `cli/skills_recall.py` (pure) reads lessons back by
+  `domain:` match — `recall_lessons` excludes any skill WITHOUT a `domain:` tag
+  (so vendor/sigma-present/sigma-domains never leak in), `render_recall_block`
+  caps at a limit. `run_loop` builds the block once per domain (cached for the
+  whole batch — a lesson ratcheted mid-batch surfaces on the NEXT run, not later
+  same-domain tasks in the same batch; snapshot keeps cost bounded + deterministic)
+  and `execute_cycle(recall=...)` prepends it to the implement + verify prompts only
+  (NOT logic — it grades reasoning, not domain patterns). Empty recall →
+  prompts byte-identical (fail-safe). The manual `/sigma-learn-lesson` writes via
+  the SAME ratchet format with a `session lesson:` title prefix (added to
+  `_NOISE_PREFIXES`) so manual + loop lessons on one topic share a key for both
+  contradiction detection and recall.
 - `sigma weave` (`cli/weave.py`) produces TWO **derived** outputs in the spec
   workspace — markdown stays the source of truth, so deleting them never affects
   the pipeline. `chain.json` (machine manifest) is written FIRST by the pure

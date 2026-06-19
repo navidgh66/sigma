@@ -17,6 +17,15 @@ def test_topic_key_strips_ratchet_noise():
     assert a == b == "tokenize-corpus"
 
 
+def test_topic_key_manual_and_loop_lesson_collide():
+    # A manual /sigma-learn-lesson ("session lesson:") and a loop failure on the
+    # same topic must produce the SAME key, so they collide for contradiction
+    # detection + recall.
+    manual = skills_index.topic_key("session lesson: tokenize corpus")
+    loop = skills_index.topic_key("verify failed: tokenize corpus")
+    assert manual == loop == "tokenize-corpus"
+
+
 def test_topic_key_stable_on_punctuation():
     assert skills_index.topic_key("Eval  policy!!") == skills_index.topic_key("eval policy")
 
