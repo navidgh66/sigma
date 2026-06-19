@@ -119,3 +119,37 @@ def test_report_aggregates_and_shows_drift():
     assert "review" in out
     assert "profile" in out
     assert "est drift" in out
+
+
+def test_calibrate_is_weighted_by_units():
+    # One large run (100 units) + one small (2 units). Weighted = totals ratio.
+    rows = [
+        {"op": "review", "units": 100, "tokens": 400000},  # 4000/unit
+        {"op": "review", "units": 2, "tokens": 10000},      # 5000/unit
+    ]
+    # Weighted: 410000 / 102 ≈ 4019.6 (not the unweighted mean 4500).
+    factor = calibrate("review", rows)
+    assert abs(factor - 410000 / 102) < 1e-6
+
+
+def test_report_skips_zero_token_rows_from_run_count():
+    rows = [
+        {"op": "review", "units": 6, "tokens": 24000},
+        {"op": "review", "units": 6, "tokens": 0},  # aborted/dry — must not count
+    ]
+    out = report(rows)
+    assert "1 run(s)" in out
+
+
+def test_routing_for_other_ops():
+    assert routing_for("profile") == {"walk": "sonnet"}
+    assert "logic" in routing_for("loop")
+    assert routing_for("research") == {"fan-out": "sonnet"}
+    assert routing_for("unknown-op") == {}
+
+
+def test_estimate_render_includes_routing():
+    est = estimate("review", units=6, rows=[])
+    line = est.render()
+    assert "cost estimate" in line
+    assert "code→" in line

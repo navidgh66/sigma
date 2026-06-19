@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from cli import review as rv
@@ -277,3 +279,124 @@ def test_run_review_inconclusive_axis_fails(tmp_path):
     )
     assert not res.gate.passed
     assert res.gate.inconclusive_axes
+
+
+# --------------------------------------------------------------------------- #
+# Regression tests for deep-eval fixes
+# --------------------------------------------------------------------------- #
+def test_split_loc_keeps_colon_path_intact():
+    # A path with colons but no trailing line must not lose its last segment.
+    findings = rv.parse_findings("code", "FINDING | HIGH | models/schema:v2 | x\n")
+    assert findings[0].file == "models/schema:v2"
+    assert findings[0].line is None
+
+
+def test_split_loc_extracts_trailing_line():
+    findings = rv.parse_findings("code", "FINDING | HIGH | a/b/c.py:42 | x\n")
+    assert findings[0].file == "a/b/c.py"
+    assert findings[0].line == 42
+
+
+def test_parse_findings_skips_blank_message():
+    # Whitespace-only message → not a finding.
+    assert rv.parse_findings("code", "FINDING | HIGH | a.py:1 |    \n") == []
+
+
+def test_run_review_non_distinct_runners_clean_failure(tmp_path):
+    from cli import review_run
+
+    shared = FakeRunner("VERDICT: PASS")
+    res = review_run.run_review(
+        target=None, root=tmp_path, skills_dir=tmp_path / "skills",
+        make_runner=lambda: shared,  # same instance each call → not distinct
+        reviews_dir=tmp_path / "reviews",
+        cmd_runner=_fake_cmd_runner(SAMPLE_DIFF),
+    )
+    assert not res.ok
+    assert "distinct" in res.error
+
+
+def test_resolve_change_set_pr_mode():
+    from cli import review_run
+
+    captured = {}
+
+    def runner(argv, **kwargs):
+        captured["argv"] = argv
+
+        class P:
+            returncode = 0
+            stdout = SAMPLE_DIFF
+            stderr = ""
+        return P()
+
+    cs = review_run.resolve_change_set("123", Path("/tmp"), runner=runner)
+    assert cs.source == "pr"
+    assert cs.ref == "123"
+    assert captured["argv"][:3] == ["gh", "pr", "diff"]
+
+
+def test_resolve_change_set_git_range():
+    from cli import review_run
+
+    captured = {}
+
+    def runner(argv, **kwargs):
+        captured["argv"] = argv
+
+        class P:
+            returncode = 0
+            stdout = SAMPLE_DIFF
+            stderr = ""
+        return P()
+
+    cs = review_run.resolve_change_set("main..HEAD", Path("/tmp"), runner=runner)
+    assert cs.source == "local"
+    assert captured["argv"] == ["git", "diff", "main..HEAD"]
+
+
+def test_run_review_pr_mode_posts_comment(tmp_path):
+    from cli import review_run
+
+    calls = []
+
+    def runner(argv, **kwargs):
+        calls.append(argv)
+
+        class P:
+            returncode = 0
+            stdout = SAMPLE_DIFF if argv[:2] == ["gh", "pr"] else SAMPLE_DIFF
+            stderr = ""
+        return P()
+
+    res = review_run.run_review(
+        target="7", root=tmp_path, skills_dir=tmp_path / "skills",
+        make_runner=lambda: FakeRunner(
+            "FINDING | HIGH | src/model.py:2 | leak\nVERDICT: FAIL"
+        ),
+        reviews_dir=tmp_path / "reviews",
+        cmd_runner=runner,
+        ts="2026-06-19T10:00:00",
+    )
+    assert res.pr_comment
+    # A `gh pr comment` call was made.
+    assert any(a[:3] == ["gh", "pr", "comment"] for a in calls)
+
+
+def test_render_report_fail_path():
+    cs = rv.build_change_set(SAMPLE_DIFF)
+    rs = [
+        rv.AxisResult("code", ran=True, findings=[rv.Finding("code", "CRITICAL", "a.py", 1, "boom")]),
+        rv.AxisResult("ml-logic", ran=True, findings=[]),
+        rv.AxisResult("system-logic", ran=True, findings=[]),
+    ]
+    report = rv.render_report(cs, rs, rv.gate(rs), ["classic-ml"])
+    assert "❌ FAIL" in report
+    assert "boom" in report
+    assert "ratcheted" in report
+
+
+def test_infer_domains_multi():
+    domains = rv.infer_domains(["src/tokenizer.py", "src/reward_model.py"])
+    assert "nlp" in domains
+    assert "rl" in domains

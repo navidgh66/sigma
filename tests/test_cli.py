@@ -159,3 +159,40 @@ def test_board_missing_workspace(tmp_path, monkeypatch):
     res = run_cli("board", "--topic", "nope")
     assert res.returncode == 1
     assert "no spec workspace" in res.stdout
+
+
+# --------------------------------------------------------------------------- #
+# profile / review / cost subcommands
+# --------------------------------------------------------------------------- #
+def test_help_lists_profile_review_cost():
+    res = run_cli("--help")
+    for cmd in ("profile", "review", "cost"):
+        assert cmd in res.stdout
+
+
+def test_parser_review_target_and_check():
+    a = build_parser().parse_args(["review", "42", "--check"])
+    assert a.target == "42"
+    assert a.check is True
+    b = build_parser().parse_args(["review"])
+    assert b.target is None
+    assert b.check is False
+
+
+def test_parser_profile_dry_run():
+    a = build_parser().parse_args(["profile", "--dry-run"])
+    assert a.dry_run is True
+
+
+def test_cmd_cost_empty_ledger(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = run_cli("cost")
+    assert res.returncode == 0
+    assert "No cost data yet" in res.stdout
+
+
+def test_cmd_profile_dry_run_prints_invocation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = run_cli("profile", "--dry-run")
+    assert res.returncode == 0
+    assert "ML-logic invariants" in res.stdout

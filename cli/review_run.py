@@ -152,7 +152,12 @@ def run_review(
 
     # Build distinct runners and fan out the three axes in parallel.
     runners = {axis: make_runner() for axis in rv.AXES}
-    rv.ensure_distinct_axes(list(runners.values()))
+    try:
+        rv.ensure_distinct_axes(list(runners.values()))
+    except ValueError as exc:
+        # Misconfigured caller (same runner reused) — surface as a clean failure,
+        # never a traceback out of run_review.
+        return ReviewResult(ok=False, error=str(exc))
     prompts = {
         axis: rv.build_axis_prompt(
             axis, change,
@@ -168,8 +173,15 @@ def run_review(
     decision = rv.gate(results)
     report = rv.render_report(change, results, decision, domains)
 
+    # Writing the report / ratcheting touch disk — degrade gracefully on OSError
+    # (read-only fs, disk full) rather than crashing a completed review.
     out_dir = reviews_dir or (root / "sigma" / "reviews")
-    report_path = _write_report(out_dir, change, report)
+    report_path: Optional[Path] = None
+    write_error: Optional[str] = None
+    try:
+        report_path = _write_report(out_dir, change, report)
+    except OSError as exc:
+        write_error = f"could not write report: {exc}"
 
     # PR mode: post a summary comment (no-op-safe).
     pr_comment = ""
@@ -178,7 +190,11 @@ def run_review(
         _post_pr_comment(change.ref, pr_comment, root, cmd_runner)
 
     # Ratchet blocking findings so the next review recalls them.
-    ratcheted = _ratchet_blocking(skills_dir, decision, domains)
+    try:
+        ratcheted = _ratchet_blocking(skills_dir, decision, domains)
+    except OSError as exc:
+        ratcheted = []
+        write_error = (write_error + "; " if write_error else "") + f"could not ratchet: {exc}"
 
     # Record actual cost units (tokens unknown here → store the estimate as both;
     # a richer integration can pass true token counts later).
@@ -186,7 +202,7 @@ def run_review(
 
     return ReviewResult(
         ok=True, gate=decision, report=report, report_path=report_path,
-        pr_comment=pr_comment, ratcheted=ratcheted, domains=domains,
+        pr_comment=pr_comment, ratcheted=ratcheted, domains=domains, error=write_error,
     )
 
 
@@ -206,14 +222,22 @@ def _fan_out(
     cwd: Path,
     max_workers: int,
 ) -> List[rv.AxisResult]:
-    """Run the axes concurrently; parse each into an AxisResult (order = AXES)."""
+    """Run the axes concurrently; parse each into an AxisResult (order = AXES).
+
+    Any exception in an axis (a broken runner, a parse error) degrades that axis to
+    inconclusive rather than crashing the fan-out — the gate then treats it as a
+    non-pass (skeptical), never a silent success.
+    """
     def one(axis: str) -> rv.AxisResult:
-        res = runners[axis].run(prompts[axis], cwd=cwd)
-        if not res.ok:
-            return rv.AxisResult(axis=axis, ran=False, error=res.error or "agent failed")
-        return rv.AxisResult(
-            axis=axis, ran=True, findings=rv.parse_findings(axis, res.output)
-        )
+        try:
+            res = runners[axis].run(prompts[axis], cwd=cwd)
+            if not res.ok:
+                return rv.AxisResult(axis=axis, ran=False, error=res.error or "agent failed")
+            return rv.AxisResult(
+                axis=axis, ran=True, findings=rv.parse_findings(axis, res.output)
+            )
+        except Exception as exc:  # noqa: BLE001 — any axis failure → inconclusive, not a crash
+            return rv.AxisResult(axis=axis, ran=False, error=str(exc))
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {axis: pool.submit(one, axis) for axis in rv.AXES}
@@ -234,10 +258,23 @@ def _write_report(reviews_dir: Path, change: rv.ChangeSet, report: str) -> Path:
 def _ratchet_blocking(
     skills_dir: Path, decision: rv.Gate, domains: List[str]
 ) -> List[Path]:
-    """Ratchet each CRITICAL/HIGH finding into skills/ (recalled next review)."""
-    domain = domains[0] if domains else None
+    """Ratchet each CRITICAL/HIGH finding into skills/ (recalled next review).
+
+    Each finding is tagged with the domain inferred from ITS OWN file, so it is
+    recalled in the right domain's future reviews — not blanket-tagged with the
+    first inferred domain. Falls back to the change-wide first domain when the
+    finding has no file (or its file matches no hint).
+    """
+    fallback = domains[0] if domains else None
     paths: List[Path] = []
     for f in decision.blocking:
+        domain = fallback
+        if f.file:
+            inferred = rv.infer_domains([f.file])
+            # infer_domains is never empty (defaults to classic-ml); prefer it
+            # only when the file actually matched a hint, else keep the fallback.
+            if inferred and inferred != [rv.DEFAULT_DOMAIN]:
+                domain = inferred[0]
         title = f"review finding: {f.message.strip()[:80]}"
         lesson = f"[{f.severity}/{f.axis}] {f.file or '-'}: {f.message.strip()}"
         paths.append(ratchet_to_skills(skills_dir, title, lesson, domain))

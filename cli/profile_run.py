@@ -88,10 +88,12 @@ def run_profile(
 
     text = result.output.strip()
     problems = validate_profile(text)
-    if ML_LOGIC_HEADER not in text and SYSTEM_LOGIC_HEADER not in text:
-        # Agent produced neither section — write the skeleton instead of garbage.
+    if ML_LOGIC_HEADER not in text or SYSTEM_LOGIC_HEADER not in text:
+        # Agent produced an unusable profile (missing at least one mandatory
+        # section) — write the fillable skeleton instead of half/garbage output, so
+        # the operator always gets a structurally valid file to complete.
         text = profile_skeleton(project_name or root.name)
-        problems = ["agent produced no recognizable sections; wrote skeleton instead"]
+        problems = ["agent produced incomplete sections; wrote skeleton instead"]
 
     out = profile_path(root)
     write_artifact(out, text + "\n")

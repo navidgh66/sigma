@@ -87,3 +87,18 @@ def test_staleness_skips_missing_touched_file(tmp_path):
     prof.write_text("# profile\n")
     result = staleness(prof, [tmp_path / "deleted.py"])
     assert not result.stale
+
+
+def test_validate_flags_inverted_section_order():
+    text = "\n".join([
+        SYSTEM_LOGIC_HEADER, "", "- worker is idempotent (worker.py)", "",
+        ML_LOGIC_HEADER, "", "- grouped split (features.py)", "",
+    ])
+    problems = validate_profile(text)
+    assert any("order inverted" in p for p in problems)
+
+
+def test_skeleton_validates_for_order():
+    # Skeleton has the headers in the correct order (just empty bodies).
+    problems = validate_profile(profile_skeleton("demo"))
+    assert not any("order inverted" in p for p in problems)

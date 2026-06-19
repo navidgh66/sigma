@@ -77,12 +77,18 @@ def validate_profile(text: str) -> List[str]:
     if SYSTEM_LOGIC_HEADER not in text:
         problems.append(f"missing section: {SYSTEM_LOGIC_HEADER!r}")
     if ML_LOGIC_HEADER in text and SYSTEM_LOGIC_HEADER in text:
-        ml_body = _section_body(text, ML_LOGIC_HEADER, SYSTEM_LOGIC_HEADER)
-        sys_body = _section_body(text, SYSTEM_LOGIC_HEADER, None)
-        if not _has_content(ml_body):
-            problems.append("ML-logic section is empty")
-        if not _has_content(sys_body):
-            problems.append("system-logic section is empty")
+        # Section order matters: the body-slicing in `_section_body` assumes
+        # ML-logic precedes system-logic. An inverted profile would slice the
+        # wrong bodies and look valid — catch it here.
+        if text.index(ML_LOGIC_HEADER) >= text.index(SYSTEM_LOGIC_HEADER):
+            problems.append("section order inverted: ML-logic must precede system-logic")
+        else:
+            ml_body = _section_body(text, ML_LOGIC_HEADER, SYSTEM_LOGIC_HEADER)
+            sys_body = _section_body(text, SYSTEM_LOGIC_HEADER, None)
+            if not _has_content(ml_body):
+                problems.append("ML-logic section is empty")
+            if not _has_content(sys_body):
+                problems.append("system-logic section is empty")
     return problems
 
 
@@ -146,7 +152,9 @@ def staleness(profile: Path, touched_files: List[Path]) -> Staleness:
     try:
         profile_mtime = profile.stat().st_mtime
     except OSError:
-        return Staleness(stale=False, profile_exists=True)
+        # Exists but unreadable (race / permissions) — treat as not-available so
+        # the banner tells the reviewer grounding is missing, not "all clear".
+        return Staleness(stale=False, profile_exists=False)
 
     newest: Optional[str] = None
     newest_mtime = profile_mtime

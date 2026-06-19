@@ -64,9 +64,9 @@ _DOMAIN_HINTS = (
     ("ingest", "data-engineering"),
     ("analysis", "data-analysis"),
     ("notebook", "data-analysis"),
-    ("deep", "deep-learning"),
+    ("deep-learning", "deep-learning"),
     ("torch", "deep-learning"),
-    ("net", "deep-learning"),
+    ("neural", "deep-learning"),
 )
 
 
@@ -95,18 +95,16 @@ _PLUSPLUS_RE = re.compile(r"^\+\+\+ b/(?P<path>.+)$")
 def parse_changed_files(diff: str) -> List[str]:
     """Extract the changed file paths from a unified diff (deterministic order).
 
-    Handles both the `diff --git` header and `+++ b/` lines; ignores /dev/null
-    (deletions still report the `a/` path via the git header). Deduped, preserving
-    first-seen order so output is stable.
+    Handles both the `diff --git` header and `+++ b/` lines. A deleted file's git
+    header shows the same path on both sides (`a/x b/x`), so the `b/` path is
+    always a real path here; the `+++ /dev/null` line for deletions is handled (and
+    skipped) below. Deduped, preserving first-seen order so output is stable.
     """
     seen: Dict[str, None] = {}
     for line in diff.splitlines():
         m = _DIFF_GIT_RE.match(line)
         if m:
-            path = m.group("b")
-            if path == "/dev/null":
-                path = m.group("a")
-            seen.setdefault(path, None)
+            seen.setdefault(m.group("b"), None)
             continue
         m = _PLUSPLUS_RE.match(line)
         if m and m.group("path") != "/dev/null":
@@ -170,7 +168,7 @@ class Finding:
 _FINDING_RE = re.compile(
     r"^\s*FINDING\s*\|\s*(?P<sev>[A-Za-z]+)\s*\|\s*(?P<loc>[^|]*)\s*\|\s*(?P<msg>.+?)\s*$"
 )
-_LOC_RE = re.compile(r"^(?P<file>.+?)(?::(?P<line>\d+))?$")
+_LOC_RE = re.compile(r"(?P<file>.+):(?P<line>\d+)")
 
 
 def parse_findings(axis: str, output: str) -> List[Finding]:
@@ -188,23 +186,31 @@ def parse_findings(axis: str, output: str) -> List[Finding]:
         sev = m.group("sev").upper()
         if sev not in SEVERITIES:
             sev = "MEDIUM"
+        msg = m.group("msg").strip()
+        if not msg:
+            # A whitespace-only message is not a real finding — skip it rather
+            # than emit a blank line into the report.
+            continue
         loc = (m.group("loc") or "").strip()
         file, lineno = _split_loc(loc)
-        findings.append(
-            Finding(axis=axis, severity=sev, file=file, line=lineno, message=m.group("msg"))
-        )
+        findings.append(Finding(axis=axis, severity=sev, file=file, line=lineno, message=msg))
     return findings
 
 
 def _split_loc(loc: str) -> tuple:
-    """Split a `file:line` location into (file, line|None). `-`/empty → ('', None)."""
+    """Split a `file:line` location into (file, line|None). `-`/empty → ('', None).
+
+    A line number is only split off when the WHOLE location ends in `:<digits>`
+    (full match). A path that itself contains colons but no trailing line (e.g.
+    `schema:v2`) is kept intact as the file — the lazy-match ambiguity that would
+    misread the last colon-segment as a line number is avoided.
+    """
     if not loc or loc == "-":
         return "", None
-    m = _LOC_RE.match(loc)
-    if not m:
-        return loc, None
-    line = m.group("line")
-    return m.group("file"), (int(line) if line else None)
+    m = _LOC_RE.fullmatch(loc)
+    if m:
+        return m.group("file"), int(m.group("line"))
+    return loc, None
 
 
 @dataclass

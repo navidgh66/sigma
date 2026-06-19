@@ -129,13 +129,17 @@ def _tokens_per_unit(op: str, rows: List[dict]) -> tuple:
 
 
 def calibrate(op: str, rows: List[dict]) -> Optional[float]:
-    """Mean actual tokens-per-unit for `op` from the ledger, or None if no usable rows.
+    """Tokens-per-unit for `op` from the ledger, or None if no usable rows.
 
-    Skips rows with missing/zero units or non-numeric tokens (defensive against a
-    hand-edited or partially-written ledger). Returns None when nothing usable is
-    found, so the caller falls back to the static factor (fail-safe).
+    Uses a WEIGHTED factor — total tokens / total units across usable rows — so a
+    large run counts proportionally more than a tiny one (an unweighted mean of
+    per-row ratios over-weights small-run outliers). Skips rows with missing/zero
+    units or non-numeric tokens (defensive against a hand-edited or partially
+    written ledger). Returns None when nothing usable is found, so the caller falls
+    back to the static factor (fail-safe).
     """
-    samples: List[float] = []
+    total_tokens = 0.0
+    total_units = 0.0
     for row in rows:
         if not isinstance(row, dict) or row.get("op") != op:
             continue
@@ -145,10 +149,11 @@ def calibrate(op: str, rows: List[dict]) -> Optional[float]:
             continue
         if units <= 0 or tokens <= 0:
             continue
-        samples.append(float(tokens) / float(units))
-    if not samples:
+        total_tokens += float(tokens)
+        total_units += float(units)
+    if total_units <= 0:
         return None
-    return sum(samples) / len(samples)
+    return total_tokens / total_units
 
 
 # --------------------------------------------------------------------------- #
@@ -222,7 +227,9 @@ def report(rows: List[dict]) -> str:
     for row in rows:
         op = str(row.get("op", "?"))
         tokens = row.get("tokens", 0)
-        if not isinstance(tokens, (int, float)):
+        # Skip rows with non-numeric or non-positive tokens entirely — they must not
+        # inflate the run count while contributing nothing to the token total.
+        if not isinstance(tokens, (int, float)) or tokens <= 0:
             continue
         agg = by_op.setdefault(op, {"runs": 0, "tokens": 0.0, "est": 0.0, "est_runs": 0})
         agg["runs"] += 1
