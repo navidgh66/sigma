@@ -68,7 +68,7 @@ Each stage reads the prior stage's artifact as context. Artifacts live under
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / <stages> / loop / hermes / board / weave / doctor / onboard / learn / launch
+cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / launch (pipeline stages are plugin-only)
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
@@ -87,7 +87,7 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/rtk/caveman)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
