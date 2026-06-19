@@ -74,4 +74,16 @@ def test_render_marks_truncation(tmp_path):
     for i in range(4):
         ratchet_to_skills(skills, f"verify failed: task {i}", f"lesson {i}", "nlp")
     block = render_recall_block(recall_lessons(skills, "nlp", limit=2))
-    assert "older lessons omitted" in block
+    assert "more lessons omitted" in block
+
+
+def test_recall_falls_back_to_dir_name_when_no_heading(tmp_path):
+    # A domain-tagged skill with NO '# heading' → title falls back to dir name,
+    # not a crash (defensive read path).
+    skills = _skills(tmp_path)
+    d = skills / "headless-lesson"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text("---\nname: x\nmetadata:\n  domain: nlp\n---\nno heading body")
+    recall = recall_lessons(skills, "nlp")
+    assert len(recall.lessons) == 1
+    assert recall.lessons[0].title == "headless-lesson"

@@ -218,8 +218,10 @@ keeps only what Claude Code cannot do in-session, plus setup.
 - Closed learning loop: `cli/skills_recall.py` (pure) reads lessons back by
   `domain:` match — `recall_lessons` excludes any skill WITHOUT a `domain:` tag
   (so vendor/sigma-present/sigma-domains never leak in), `render_recall_block`
-  caps at a limit. `run_loop` builds the block once per domain (cached) and
-  `execute_cycle(recall=...)` prepends it to the implement + verify prompts only
+  caps at a limit. `run_loop` builds the block once per domain (cached for the
+  whole batch — a lesson ratcheted mid-batch surfaces on the NEXT run, not later
+  same-domain tasks in the same batch; snapshot keeps cost bounded + deterministic)
+  and `execute_cycle(recall=...)` prepends it to the implement + verify prompts only
   (NOT logic — it grades reasoning, not domain patterns). Empty recall →
   prompts byte-identical (fail-safe). The manual `/sigma-learn-lesson` writes via
   the SAME ratchet format with a `session lesson:` title prefix (added to

@@ -351,7 +351,12 @@ def run_loop(
     recall_cache: Dict[str, str] = {}
 
     def recall_for(domain: str) -> str:
-        """Past-lessons block for a domain, built once and cached for the batch."""
+        """Past-lessons block for a domain, built once per domain and cached for
+        the batch. Cached for the whole run, so a lesson ratcheted by a failed
+        cycle this batch surfaces on the NEXT RUN, not later same-domain tasks in
+        this batch (the cache is intentionally not invalidated mid-batch — recall
+        is a per-batch snapshot, keeping cost bounded and behavior deterministic).
+        """
         if domain not in recall_cache:
             block = render_recall_block(recall_lessons(skills_dir, domain))
             recall_cache[domain] = block

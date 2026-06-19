@@ -48,34 +48,38 @@ class Recall:
     truncated: bool = False
 
 
-def _parse_lesson_body(skill_md: Path, domain: Optional[str], title: str) -> Lesson:
-    """Pull the lesson + how-to-apply lines from a ratcheted SKILL.md body."""
+def _read_lesson(skill_md: Path, domain: Optional[str]) -> Lesson:
+    """Read a ratcheted SKILL.md ONCE → title + lesson + how-to-apply.
+
+    Title is the first `# heading` (else the parent dir name). On OSError, returns
+    a Lesson titled by the dir name with empty fields (defensive, never raises).
+    """
+    title = ""
     lesson = ""
     how = ""
     try:
         for line in skill_md.read_text().splitlines():
-            m = _LESSON_RE.match(line.strip())
+            s = line.strip()
+            if not title:
+                m = _TITLE_RE.match(s)
+                if m and m.group(1).strip():
+                    title = m.group(1).strip()
+            m = _LESSON_RE.match(s)
             if m:
                 lesson = m.group(1).strip()
                 continue
-            m = _APPLY_RE.match(line.strip())
+            m = _APPLY_RE.match(s)
             if m:
                 how = m.group(1).strip()
     except OSError:
         pass
-    return Lesson(path=skill_md, domain=domain, title=title, lesson=lesson, how_to_apply=how)
-
-
-def _title_of(skill_md: Path) -> str:
-    """First `# heading` of a SKILL.md, else the parent dir name."""
-    try:
-        for line in skill_md.read_text().splitlines():
-            m = _TITLE_RE.match(line.strip())
-            if m and m.group(1).strip():
-                return m.group(1).strip()
-    except OSError:
-        pass
-    return skill_md.parent.name
+    return Lesson(
+        path=skill_md,
+        domain=domain,
+        title=title or skill_md.parent.name,
+        lesson=lesson,
+        how_to_apply=how,
+    )
 
 
 def recall_lessons(
@@ -94,8 +98,7 @@ def recall_lessons(
         meta = parse_skill_meta(skill_md)
         if meta.get("domain") != domain:
             continue
-        title = _title_of(skill_md)
-        selected.append(_parse_lesson_body(skill_md, domain, title))
+        selected.append(_read_lesson(skill_md, domain))
     truncated = len(selected) > limit
     return Recall(lessons=selected[:limit], truncated=truncated)
 
@@ -116,6 +119,6 @@ def render_recall_block(recall: Recall) -> str:
         if lesson.how_to_apply:
             lines.append(f"    apply: {lesson.how_to_apply}")
     if recall.truncated:
-        lines.append("- (older lessons omitted — most recent shown)")
+        lines.append(f"- (more lessons omitted — showing first {len(recall.lessons)})")
     lines.append("--- end past lessons ---")
     return "\n".join(lines)
