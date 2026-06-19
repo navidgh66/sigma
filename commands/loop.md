@@ -1,6 +1,6 @@
 ---
 command: /loop
-description: Autonomous loop — discover, implement, verify, ratchet failures into skills
+description: Autonomous loop — discover, implement, verify, ratchet failures into skills; supports test-first (TDD), parallel tasks (team), and a logic-evaluator axis
 stage: 8
 inputs: ["sigma/specs/{date}-{slug}/tasks.md"]
 outputs: ["implementations", "verify reports", "updated skills/", "human review queue"]
