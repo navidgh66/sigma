@@ -73,4 +73,5 @@ End with `VERDICT: READY` or `VERDICT: BLOCK`.
 ## Next
 
 → READY: `/spec` (after blueprint-grill) · `/tasks` (after spec-grill)
-→ BLOCK: revise the artifact, re-run `/grill`
+→ BLOCK: revise the artifact, re-run `/grill` — or `/grill-loop` to auto-drive
+  grill→edit→re-grill (mechanical fixes auto-applied, CRITICAL/intent surfaced).
