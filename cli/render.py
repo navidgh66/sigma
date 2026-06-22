@@ -44,6 +44,17 @@ def print_logo(use_rich: bool = True) -> None:
         print(_LOGO)
 
 
+def print_update_banner(use_rich: bool = True) -> None:
+    """Show the σ logo + an update header before refreshing CLI + plugin."""
+    print_logo(use_rich=use_rich)
+    line = "↻ Updating sigma — CLI (git pull) + plugin (claude plugin update)"
+    console = _rich_console() if use_rich else None
+    if console is not None:
+        console.print(f"[bold cyan]{line}[/]")
+    else:
+        print(line)
+
+
 def print_checks(checks: List[Check], use_rich: bool = True) -> None:
     console = _rich_console() if use_rich else None
     if console is not None:
