@@ -25,7 +25,19 @@ from cli.runner import AgentResult
 # Stages that require a human to approve/inspect before Hermes continues in auto.
 SPEC_GATE_STAGE = "spec"
 VERIFY_STAGE = "verify"
+# Adversarial grill gates: a BLOCK verdict stops the auto chain for human review
+# (a logic flaw in the design/spec is exactly what a human should catch before code).
+GRILL_GATE_STAGES = ("grill-blueprint", "grill-spec")
 DEFAULT_MAX_HOPS = 12
+
+
+def _grill_ready(grill_output: str) -> bool:
+    """Parse a grill verdict. Defaults to BLOCK if absent (skeptical, like verify)."""
+    for line in reversed(grill_output.splitlines()):
+        s = line.strip().upper()
+        if s.startswith("VERDICT:"):
+            return "READY" in s
+    return False
 
 
 @dataclass
@@ -115,6 +127,20 @@ def run_hermes(
             _log(workspace, f"{stage}: FAILED ({run_result.error})")
             result.ok = False
             result.gate = "stage-failed"
+            break
+
+        # Grill gate: stop the chain on a BLOCK verdict (human gate). A design/spec
+        # logic flaw is what a human should catch before any code is generated.
+        if stage in GRILL_GATE_STAGES and not _grill_ready(run_result.output or ""):
+            events.append_event(
+                workspace,
+                events.Event(
+                    task=stage, stage=stage, status=events.STATUS_FAILED,
+                    verdict="BLOCK", ts=now,
+                ),
+            )
+            _log(workspace, f"{stage}: grill BLOCK — stopping for review")
+            result.gate = "grill-blocked"
             break
 
         # Verify stage: stop the chain on a FAIL verdict (human gate).

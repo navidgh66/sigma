@@ -73,33 +73,83 @@ def test_single_step_writes_log(tmp_path):
 
 
 # --------------------------- auto mode --------------------------- #
-def test_auto_runs_chain_until_spec_gate(tmp_path):
-    """Auto from empty workspace should stop at the spec approval gate."""
-    ws = _ws(tmp_path, [])
-    calls = []
+def _chain_exec(calls, *, grill="READY"):
+    """Executor that writes each artifact (so scan_state advances) and emits a
+    READY grill verdict by default so the chain flows past the grill gates."""
 
-    # Executor that also creates the artifact so scan_state advances.
     def _exec(stage_name, workspace, agent=None):
         calls.append(stage_name)
         from cli.pipeline import load_stage
 
         st = load_stage(stage_name)
         if st and not st.artifact.endswith("/"):
-            (workspace / st.artifact).write_text("x")
-        return AgentResult(ok=True, output="done")
+            p = workspace / st.artifact
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x")
+        out = f"VERDICT: {grill}" if stage_name.startswith("grill-") else "done"
+        return AgentResult(ok=True, output=out)
+
+    return _exec
+
+
+def test_auto_runs_chain_until_spec_gate(tmp_path):
+    """Auto from empty workspace should grill the blueprint, then stop at spec gate."""
+    ws = _ws(tmp_path, [])
+    calls = []
+    result = hermes.run_hermes(
+        "build it", ws, auto=True, execute=_chain_exec(calls),
+        make_runner=lambda: FakeRunner(),
+    )
+    # grill-blueprint runs (READY) before spec; spec is the human approval gate.
+    assert calls == ["research", "propose", "blueprint", "grill-blueprint", "spec"]
+    assert result.gate == "spec-approval"
+
+
+def test_auto_stops_on_grill_block(tmp_path):
+    """A BLOCK verdict at the grill-blueprint gate halts the chain for review."""
+    ws = _ws(tmp_path, [])
+    calls = []
+    result = hermes.run_hermes(
+        "build it", ws, auto=True, execute=_chain_exec(calls, grill="BLOCK"),
+        make_runner=lambda: FakeRunner(),
+    )
+    assert calls[-1] == "grill-blueprint"   # stopped at the gate
+    assert "spec" not in calls              # never reached spec
+    assert result.gate == "grill-blocked"
+
+
+def test_grill_missing_verdict_blocks(tmp_path):
+    """No VERDICT line at a grill gate defaults to BLOCK (skeptical)."""
+    ws = _ws(tmp_path, [])
+    calls = []
+
+    def _exec(stage_name, workspace, agent=None):
+        calls.append(stage_name)
+        from cli.pipeline import load_stage
+
+        st = load_stage(stage_name)
+        if st and not st.artifact.endswith("/"):
+            p = workspace / st.artifact
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x")
+        return AgentResult(ok=True, output="done")  # no VERDICT anywhere
 
     result = hermes.run_hermes(
         "build it", ws, auto=True, execute=_exec, make_runner=lambda: FakeRunner(),
     )
-    assert calls == ["research", "propose", "blueprint", "spec"]
-    assert result.gate == "spec-approval"
+    assert result.gate == "grill-blocked"
+    assert calls[-1] == "grill-blueprint"
 
 
 def test_auto_stops_on_verify_fail(tmp_path):
+    # Seed through tasks INCLUDING the grill gate reports so the chain reaches verify.
     ws = _ws(
         tmp_path,
         ["research.md", "proposals.md", "architecture.md", "spec.md", "tasks.md"],
     )
+    (ws / "grill").mkdir()
+    (ws / "grill" / "blueprint.md").write_text("VERDICT: READY")
+    (ws / "grill" / "spec.md").write_text("VERDICT: READY")
     calls = []
 
     def _exec(stage_name, workspace, agent=None):

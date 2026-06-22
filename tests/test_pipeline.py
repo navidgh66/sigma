@@ -19,9 +19,32 @@ def test_stage_order():
 
 def test_next_stage():
     assert next_stage("research") == "propose"
-    assert next_stage("spec") == "tasks"
+    # A grill gate now sits between blueprint→spec and spec→tasks.
+    assert next_stage("blueprint") == "grill-blueprint"
+    assert next_stage("grill-blueprint") == "spec"
+    assert next_stage("spec") == "grill-spec"
+    assert next_stage("grill-spec") == "tasks"
     assert next_stage("loop") is None
     assert next_stage("unknown") is None
+
+
+def test_grill_gate_stages_share_grill_template():
+    # grill-blueprint / grill-spec reuse commands/grill.md, write a grill report.
+    gb = load_stage("grill-blueprint")
+    assert gb is not None
+    assert gb.template_path.name == "grill.md"
+    assert gb.artifact == "grill/blueprint.md"
+    assert gb.exists is True  # commands/grill.md ships in the repo
+
+
+def test_render_grill_stage_passes_target(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "architecture.md").write_text("ARCH_BODY")
+    stage = load_stage("grill-blueprint")
+    text = render_invocation(stage, ws)
+    assert "--target blueprint" in text
+    assert "ARCH_BODY" in text  # grills its upstream artifact
 
 
 def test_load_stage_resolves_template():
