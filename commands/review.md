@@ -25,7 +25,13 @@ If the diff is empty: stop, "nothing to review" (not a failure).
    domains (the `sigma-lessons` skill) and the domains' `logic-evaluator.md`.
 
 ## Run three axes (distinct agents, same context bundle)
-1. **code** — bugs, security, error handling, conventions.
+1. **code** — bugs, security, error handling, conventions. Also check:
+   - Does the diff satisfy the **BDD scenarios** in the spec for the changed
+     tasks? For each scenario: is Given/When/Then demonstrably covered by a
+     test or verifiable behavior in the code? Missing scenario coverage = HIGH.
+   - Does the PR include a **bundled summary + risk assessment** (what changed,
+     potential breakage points, risk level)? Missing = MEDIUM (hard to review
+     at scale without it).
 2. **ml-logic** — apply the domain `logic-evaluator.md` to the change against the
    profile's ML-logic invariants: broken splits/leakage guards, silent metric/loss
    changes, reward errors, eval non-determinism, train/serve skew.
