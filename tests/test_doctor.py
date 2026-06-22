@@ -83,6 +83,20 @@ def test_update_invokes_updater():
     assert called == ["updated"]
 
 
+def test_update_shows_sigma_banner(capsys):
+    # --update prints the σ logo + update header before the updater runs.
+    checks, _ = _checks(("python", OK, False))
+    doctor.run_doctor(
+        update=True,
+        run_all=lambda **k: checks,
+        updater=lambda: None,
+        use_rich=False,
+    )
+    out = capsys.readouterr().out
+    assert "σ" in out
+    assert "Updating sigma" in out
+
+
 def test_default_updater_updates_plugin_when_claude_present():
     # When `claude` is on PATH, the updater refreshes the marketplace AND the
     # plugin (the CLI git pull alone never reaches the plugin surface).
