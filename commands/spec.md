@@ -38,9 +38,23 @@ Scenario: <behavior name>
   Then <measurable, falsifiable outcome>
 ```
 
-Cover the happy path AND give edge cases their own scenarios (empty input,
-boundary values, dependency failure). A user-facing flow with no behavioral
-scenario is an incomplete spec.
+Cover the happy path AND give edge cases their own **named** scenarios:
+
+```gherkin
+Scenario: null input rejected
+  Given no input is provided
+  When the endpoint is called
+  Then a 400 error is returned with a clear message
+
+Scenario: dependency unavailable
+  Given the downstream service is down
+  When the action is attempted
+  Then the system fails gracefully with a logged error (no data loss)
+```
+
+A user-facing flow with no behavioral scenario is an incomplete spec. Each
+scenario becomes a direct test target (TDD) and a review contract — `/verify`
+and `/review` check that every scenario is demonstrably covered in the code.
 
 ## Format / token discipline
 
