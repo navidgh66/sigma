@@ -66,7 +66,7 @@ sigma onboard                        # friendly first-run: domains, API keys, RT
 sigma doctor                         # diagnose + confirm-gated fixes
 sigma doctor --check                 # read-only, exit 1 on any failure (CI)
 sigma doctor --yes                   # apply all fixes without prompting
-sigma doctor --update                # pull sigma + re-vendor before checking
+sigma doctor --update                # update BOTH surfaces: git pull the CLI + refresh the plugin (claude plugin update sigma@sigma; restart CC to apply), then check
 ```
 
 ## Pipeline

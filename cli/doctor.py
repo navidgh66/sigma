@@ -3,8 +3,9 @@
 Runs the pure `checks` engine, renders a report, and (unless `--check`) offers to
 apply each fixable problem's fix. Every mutating fix is confirm-gated by default;
 `--yes` applies them without prompting; `--check` is strictly read-only and is
-the CI-friendly mode (exit 1 if anything failed). `--update` pulls sigma and
-re-vendors skills before re-checking.
+the CI-friendly mode (exit 1 if anything failed). `--update` refreshes BOTH
+install surfaces — git-pulls the CLI repo AND updates the Claude Code plugin —
+before re-checking.
 
 Check-running, confirmation, and the updater are injected so the whole flow is
 testable without touching the host.
@@ -19,15 +20,43 @@ from cli import render
 from cli.checks import FAIL, OK, Check
 
 
-def _default_updater() -> None:
-    """Update path: pull sigma, re-vendor skills. Best-effort, never fatal."""
+def _default_updater(
+    spawn: Optional[Callable[[List[str]], int]] = None,
+    which: Optional[Callable[[str], Optional[str]]] = None,
+) -> None:
+    """Update both surfaces. Best-effort, never fatal.
+
+    Two independent installs ship sigma: the CLI (this cloned repo = sigma_home)
+    and the Claude Code PLUGIN (a version-pinned copy under
+    ~/.claude/plugins/cache/). A `git pull` here only refreshes the CLI — the
+    plugin slash-commands (/grill, /spec …) live elsewhere and must be refreshed
+    through the `claude` CLI. So we do both:
+
+    1. CLI: `git pull --ff-only` on sigma_home.
+    2. Plugin: refresh the `sigma` marketplace, then `claude plugin update
+       sigma@sigma` (needs a Claude Code restart to apply). Skipped silently when
+       the `claude` binary is absent.
+
+    `spawn` / `which` are injectable so the flow is testable without touching the
+    host (mirrors caveman/rtk).
+    """
+    import shutil
     import subprocess
 
     from cli.paths import sigma_home
 
+    spawn = spawn or subprocess.call
+    which = which or shutil.which
+
     home = sigma_home()
     if (home / ".git").exists():
-        subprocess.call(["git", "-C", str(home), "pull", "--ff-only"])
+        spawn(["git", "-C", str(home), "pull", "--ff-only"])
+
+    # Plugin surface — only when the `claude` CLI is on PATH (mirror caveman/rtk).
+    if which("claude"):
+        spawn(["claude", "plugin", "marketplace", "update", "sigma"])
+        spawn(["claude", "plugin", "update", "sigma@sigma"])
+        print("  ↻ plugin updated — restart Claude Code to load the new version.")
 
 
 def run_doctor(
