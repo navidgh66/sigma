@@ -71,10 +71,12 @@ sigma doctor --update                # pull sigma + re-vendor before checking
 
 ## Pipeline
 
-`research → propose → blueprint → spec → tasks → implement-task → verify → loop`
+`research → propose → blueprint →[grill]→ spec →[grill]→ tasks → implement-task → verify → loop`
 
 Each stage reads the prior stage's artifact as context. Artifacts live under
-`sigma/specs/{YYYY-MM-DD}-{slug}/`.
+`sigma/specs/{YYYY-MM-DD}-{slug}/`. `/grill` is an adversarial gate (not a numbered
+stage) that pressure-tests the blueprint and the spec before code — skeptical,
+maker ≠ griller, BLOCKs on a CRITICAL/HIGH logic flaw (human may override).
 
 ## Layout
 
@@ -114,7 +116,7 @@ cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
-commands/           slash-command templates (one per stage + /learn + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
+commands/           slash-command templates (one per stage + /grill + /learn + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
@@ -122,6 +124,7 @@ skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + c
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 skills/sigma-domains/  skill: auto-surface the right domain context-engine (indexes context-engines/, no duplication)
 skills/sigma-lessons/  skill: recall past ratcheted lessons by domain in-session (read side of the loop)
+skills/sigma-grilling/  skill: the grilling rubric — adversarially interrogate a blueprint/spec before code (powers /grill); maker ≠ griller, BLOCK on doubt
 skills/sigma-cost/  skill: estimate/measure/route token cost for heavy ops (review/profile/loop/research); composes with RTK/caveman, never duplicates
 installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
