@@ -40,8 +40,25 @@ def test_scan_after_research_is_propose(tmp_path):
     assert intent.scan_state(ws) == "propose"
 
 
-def test_scan_after_spec_is_tasks(tmp_path):
+def test_scan_after_blueprint_is_grill_blueprint(tmp_path):
+    # The grill-blueprint gate sits between blueprint and spec.
+    ws = _ws_with(tmp_path, ["research.md", "proposals.md", "architecture.md"])
+    assert intent.scan_state(ws) == "grill-blueprint"
+
+
+def test_scan_after_spec_is_grill_spec(tmp_path):
+    # With the blueprint grilled, spec written → grill-spec is next (gate before tasks).
     ws = _ws_with(tmp_path, ["research.md", "proposals.md", "architecture.md", "spec.md"])
+    (ws / "grill").mkdir()
+    (ws / "grill" / "blueprint.md").write_text("x")
+    assert intent.scan_state(ws) == "grill-spec"
+
+
+def test_scan_after_both_grills_is_tasks(tmp_path):
+    ws = _ws_with(tmp_path, ["research.md", "proposals.md", "architecture.md", "spec.md"])
+    (ws / "grill").mkdir()
+    (ws / "grill" / "blueprint.md").write_text("x")
+    (ws / "grill" / "spec.md").write_text("x")
     assert intent.scan_state(ws) == "tasks"
 
 
@@ -50,6 +67,9 @@ def test_scan_after_tasks_is_implement_task(tmp_path):
         tmp_path,
         ["research.md", "proposals.md", "architecture.md", "spec.md", "tasks.md"],
     )
+    (ws / "grill").mkdir()
+    (ws / "grill" / "blueprint.md").write_text("x")
+    (ws / "grill" / "spec.md").write_text("x")
     assert intent.scan_state(ws) == "implement-task"
 
 

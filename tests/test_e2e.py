@@ -17,7 +17,9 @@ class FakeRunner:
     """A runner that always succeeds, returning canned stage output."""
 
     def run(self, prompt, cwd=None):
-        # A verify prompt should pass; everything else returns generic output.
+        # Grill gate prompt → READY; verify prompt → PASS; else generic output.
+        if "--target" in prompt or "grill" in prompt.lower():
+            return AgentResult(ok=True, output="no blockers\nVERDICT: READY")
         if "VERDICT" in prompt:
             return AgentResult(ok=True, output="checks pass\nVERDICT: PASS")
         return AgentResult(ok=True, output="# stage output\nbody")
@@ -27,7 +29,7 @@ def _seed_commands(tmp_home: Path) -> None:
     """Create minimal command templates so execute_stage finds them."""
     cmds = tmp_home / "commands"
     cmds.mkdir(parents=True)
-    for name in ("research", "propose", "blueprint", "spec"):
+    for name in ("research", "propose", "blueprint", "spec", "grill"):
         (cmds / f"{name}.md").write_text(f"# /{name}\nDo the {name} stage.")
 
 
@@ -78,10 +80,14 @@ def test_hermes_auto_chain_stops_at_spec_gate(tmp_path, monkeypatch):
         now="2026-06-17T12:00:00",
     )
 
-    assert result.stages_run == ["research", "propose", "blueprint", "spec"]
+    # The grill-blueprint gate (READY) runs between blueprint and spec.
+    assert result.stages_run == [
+        "research", "propose", "blueprint", "grill-blueprint", "spec",
+    ]
     assert result.gate == "spec-approval"
     for artifact in ("research.md", "proposals.md", "architecture.md", "spec.md"):
         assert (ws / artifact).exists()
+    assert (ws / "grill" / "blueprint.md").exists()  # grill report persisted
 
 
 # --------------------------- doctor + onboard E2E --------------------------- #

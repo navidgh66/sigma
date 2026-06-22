@@ -15,12 +15,18 @@ from cli.runner import AgentResult, AgentRunner, write_artifact
 # avoid a circular import: weave_manifest imports STAGES from this module.
 CHAIN_MANIFEST = "chain.json"
 
-# Ordered pipeline. Each stage maps to commands/<name>.md and an output artifact.
+# Ordered pipeline. Each stage maps to a command template and an output artifact.
+# `template` defaults to `name` (commands/<name>.md); the two grill GATE stages
+# reuse the single commands/grill.md template (differing only by --target) and
+# write a grill report. A grill gate is adversarial (maker ≠ griller) and BLOCKs
+# the auto chain on a CRITICAL/HIGH logic flaw — see hermes.GRILL_GATE_STAGES.
 STAGES: List[Dict[str, str]] = [
     {"name": "research", "artifact": "research.md"},
     {"name": "propose", "artifact": "proposals.md"},
     {"name": "blueprint", "artifact": "architecture.md"},
+    {"name": "grill-blueprint", "artifact": "grill/blueprint.md", "template": "grill"},
     {"name": "spec", "artifact": "spec.md"},
+    {"name": "grill-spec", "artifact": "grill/spec.md", "template": "grill"},
     {"name": "tasks", "artifact": "tasks.md"},
     {"name": "implement-task", "artifact": "impl/"},
     {"name": "verify", "artifact": "verify/"},
@@ -44,10 +50,15 @@ def command_template(name: str) -> Path:
 
 
 def load_stage(name: str) -> Optional[Stage]:
-    """Resolve a stage by name, including its template path/existence."""
+    """Resolve a stage by name, including its template path/existence.
+
+    A stage's command template defaults to its name (commands/<name>.md); a
+    `template` override lets several stages share one template (the grill gates
+    both use commands/grill.md).
+    """
     for s in STAGES:
         if s["name"] == name:
-            tmpl = command_template(name)
+            tmpl = command_template(s.get("template", name))
             return Stage(
                 name=name,
                 artifact=s["artifact"],
@@ -67,14 +78,23 @@ def next_stage(name: str) -> Optional[str]:
     return None
 
 
-# Each stage reads the prior stage's artifact as input context.
+# Each stage reads the prior stage's artifact as input context. The grill gates
+# read the artifact they interrogate (the design, the spec).
 PRIOR_ARTIFACT: Dict[str, str] = {
     "propose": "research.md",
     "blueprint": "proposals.md",
+    "grill-blueprint": "architecture.md",
     "spec": "architecture.md",
+    "grill-spec": "spec.md",
     "tasks": "spec.md",
     "implement-task": "tasks.md",
     "verify": "spec.md",
+}
+
+# The grill gate stages and the --target each one grills (single grill template).
+GRILL_TARGET: Dict[str, str] = {
+    "grill-blueprint": "blueprint",
+    "grill-spec": "spec",
 }
 
 
@@ -151,8 +171,12 @@ def render_invocation(stage: Stage, workspace: Path) -> str:
         if context:
             upstream = PRIOR_ARTIFACT.get(stage.name)
             context_block = f"\n--- input: {upstream} ---\n{context}\n"
+    # Grill gates share one template; tell it which artifact to interrogate.
+    target = GRILL_TARGET.get(stage.name)
+    target_block = f"--target {target}\n" if target else ""
     return (
         f"Execute the sigma '{stage.name}' stage.\n"
+        f"{target_block}"
         f"Workspace: {workspace}\n"
         f"Write artifact: {workspace / stage.artifact}\n"
         f"{context_block}\n"

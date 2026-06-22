@@ -14,12 +14,12 @@ parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
 projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 **closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
 and are recalled by domain on the next run). An adversarial **`/grill`** gate
-pressure-tests the blueprint + spec before code. 402 pytest tests, ruff clean.
+pressure-tests the blueprint + spec before code. 408 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 402 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 408 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -77,7 +77,11 @@ sigma doctor --update                # update BOTH surfaces: git pull the CLI + 
 Each stage reads the prior stage's artifact as context. Artifacts live under
 `sigma/specs/{YYYY-MM-DD}-{slug}/`. `/grill` is an adversarial gate (not a numbered
 stage) that pressure-tests the blueprint and the spec before code — skeptical,
-maker ≠ griller, BLOCKs on a CRITICAL/HIGH logic flaw (human may override).
+maker ≠ griller, BLOCKs on a CRITICAL/HIGH logic flaw (human may override). In the
+**autonomous** `hermes --auto` chain the two gates ARE pipeline stages —
+`grill-blueprint` (after blueprint) + `grill-spec` (after spec), both reusing the
+single `commands/grill.md` template via a `--target`; a BLOCK verdict halts the
+chain at a `grill-blocked` human gate (mirrors the verify-failed gate).
 `/grill-loop` wraps it in a bounded grill→triage→edit→re-grill cycle: a DISTINCT
 editor agent auto-applies only **mechanical** fixes (add BDD scenario, pin
 version, define term, add implied edge case); **CRITICAL + any intent-changing**
@@ -97,7 +101,7 @@ cli/research.py     parallel fan-out + cited aggregation → research.md; --web 
 cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
-cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json
+cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json. STAGES includes the two grill GATE stages (grill-blueprint/grill-spec, shared grill template via `template` key + GRILL_TARGET)
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
 cli/domains_index.py  pure: resolve each domain → implementer/verifier/logic-evaluator files; powers skills/sigma-domains
@@ -215,7 +219,11 @@ keeps only what Claude Code cannot do in-session, plus setup.
   Both flip the SAME adapter web-search path (`run_research`'s `web_search = deep
   or web`); only the brief + timeout differ.
 - `sigma hermes` runs ONE stage by default; `--auto` chains until a human gate
-  (spec-approval, verify-failed), a stage failure, or the hop budget (`max_hops`).
+  (spec-approval, **grill-blocked**, verify-failed), a stage failure, or the hop
+  budget (`max_hops`). The grill gates (`grill-blueprint`/`grill-spec`) run the
+  shared `commands/grill.md` with a `--target`; `hermes._grill_ready` parses the
+  verdict skeptically (no `VERDICT: READY` → BLOCK, same default-deny as
+  `_verdict_pass`) and a BLOCK stops the chain at `grill-blocked` for human review.
 - The board is a **pure projection**: it never mutates state. Hermes/loop append
   to `events.jsonl`; `build_columns` folds tasks + latest-event-per-task into
   columns. `events.Event.ts` is passed in by the caller, never generated in the
