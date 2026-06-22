@@ -30,4 +30,4 @@ Design the **system architecture** for the chosen approach.
 
 ## Next
 
-→ `/spec`
+→ `/grill --target blueprint` (catch design/logic flaws before spec) → `/spec`
