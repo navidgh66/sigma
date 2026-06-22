@@ -13,12 +13,13 @@ parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
 `weave`, and setup. **Hermes** routes plain language to stages; a **kanban board**
 projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 **closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
-and are recalled by domain on the next run). 399 pytest tests, ruff clean.
+and are recalled by domain on the next run). An adversarial **`/grill`** gate
+pressure-tests the blueprint + spec before code. 402 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 399 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 402 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -102,12 +103,12 @@ cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
 cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman)
-cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update
+cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
-cli/render.py       σ logo + rich/plain check output + confirm prompt
+cli/render.py       σ logo + update banner + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
 cli/skills_recall.py  pure: recall_lessons(skills_dir, domain) + render_recall_block — read side that closes the learning loop
@@ -223,6 +224,14 @@ keeps only what Claude Code cannot do in-session, plus setup.
 - `cli/checks.py` probes are **pure** (return `Check`, never print/mutate); a fix
   is a `(description, callable)` the caller applies. `sigma doctor` confirms each
   fix unless `--yes`; `--check` is read-only (exit 1 on any FAIL — CI gate).
+- `--update` refreshes **both** install surfaces — they are separate dirs on disk:
+  the CLI (`git pull --ff-only` on `sigma_home`) AND the Claude Code plugin
+  (`claude plugin marketplace update sigma` + `claude plugin update sigma@sigma`).
+  The plugin step is guarded by `which("claude")` (skipped silently when absent,
+  like caveman/rtk) and applies on CC restart. `_default_updater`'s `spawn`/`which`
+  are injectable (host-free tests). A git pull alone never reaches the plugin —
+  that's why the plugin slash-commands lagged before this. `--update` prints the
+  σ banner (`render.print_update_banner`) first.
 - Secrets (`cli/secrets.py`) go ONLY to `~/.sigma/.env` (chmod 600, git-ignored),
   NEVER `sigma.config.yml`. An ambient env var of the same name counts as present.
 - RTK install/activate (`cli/rtk.py`) is **confirm-gated** — it touches the global
