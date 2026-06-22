@@ -21,8 +21,12 @@ outputs: ["sigma/specs/{date}-{slug}/verify/{task_id}.md"]
    - mlops: train/serve skew, drift wiring, rollback thresholds
    - ai-agent / llm: eval coverage, tool-schema validity, injection defense
    - tests, types, linters as applicable
-3. Write `verify/{task_id}.md`: PASS / FAIL per criterion + evidence.
-4. On FAIL → feed back to `/implement-task` (or `/loop` ratchets it).
+3. **Scenario coverage check** — for each BDD scenario in the spec for this
+   task: does the implementation satisfy the Given / When / Then contract?
+   A scenario with no passing test or evidence = FAIL.
+4. Write `verify/{task_id}.md`: PASS / FAIL per criterion + scenario coverage
+   table + evidence.
+5. On FAIL → feed back to `/implement-task` (or `/loop` ratchets it).
 
 ## Eval axis — for generative / ML outputs (not just binary)
 
