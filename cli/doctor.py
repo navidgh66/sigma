@@ -74,6 +74,7 @@ def run_doctor(
     updater = updater or _default_updater
 
     if update:
+        render.print_update_banner(use_rich=use_rich)
         updater()
 
     results: List[Check] = run_all()
