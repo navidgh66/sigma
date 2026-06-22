@@ -15,11 +15,38 @@ Write the **implementation-ready specification**.
 1. Read `architecture.md`.
 2. Produce `spec.md` with:
    - Goal and scope (and explicit **out-of-scope**)
+   - The **"why behind the what"** — rationale/background so the implementer can
+     reason forward, not just the *what*.
    - Component specs: signatures, data schemas, config, error handling
    - For ML: data contracts, feature definitions, model interface, eval protocol
-   - **Acceptance criteria** (testable, measurable)
+   - **Acceptance criteria as BDD scenarios** (see below) — testable, measurable
    - Verification steps per component
    - Named files to create/modify
+   - Pinned **version numbers** for libraries / models (agents otherwise fall back
+     to stale training-cutoff versions).
+
+## Acceptance criteria → BDD (Behavior-Driven)
+
+Express each acceptance criterion as a **Scenario / Given / When / Then** block
+(State → Action → Outcome). This turns vague intent into criteria an agent can
+build to without guessing, and feeds `/grill` and `--tdd` directly:
+
+```gherkin
+Scenario: <behavior name>
+  Given <starting state / inputs>
+  When <action>
+  Then <measurable, falsifiable outcome>
+```
+
+Cover the happy path AND give edge cases their own scenarios (empty input,
+boundary values, dependency failure). A user-facing flow with no behavioral
+scenario is an incomplete spec.
+
+## Format / token discipline
+
+The spec is a compiled instruction set, not just docs — every char is budget +
+latency. Keep **narrative in Markdown**; render **deeply nested config (>3
+levels) as flat YAML**, not heavy nested JSON in prose (avoids the "format tax").
 
 ## Rules
 
@@ -29,4 +56,4 @@ Write the **implementation-ready specification**.
 
 ## Next
 
-→ `/tasks`
+→ `/grill --target spec` (grill it before decomposing) → `/tasks`

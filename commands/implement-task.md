@@ -32,6 +32,24 @@ implementer (one tests, another codes).
 
 Then hand to `/verify` (still a separate checker — maker ≠ checker).
 
+## Forensic mode — when the task is a BUG FIX
+
+When things break, switch from building to forensics. Goal: root-cause analysis
+and a **surgical** repair, nothing more.
+
+1. **Evidence, not symptoms** — work from evidence, not a vibe. Not "the button
+   doesn't work" but "logs (`<exact command>`) show a 403 at the auth step." Trace
+   the flow explicitly: "request → load balancer → auth strips header → pod fails."
+2. **Failing repro FIRST** — write a failing unit test or a `curl`/CLI repro that
+   reproduces the bug BEFORE any fix (a distinct step, like `--tdd`). Keep it in
+   the codebase so the bug can't silently return.
+3. **Root cause only** — fix the root cause and nothing else. Do NOT "clean up"
+   unrelated code or rename variables in the same change (that complicates review;
+   renames are a separate task).
+4. Note the repro + root cause in `impl/{task_id}.md`.
+
+Then hand to `/verify` (separate checker — maker ≠ checker).
+
 ## Multiple tasks in parallel ("team")
 
 `/implement-task` is single-task. To work several INDEPENDENT tasks at once
