@@ -83,6 +83,28 @@ def test_update_invokes_updater():
     assert called == ["updated"]
 
 
+def test_default_updater_updates_plugin_when_claude_present():
+    # When `claude` is on PATH, the updater refreshes the marketplace AND the
+    # plugin (the CLI git pull alone never reaches the plugin surface).
+    spawned = []
+    doctor._default_updater(
+        spawn=lambda cmd: spawned.append(cmd) or 0,
+        which=lambda name: "/usr/bin/claude" if name == "claude" else None,
+    )
+    assert ["claude", "plugin", "marketplace", "update", "sigma"] in spawned
+    assert ["claude", "plugin", "update", "sigma@sigma"] in spawned
+
+
+def test_default_updater_skips_plugin_when_claude_absent():
+    # No `claude` binary → only the CLI git pull may run; no plugin commands.
+    spawned = []
+    doctor._default_updater(
+        spawn=lambda cmd: spawned.append(cmd) or 0,
+        which=lambda name: None,
+    )
+    assert not any("plugin" in cmd for cmd in spawned)
+
+
 def test_fix_failure_keeps_fail_exit(capsys):
     # A fix that returns False should not flip the exit code to success.
     failing = [Check("deps", FAIL, "bad", fix=("try", lambda: False))]
