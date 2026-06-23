@@ -28,7 +28,7 @@ ok()   { printf "      %s✓%s %s\n" "$C_GREEN" "$C_RST" "$1"; }
 warn() { printf "      %s⚠%s %s\n" "$C_YEL" "$C_RST" "$1"; }
 
 # --- banner ---------------------------------------------------------------- #
-# Bold block SIGMA (figlet "ANSI Shadow" style, like an internal tool). Drawn line by
+# Bold block SIGMA (figlet "ANSI Shadow" style). Drawn line by
 # line for a quick reveal on a TTY; printed at once under curl|sh.
 print_banner() {
   printf "\n%s%s" "$C_CYAN" "$C_B"

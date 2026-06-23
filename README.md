@@ -1,184 +1,218 @@
-# σ sigma
+<div align="center">
 
-> **Personal AI workflow toolkit for data science & AI engineering.**
-> Clone once. Works everywhere. Research-first, spec-driven, loop-engineered.
+# σ · sigma
 
-`sigma` is a portable, composable workflow system that wraps Claude Code with a
-disciplined pipeline built for data scientists and AI engineers — from classic ML
-to deep learning, NLP, reinforcement learning, data engineering, MLOps, LLM
-engineering, and AI-agent-harness engineering.
+**A portable, spec-driven, loop-engineered AI workflow toolkit for data science & AI engineering.**
 
-It is inspired by 
-[Loop Engineering (Addy Osmani)](https://addyosmani.com/blog/loop-engineering/),
-the [Anthropic agentic playbook](https://www.anthropic.com/research/building-effective-agents),
-and meta-harness ideas from OmniGent.
+*Clone once. Works in every repo. You design the loop — the loop does the work.*
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
+[![Tests](https://img.shields.io/badge/tests-419%20passing-brightgreen.svg)](tests/)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
+[![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
+
+</div>
 
 ---
 
-## Philosophy
+`sigma` wraps [Claude Code](https://docs.anthropic.com/claude-code) with a
+disciplined, research-first pipeline built for the way AI/ML work actually
+happens — from classic ML and deep learning to NLP, RL, data engineering, MLOps,
+LLM engineering, and AI-agent harness design.
+
+It's **plugin-first**: every pipeline stage is a native slash command, the domain
+knowledge and the learning layer are native skills. A thin CLI handles only what
+Claude Code can't do in a single session — real parallel multi-model research,
+autonomous hands-off runs, a live kanban board, and setup.
 
 > "You shouldn't be prompting coding agents anymore. You should be designing
-> loops that prompt your agents." — Addy Osmani
+> loops that prompt your agents." — [Addy Osmani](https://addyosmani.com/blog/loop-engineering/)
 
-`sigma` is that loop. You configure it once and it drives the work; you stay the
-engineer — reviewing, steering, and ratcheting failures into permanent knowledge.
+`sigma` is that loop.
 
 ---
 
-## The Pipeline
+## ✨ Why sigma
+
+- **🔬 Multi-model research** — fan out a question to Claude + Gemini + GPT *in
+  parallel*, aggregate into one cited `research.md`. Real concurrency, not a
+  sequential loop.
+- **📋 Spec-driven, BDD-native** — specs carry Gherkin `Scenario / Given / When /
+  Then` acceptance criteria that flow as a contract through implement → verify →
+  review. No vibe-coding into production.
+- **🔥 Adversarial grilling** — a skeptical `/grill` gate pressure-tests the
+  blueprint and the spec *before* any code exists. `/grill-loop` auto-drives
+  grill → triage → edit → re-grill (mechanical fixes auto-applied, judgment calls
+  surfaced). A logic flaw caught here costs a sentence, not a rewrite.
+- **🔁 Closed learning loop** — failures ratchet into `skills/` **and are recalled
+  by domain on the next run**. The loop doesn't just record mistakes; it stops
+  repeating them.
+- **🧑‍🔧 Maker ≠ checker, enforced** — implementer, verifier, and the optional
+  logic-evaluator are always *distinct* agents. Separation is a `ValueError`, not
+  a guideline.
+- **🤖 Autonomous when you want it** — `sigma loop --execute` runs maker→checker
+  cycles; `--tdd` writes the failing test first; `--team` runs independent tasks
+  in parallel; `--logic` adds a reasoning axis. `hermes --auto` chains whole
+  stages until a human gate.
+- **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
+  in-session by the `sigma-domains` skill.
+
+---
+
+## 🚀 Quick start
+
+```bash
+# install (global) — σ banner + staged setup
+curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
+export PATH="$PATH:$HOME/.local/bin"
+
+# friendly first run: pick domains, capture API keys, optional RTK / status line
+sigma onboard
+```
+
+Then, **inside Claude Code**, add the plugin and go:
+
+```text
+/plugin marketplace add navidgh66/sigma
+/plugin install sigma@sigma
+
+/research "your topic"   →   /propose   →   /blueprint   →   /grill
+/spec   →   /grill   →   /tasks   →   /implement-task   →   /verify   →   /loop
+```
+
+`sigma doctor` health-checks and repairs the install anytime; `sigma doctor
+--update` refreshes both the CLI and the plugin in one shot.
+
+---
+
+## 🛠️ The pipeline
 
 ```
 /research        multi-model parallel search (Claude + Gemini + GPT) → research.md
       ↓
-/propose         synthesize research → 2-3 approaches with trade-offs
+/propose         synthesize → 2-3 approaches with trade-offs + a recommendation
       ↓
 /blueprint       pick approach → architecture.md (system design)
       ↓
-/spec            detailed spec.md (interfaces, schemas, acceptance criteria)
+[ /grill ]       ⛔ adversarial gate — pressure-test the design before code
       ↓
-/tasks           domain task breakdown (which context-engine handles each task)
+/spec            spec.md — interfaces, schemas, BDD acceptance scenarios
       ↓
-/implement-task  implement one task with its domain context loaded
+[ /grill ]       ⛔ adversarial gate — pressure-test the spec before tasks
       ↓
-/verify          domain-specific checks (tests, data quality, model eval)
+/tasks           domain-routed task breakdown (waves + dependencies)
+      ↓
+/implement-task  build one task with its domain context loaded (reuse-first)
+      ↓
+/verify          domain checks + BDD scenario coverage (separate checker agent)
       ↓
 /loop            autonomous: discover → implement → verify → ratchet failures
 ```
 
-Failures (and lessons you capture with `/sigma-learn-lesson`) ratchet into
-`skills/` and are **recalled by domain on the next run** — the loop is closed, not
-just recorded. Any time, `/weave` folds the stage artifacts into one shareable
-`chain.html` (+ a machine `chain.json`).
+`/grill` is a gate, not a numbered stage — skeptical, maker ≠ griller, **BLOCKs on
+a CRITICAL/HIGH logic flaw** (human may override). In the autonomous `hermes
+--auto` chain the two gates run as stages and halt at a `grill-blocked` human gate.
+
+Any time, `/weave` folds the stage artifacts into one shareable `chain.html`
+(+ a machine-readable `chain.json`).
 
 ---
 
-## Domains (context-engines)
+## 🧠 Domains (context-engines)
+
+Each domain ships an `implementers/` + `verifiers/` pack (with a
+`logic-evaluator.md`), surfaced in-session by the `sigma-domains` skill.
 
 | Domain | Covers |
 |--------|--------|
-| `classic-ml` | sklearn, feature engineering, cross-validation, hyperparameter tuning, pipelines |
-| `deep-learning` | PyTorch/TF, training loops, CUDA, distributed training, model serving |
-| `nlp` | Transformers, tokenization, NER/NLU/NLG, fine-tuning, embeddings, RAG-adjacent |
-| `rl` | Gymnasium, PPO/SAC/DQN, reward shaping, multi-agent RL, RLHF, offline RL |
-| `data-analysis` | pandas/polars, EDA, visualization, statistical & A/B testing, causal inference |
+| `classic-ml` | sklearn, feature engineering, cross-validation, tuning, pipelines |
+| `deep-learning` | PyTorch/TF, training loops, CUDA, distributed training, serving |
+| `nlp` | Transformers, tokenization, NER/NLU/NLG, fine-tuning, embeddings, RAG |
+| `rl` | Gymnasium, PPO/SAC/DQN, reward shaping, multi-agent, RLHF, offline RL |
+| `data-analysis` | pandas/polars, EDA, viz, statistical & A/B testing, causal inference |
 | `data-engineering` | dbt, Airflow, Spark, Databricks, Delta Lake, data contracts |
-| `ai-agent-engineering` | harness design, tool definition, orchestration, evals, MCP servers |
+| `ai-agent-engineering` | harness design, tool definition, orchestration, evals, MCP |
 | `mlops` | MLflow, experiment tracking, model registry, drift detection, CD4ML |
-| `llm-engineering` | prompt engineering, RAG, fine-tuning, eval frameworks, agent frameworks |
+| `llm-engineering` | prompt engineering, RAG, fine-tuning, eval frameworks, agents |
 
 ---
 
-## Install
+## ⚙️ The CLI (power tools + escape hatch)
 
-**Public repo — one-liner:**
-
-```bash
-# one command, global — σ logo + staged install
-curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
-export PATH="$PATH:$HOME/.local/bin"
-sigma onboard       # friendly setup: pick domains, capture API keys, set up RTK
-```
-
-**Private repo — clone first, then run the installer:**
-
-`raw.githubusercontent.com` (the `curl | sh` URL) does **not** send your git
-credentials, so it 404s on a private repo. Clone with an authenticated account,
-then run the bundled installer from the clone — its step 1 sees the existing
-`~/.sigma/.git` and just fast-forwards it:
+The plugin is the primary surface; the CLI keeps only what Claude Code can't do
+in-session, plus setup:
 
 ```bash
-# authenticate to the account that can see the private repo (gh example)
-gh auth login                       # or: gh auth switch --user <account>
-gh auth setup-git                   # let git use the gh credential helper
-
-git clone https://github.com/navidgh66/sigma.git ~/.sigma
-sh ~/.sigma/installer/setup.sh
-export PATH="$PATH:$HOME/.local/bin"
-sigma onboard
+sigma research "topic" --deep   # exhaustive web-grounded multi-model brief
+sigma loop --topic <t> --execute --team --tdd --logic   # autonomous, parallel, test-first
+sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
+sigma board --topic <t> --watch                         # live kanban over agent progress
+sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
+sigma review <PR#|url>                                  # 3-axis team-change review
+sigma profile                                           # codebase logic invariants → profile
+sigma doctor --update                                   # refresh CLI + plugin, then health-check
 ```
-
-The installer is non-interactive (works under `curl | sh`); the fun part —
-choosing domains, entering Gemini/OpenAI keys (stored in `~/.sigma/.env`, never
-committed), and optionally installing + activating
-[RTK](https://github.com/rtk-ai/rtk) (60-90% token savings) for Claude — happens
-in `sigma onboard`. Run `sigma doctor` anytime to health-check and repair the
-install.
-
-## Use
-
-```bash
-sigma onboard       # first-run: domains, API keys, RTK (interactive)
-sigma init          # or just scaffold sigma.config.yml non-interactively
-sigma doctor        # diagnose + repair (env, deps, models, skills, plugin, RTK)
-sigma               # launch Claude Code with sigma context loaded
-```
-
-## Use inside Claude Code (plugin-first)
-
-sigma is **plugin-first**: every stage is a native slash command, and the domain
-knowledge + learning layer are native skills — no CLI calls needed for the
-in-session flow.
-
-```bash
-# public repo: add this repo as a plugin marketplace, then install
-/plugin marketplace add navidgh66/sigma
-/plugin install sigma@sigma
-
-# private repo: add the LOCAL CLONE as the marketplace instead (no GitHub fetch),
-# then install — this is also what installer/setup.sh does automatically:
-/plugin marketplace add ~/.sigma
-/plugin install sigma@sigma
-```
-
-Then in any session:
-
-```
-/research <topic>   /propose   /blueprint   /spec   /tasks
-/implement-task     /verify    /loop        /hermes  /board   /weave
-/sigma-learn-lesson                         # capture a lesson from this session
-```
-
-Skills auto-surface as you work:
-- **`sigma-domains`** — loads the right domain context-engine for the task.
-- **`sigma-lessons`** — recalls past ratcheted lessons by domain.
-- **`sigma-present`** — exports an artifact to a single-file HTML deck/report.
 
 **Two ways to run, by design:**
-- **Plugin (primary)** — stages run *in-session* as slash commands: they load the
+- **Plugin (primary)** — stages run *in-session* as slash commands; they load the
   domain context and stay steerable. This is where the work happens.
-- **CLI (power tools + escape hatch)** — only what Claude Code can't do
-  in-session: real parallel multi-model `research`, the autonomous `loop`/`hermes`
-  runs, live `board`, and `weave`. Plus setup (`onboard`/`doctor`).
+- **CLI (escape hatch)** — parallel `research`, autonomous `loop`/`hermes`, live
+  `board`/`weave`, and setup (`onboard`/`doctor`). For when you want to walk away.
 
 ---
 
-## Status
+## 🧩 Skills that auto-surface
 
-✅ **Core + execution + conductor + closed learning loop complete.** All 8
-pipeline stages run through a single injectable `AgentRunner`; the loop executes
-real maker→checker cycles with distinct agents, writes `impl/` + `verify/`
-artifacts, ratchets failures into `skills/`, **and recalls those lessons by domain
-on the next run**. 321 tests green, ruff clean. See [`docs/`](docs/).
+| Skill | Does |
+|-------|------|
+| `sigma-domains` | loads the right domain context-engine for the task |
+| `sigma-lessons` | recalls past ratcheted lessons by domain |
+| `sigma-grilling` | the adversarial grilling rubric (powers `/grill`) |
+| `sigma-grill-loop` | the bounded auto-grill loop (powers `/grill-loop`) |
+| `sigma-present` | exports an artifact to a single-file HTML deck / report |
+| `sigma-cost` | estimates + routes token cost for heavy ops |
 
-- **Stages** run in-session as slash commands (`/spec`, `/tasks`, …) — they load
-  the matching domain context-engine via the `sigma-domains` skill.
-- **`sigma loop --topic <t>`** plans by default; `--execute` runs maker→checker
-  cycles (sequential, one workspace). On failure it ratchets a lesson; future
-  cycles in that domain recall it.
-- **Hermes** (CLI conductor) routes plain language to a stage and runs it:
-  `sigma hermes "continue" --topic <t>` (one hop) or `--auto` (chain to a human
-  gate). The loop adds an optional **logic-evaluator** axis (reasoning + plan
-  coherence, distinct from code quality).
-- **Kanban board** projects task + event state: `sigma board --topic <t>`
-  (`--watch` for live). **`sigma weave`** weaves the stage artifacts into one
-  self-contained `chain.html` + a machine `chain.json`. Bundled skills live in
-  `skills/vendor/`.
+---
 
-## Playground
+## 🎯 Principles
+
+- **Loop engineering** — design the loop, stay the engineer. Failures ratchet into
+  permanent, recalled knowledge.
+- **Maker ≠ checker** — the agent that builds never grades itself.
+- **Skeptical by default** — a missing `VERDICT: PASS` is a FAIL; a missing grill
+  `VERDICT: READY` is a BLOCK. Silence is never a pass.
+- **Reuse-first** — a laziness ladder (YAGNI → reuse → stdlib → native → installed
+  → one-liner → only then new code) before any line is written.
+- **YAGNI** — no dashboards or telemetry until the single-user core proves out.
+
+---
+
+## 📦 What's inside
+
+- **402+ pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+  projection, cost) is separated from subprocess execution and fully tested with
+  fakes. No real agent is spawned in the test suite.
+- **Plugin-first** — `commands/*.md` are native slash commands; `skills/*` are
+  native skills; `.claude-plugin/` makes it a one-command marketplace install.
+- **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime.
+- **Python 3.9 target** — runs on the version you already have.
+
+---
+
+## 🎮 Playground
 
 New here? [`docs/PLAYGROUND.md`](docs/PLAYGROUND.md) is a hands-on tour of every
 command and feature with copy-paste examples and expected output.
 
-## License
+---
+
+## 📄 License
 
 MIT © Navid Ghayazi
+
+<div align="center">
+<sub>Built on <a href="https://docs.anthropic.com/claude-code">Claude Code</a> ·
+inspired by <a href="https://addyosmani.com/blog/loop-engineering/">Loop Engineering</a>
+and the <a href="https://www.anthropic.com/research/building-effective-agents">Anthropic agentic playbook</a>.</sub>
+</div>

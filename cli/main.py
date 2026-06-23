@@ -2,7 +2,7 @@
 """sigma — personal AI workflow toolkit CLI.
 
 Wraps Claude Code with the sigma pipeline and a multi-model research phase.
-See docs/2026-06-16-sigma-design.md.
+See README.md and CLAUDE.md for the design and layout.
 """
 
 from __future__ import annotations

@@ -645,5 +645,5 @@ surfaces the same advice in-session; composes with RTK/caveman, never duplicates
 | `sigma doctor --yes` / `--update` | auto-fix / pull+re-vendor then check |
 | `sigma launch` | open Claude Code with context |
 
-See [`CLAUDE.md`](../CLAUDE.md) for layout + gotchas, and the
-[design doc](2026-06-16-sigma-design.md) for rationale.
+See [`CLAUDE.md`](../CLAUDE.md) for layout + gotchas and the
+[`README`](../README.md) for the design rationale.
