@@ -55,6 +55,32 @@ and a **surgical** repair, nothing more.
 
 Then hand to `/verify` (separate checker — maker ≠ checker).
 
+## Build discipline (every task)
+
+**Reuse-first laziness ladder** — before writing ANY new code, walk this ladder
+in order and stop at the first hit (be lazy about the *solution*, never about
+understanding the problem — still read and trace the real flow first):
+
+1. Does it need to exist at all? (YAGNI — if not, skip it)
+2. Already in this codebase? → reuse it, don't re-implement
+3. In the standard library? → use it
+4. A native platform / framework feature? → use it
+5. An already-installed dependency? → use it
+6. A one-liner? → write the one-liner
+7. Only then → the smallest working implementation
+
+Record any shortcut you defer (a "do it later") in `impl/{task_id}.md` so "later"
+doesn't become "never".
+
+**No-YOLO on from-scratch scaffolds** — if the task creates a new project/module
+skeleton, do NOT generate code immediately. Propose the folder structure + stack
+(with **pinned versions**) and confirm first. Include tests, docs, and logging in
+what you scaffold — not just the happy-path code.
+
+**Docs-as-truth** — if the change touches a documented module, update its
+`README` / docstrings / `CHANGELOG` in the SAME task. Out-of-sync docs make the
+agent hallucinate on the next run; the docs are part of the deliverable.
+
 ## Multiple tasks in parallel ("team")
 
 `/implement-task` is single-task. To work several INDEPENDENT tasks at once
