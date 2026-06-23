@@ -227,6 +227,29 @@ def check_caveman(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("caveman", OK, "caveman installed + active for Claude")
 
 
+def check_statusline(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
+    """ccstatusline: a node runtime present? statusLine configured in settings.json?"""
+    if status_fn is None:
+        from cli.statusline import statusline_status
+
+        status_fn = statusline_status
+    st = status_fn()
+
+    def _fix() -> bool:
+        from cli.statusline import setup_statusline
+
+        return setup_statusline(status_fn=status_fn, confirm=lambda _msg: True)
+
+    if not st.get("node_runtime"):
+        return Check("statusline", WARN, "no `npx`/`bunx` — can't run ccstatusline")
+    if not st.get("configured"):
+        return Check(
+            "statusline", WARN, "ccstatusline not configured (optional status line)",
+            fix=("configure ccstatusline in Claude settings.json", _fix),
+        )
+    return Check("statusline", OK, "ccstatusline configured for Claude")
+
+
 # --------------------------------------------------------------------------- #
 # aggregate
 # --------------------------------------------------------------------------- #
@@ -236,6 +259,7 @@ def run_all(
     which: Optional[Callable] = None,
     rtk_status_fn: Optional[Callable] = None,
     caveman_status_fn: Optional[Callable] = None,
+    statusline_status_fn: Optional[Callable] = None,
 ) -> List[Check]:
     """Run every probe and return the results in display order."""
     return [
@@ -250,6 +274,7 @@ def run_all(
         check_workspaces(root=root),
         check_rtk(status_fn=rtk_status_fn),
         check_caveman(status_fn=caveman_status_fn),
+        check_statusline(status_fn=statusline_status_fn),
     ]
 
 
