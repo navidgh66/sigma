@@ -19,4 +19,4 @@ data-contracts, data-quality.
 `verifiers/` — idempotency, schema-contract conformance, test coverage,
 partition correctness, freshness SLAs.
 
-> 🚧 Seed file. (Cross-reference an internal tool's `data-pipeline-airflow` engine.)
+> 🚧 Seed file. Expand with the implementer/verifier engines listed above.

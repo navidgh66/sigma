@@ -1,3 +1,6 @@
+# sigma project config. Safe to commit — structural only.
+# NEVER put secrets here. API keys live in ~/.sigma/.env (chmod 600, git-ignored).
+# Machine-specific overrides go in sigma.config.local.yml (also git-ignored).
 profile:
   name: my-project
   harness: claude-code
