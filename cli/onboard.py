@@ -16,6 +16,7 @@ from typing import Callable, List, Optional
 from cli import caveman as caveman_mod
 from cli import checks as checks_mod
 from cli import render, rtk, secrets
+from cli import statusline as statusline_mod
 from cli.config import SigmaConfig, write_config
 from cli.paths import DOMAINS
 
@@ -44,6 +45,7 @@ def run_onboard(
     confirm: Optional[Callable[[str], bool]] = None,
     rtk_status_fn: Optional[Callable] = None,
     caveman_status_fn: Optional[Callable] = None,
+    statusline_status_fn: Optional[Callable] = None,
     spawn: Optional[Callable] = None,
     which: Optional[Callable] = None,
     run_all: Optional[Callable] = None,
@@ -98,5 +100,12 @@ def run_onboard(
     )
     if cave_changed:
         print("  ✓ caveman set up — restart Claude Code for it to take effect")
+
+    # 8. ccstatusline — confirm-gated status line (writes settings.json statusLine).
+    sl_changed = statusline_mod.setup_statusline(
+        status_fn=statusline_status_fn, confirm=confirm, which=which
+    )
+    if sl_changed:
+        print("  ✓ ccstatusline configured — restart Claude Code for it to take effect")
 
     print("\n✓ onboarding complete. Try:  sigma research \"your topic\"")

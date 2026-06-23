@@ -14,12 +14,12 @@ parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
 projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 **closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
 and are recalled by domain on the next run). An adversarial **`/grill`** gate
-pressure-tests the blueprint + spec before code. 408 pytest tests, ruff clean.
+pressure-tests the blueprint + spec before code. 419 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 408 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 419 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -63,7 +63,7 @@ sigma review --check                 # CI gate: exit 1 on a CRITICAL/HIGH findin
 sigma cost                           # report the token-cost ledger (sigma/costs.jsonl)
 
 # Setup & health
-sigma onboard                        # friendly first-run: domains, API keys, RTK
+sigma onboard                        # friendly first-run: domains, API keys, RTK, caveman, ccstatusline
 sigma doctor                         # diagnose + confirm-gated fixes
 sigma doctor --check                 # read-only, exit 1 on any failure (CI)
 sigma doctor --yes                   # apply all fixes without prompting
@@ -112,12 +112,13 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
-cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman
+cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
+cli/statusline.py   detect/configure ccstatusline status line (confirm-gated; writes settings.json statusLine, preserves other keys)
 cli/render.py       σ logo + update banner + rich/plain check output + confirm prompt
 cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 tokens)
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
@@ -255,6 +256,14 @@ keeps only what Claude Code cannot do in-session, plus setup.
 - Caveman (`cli/caveman.py`) mirrors RTK exactly: confirm-gated, idempotent, touches
   global plugin/settings state. `setup_caveman` no-ops when already active or when
   the `claude` CLI is absent. Wired into `sigma onboard` (step 7) + `check_caveman`.
+- ccstatusline (`cli/statusline.py`) mirrors caveman's shape but is NOT a plugin:
+  it writes a `statusLine` command block into the GLOBAL `~/.claude/settings.json`,
+  preserving every other key (immutable merge — new dict, never mutate the loaded
+  one). Confirm-gated + idempotent: `setup_statusline` no-ops when a statusLine is
+  already configured or when no node runtime (`npx`/`bunx`) is on PATH. Uses
+  `npx -y ccstatusline@latest` so no global install is required. Wired into
+  `sigma onboard` (step 8) + `check_statusline`. `which`/`writer` injectable
+  (host-free tests never touch the real settings.json).
 - Research is **subscription-backed, no API credit**: gpt runs via `codex exec`
   (ChatGPT login, read-only sandbox), gemini via `gemini -p --output-format json`,
   claude via `claude -p`. `clean_output` normalizes each CLI's raw stdout. The old
