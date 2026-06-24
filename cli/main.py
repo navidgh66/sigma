@@ -296,6 +296,61 @@ def cmd_learn(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# scout (discover relevant skills on skillsmp.com → install on approval)
+# --------------------------------------------------------------------------- #
+def cmd_scout(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.paths import project_root
+    from cli.scout_run import discover, install_hits
+
+    cfg = load_config()
+    domains = cfg.domains or list(DOMAINS)
+    _print(f"σ scout — skillsmp.com, domains: {', '.join(domains)}")
+
+    # Where vendored/installed skills already live, for dedup; and the install target.
+    if args.vendor:
+        skills_dir = sigma_home() / "skills"
+        dest = skills_dir / "vendor"
+        _print("  target: sigma bundle (skills/vendor/) — commit after review")
+    else:
+        skills_dir = project_root() / ".claude" / "skills"
+        dest = skills_dir
+        _print(f"  target: project skills ({dest})")
+
+    res = discover(
+        domains,
+        category=args.category,
+        recent=args.recent,
+        skills_dir=skills_dir,
+    )
+    if not res.ok:
+        _print(f"  ℹ {res.note}")
+        return 1
+    if not res.hits:
+        _print(f"  ✓ {res.note or 'nothing new to add'}")
+        return 0
+
+    _print(f"\n{len(res.hits)} candidate skill(s) (relevance-ranked):\n")
+    for i, h in enumerate(res.hits, 1):
+        _print(f"  {i}. {h.name}  ★{h.stars}  [{h.github_url}]")
+        if h.description:
+            _print(f"     {h.description[:100]}")
+
+    if args.dry_run:
+        _print("\n--- dry run — nothing installed ---")
+        return 0
+
+    def _confirm(h) -> bool:
+        return render.confirm(f"Install '{h.name}' from {h.github_url}? (check its license)")
+
+    installed = install_hits(res.hits, dest, confirm=_confirm)
+    _print(f"\n✓ installed {len(installed)} skill(s) into {dest}")
+    if args.vendor and installed:
+        _print("  → review + commit the new skills into the sigma bundle")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # weave (weave stage artifacts → chain.html + chain.json)
 # --------------------------------------------------------------------------- #
 def cmd_weave(args: argparse.Namespace) -> int:
@@ -506,6 +561,14 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--no-graph", action="store_true",
                         help="skip the graphify knowledge-graph build (on by default when installed)")
     plearn.set_defaults(func=cmd_learn)
+
+    pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
+    pscout.add_argument("--vendor", action="store_true",
+                        help="install into sigma's own skills/vendor/ (maintainer mode) instead of the project")
+    pscout.add_argument("--category", help="skillsmp category slug to filter by (default: per-domain)")
+    pscout.add_argument("--recent", action="store_true", help="sort by recently-added instead of stars")
+    pscout.add_argument("--dry-run", action="store_true", help="show candidates, install nothing")
+    pscout.set_defaults(func=cmd_scout)
 
     pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
     pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")
