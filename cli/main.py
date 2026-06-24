@@ -351,6 +351,65 @@ def cmd_scout(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# prune (surface loaded-but-unused MCP/plugins → reversible disable)
+# --------------------------------------------------------------------------- #
+def cmd_prune(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.paths import project_root
+    from cli.prune import KIND_MCP_USER
+    from cli.prune_run import build_report, disable_plugins
+
+    root = project_root()
+    project_mcp = root / ".mcp.json"
+    _print("σ prune — loaded MCP servers + plugins vs recent usage")
+
+    rep = build_report(
+        project_mcp_path=project_mcp if project_mcp.exists() else None,
+        max_files=args.files,
+    )
+    if not rep.candidates:
+        _print(f"  ✓ {rep.note or 'nothing to prune'}")
+        return 0
+
+    _print(
+        f"\n{len(rep.candidates)} loaded-but-unused item(s) "
+        f"(~{rep.freed_tokens:,} ctx tokens, scanned {rep.scanned_files} transcript(s)):\n"
+    )
+    for i, c in enumerate(rep.candidates, 1):
+        tag = "" if c.reversible else "  (manual: user-level MCP)"
+        _print(f"  {i}. [{c.kind}] {c.name}  ~{c.weight:,} tok{tag}")
+
+    if args.check:
+        # CI/read-only: exit 1 to flag that prunable bloat exists.
+        _print("\n(--check) prunable items found — not disabling")
+        return 1
+
+    # Only plugins are reversibly disableable via settings.json. User-level MCP
+    # servers live in ~/.claude.json and are surfaced for a manual edit (we never
+    # touch that file automatically).
+    plugins = [c.name for c in rep.candidates if c.reversible and c.kind != KIND_MCP_USER]
+    if not plugins:
+        _print("\n  ℹ only user-level MCP servers found — disable those manually in ~/.claude.json")
+        return 0
+
+    if args.yes:
+        chosen = plugins
+    else:
+        chosen = [n for n in plugins
+                  if render.confirm(f"Disable '{n}'? (reversible — re-enable anytime)")]
+    if not chosen:
+        _print("\n  nothing disabled")
+        return 0
+
+    if disable_plugins(chosen):
+        _print(f"\n✓ disabled {len(chosen)} plugin(s) in settings.json (reversible — restart Claude Code)")
+    else:
+        _print("\n✗ could not write settings.json")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # weave (weave stage artifacts → chain.html + chain.json)
 # --------------------------------------------------------------------------- #
 def cmd_weave(args: argparse.Namespace) -> int:
@@ -569,6 +628,12 @@ def build_parser() -> argparse.ArgumentParser:
     pscout.add_argument("--recent", action="store_true", help="sort by recently-added instead of stars")
     pscout.add_argument("--dry-run", action="store_true", help="show candidates, install nothing")
     pscout.set_defaults(func=cmd_scout)
+
+    pprune = sub.add_parser("prune", help="Surface loaded-but-unused MCP/plugins → reversible disable")
+    pprune.add_argument("--check", action="store_true", help="read-only; exit 1 if prunable bloat exists (CI)")
+    pprune.add_argument("--yes", action="store_true", help="disable all prunable plugins without prompting")
+    pprune.add_argument("--files", type=int, default=40, help="how many recent transcripts to scan for usage")
+    pprune.set_defaults(func=cmd_prune)
 
     pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
     pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")
