@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-419%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-482%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -56,7 +56,13 @@ autonomous hands-off runs, a live kanban board, and setup.
   in parallel; `--logic` adds a reasoning axis. `hermes --auto` chains whole
   stages until a human gate.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
-  in-session by the `sigma-domains` skill.
+  in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
+  MCP servers + plugins that tax every turn.
+- **🗺️ Graph-grounded onboarding** — `sigma learn` builds a real dependency graph
+  of the repo (via graphify) and grounds its `ARCHITECTURE.md` + CodeTour in
+  *extracted* structure, not an eyeball read.
+- **🛰️ Self-refreshing bundle** — `sigma scout` discovers skills relevant to your
+  domains on skillsmp.com and pulls in the keepers (you approve each one).
 
 ---
 
@@ -151,6 +157,9 @@ sigma board --topic <t> --watch                         # live kanban over agent
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
 sigma review <PR#|url>                                  # 3-axis team-change review
 sigma profile                                           # codebase logic invariants → profile
+sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
+sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
+sigma prune                                             # cut loaded-but-unused MCP/plugins → reversible disable
 sigma doctor --update                                   # refresh CLI + plugin, then health-check
 ```
 
@@ -159,6 +168,63 @@ sigma doctor --update                                   # refresh CLI + plugin, 
   domain context and stay steerable. This is where the work happens.
 - **CLI (escape hatch)** — parallel `research`, autonomous `loop`/`hermes`, live
   `board`/`weave`, and setup (`onboard`/`doctor`). For when you want to walk away.
+
+---
+
+## 🗺️ Understand, grow & trim — `learn` · `scout` · `prune`
+
+Three commands keep your codebase understanding and your toolbelt healthy. Each is
+also an in-session slash command (`/learn`, `/scout`, `/prune`).
+
+### `sigma learn` — a codebase map grounded in a knowledge graph
+
+```bash
+sigma learn                          # → ARCHITECTURE.md + .tours/<slug>.tour
+sigma learn --persona "new backend dev"   # tailor the walkthrough to an audience
+sigma learn --no-graph               # skip the graph build (plain agent read)
+```
+
+An agent reads the repo and emits an onboarding `ARCHITECTURE.md` plus a clickable
+CodeTour `.tour`. When **graphify** is installed (offered by `sigma onboard` / the
+installer), `learn` first builds a real dependency graph — god-nodes, communities,
+call/import edges — and feeds graphify's report into the agent so the map reflects
+*extracted* structure. graphify runs in its own isolated environment and sigma just
+shells out to it, so the CLI stays Python 3.9 and dependency-light. No graphify? It
+degrades to a plain agent read — never an error.
+
+### `sigma scout` — keep your skill bundle fresh from skillsmp.com
+
+```bash
+sigma scout                          # candidates for your domains, install on approval
+sigma scout --recent                 # sort by newly-added (catch trends)
+sigma scout --vendor                 # maintainer mode: clone into skills/vendor/
+sigma scout --dry-run                # show the ranked table, install nothing
+```
+
+Queries [skillsmp.com](https://skillsmp.com) per configured domain, ranks hits by
+relevance (domain fit beats raw popularity), drops anything already bundled, and
+surfaces the survivors. **Nothing installs automatically** — you confirm each skill
+(and check its license) before it's cloned into your project's `.claude/skills/`
+(or, with `--vendor`, into sigma's own bundle to commit). An optional free
+`SKILLSMP_API_KEY` in `~/.sigma/.env` raises the daily rate limit.
+
+### `sigma prune` — cut unused MCP/plugin context bloat
+
+```bash
+sigma prune                          # surface loaded-but-unused items → confirm each
+sigma prune --check                  # read-only; exit 1 if prunable bloat exists (CI)
+sigma prune --yes                    # disable all prunable plugins without prompting
+```
+
+Every enabled plugin and connected MCP server injects its tool schemas into *every*
+Claude turn. `prune` inventories what's loaded, estimates each item's context
+weight, scans recent transcripts for what you actually used, and ranks the
+loaded-but-unused heaviest-first. Disabling is **reversible** (flips
+`enabledPlugins` off in `settings.json`, every other key preserved — never an
+uninstall) and **never guesses**: with no usage evidence it prunes nothing.
+
+> Hygiene trio: **scout grows** the bundle, **prune trims** it, **`sigma cost`
+> sizes** it — orthogonal to RTK (proxy tokens) and caveman (output terseness).
 
 ---
 
@@ -172,6 +238,8 @@ sigma doctor --update                                   # refresh CLI + plugin, 
 | `sigma-grill-loop` | the bounded auto-grill loop (powers `/grill-loop`) |
 | `sigma-present` | exports an artifact to a single-file HTML deck / report |
 | `sigma-cost` | estimates + routes token cost for heavy ops |
+| `sigma-scout` | curation rubric for `sigma scout` (relevance + license vetting) |
+| `sigma-prune` | pruning rubric — disable ≠ delete, never prune on absent evidence |
 
 ---
 
@@ -190,9 +258,10 @@ sigma doctor --update                                   # refresh CLI + plugin, 
 
 ## 📦 What's inside
 
-- **402+ pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
-  projection, cost) is separated from subprocess execution and fully tested with
-  fakes. No real agent is spawned in the test suite.
+- **480+ pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+  projection, cost, graph/scout/prune) is separated from subprocess execution and
+  fully tested with fakes. No real agent, network, or settings file is touched in
+  the test suite.
 - **Plugin-first** — `commands/*.md` are native slash commands; `skills/*` are
   native skills; `.claude-plugin/` makes it a one-command marketplace install.
 - **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime.

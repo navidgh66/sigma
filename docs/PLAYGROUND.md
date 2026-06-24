@@ -615,6 +615,87 @@ surfaces the same advice in-session; composes with RTK/caveman, never duplicates
 
 ---
 
+## 12. `sigma learn` — codebase map grounded in a knowledge graph
+
+```bash
+$ sigma learn                  # ARCHITECTURE.md + .tours/<slug>.tour, graph-grounded
+$ sigma learn --no-graph       # skip the graphify build (plain agent read)
+$ sigma learn --persona "new backend dev" --dry-run
+```
+
+`sigma learn` drives an agent to emit an `ARCHITECTURE.md` + a CodeTour `.tour`. When
+**graphify** is installed, learn first builds (incrementally) a real dependency graph
+of the repo — god-nodes, communities, call/import edges — and injects graphify's
+`GRAPH_REPORT.md` into the agent prompt, so the map is grounded in *extracted*
+structure, not an eyeball read.
+
+- **Shells out, never imports.** graphify needs py3.10+; sigma stays 3.9 and runs the
+  standalone `graphify` binary (installed in its own env by `sigma onboard` / the
+  installer — `uv tool install graphifyy`).
+- **Always-on + fail-safe.** Absent graphify or a failed build → a plain agent read
+  (the prompt is byte-identical to the no-graph case). `--no-graph` skips it outright.
+- Code extraction is local tree-sitter → **free, no API key**; `--update` re-extracts
+  only changed files, so re-runs are cheap.
+
+## 12a. `sigma scout` — keep the skill bundle fresh from skillsmp.com
+
+```bash
+$ sigma scout                  # candidates for your domains, install on approval
+$ sigma scout --recent         # sort by newly-added (catch trends)
+$ sigma scout --vendor         # maintainer: clone into skills/vendor/ for the bundle
+$ sigma scout --dry-run        # show the ranked table, install nothing
+```
+
+Queries [skillsmp.com](https://skillsmp.com) per sigma domain, scores relevance
+(**domain fit beats popularity** — a viral but off-topic skill never wins), dedups
+against what's already bundled, and surfaces a ranked table. **Nothing auto-installs**
+— you confirm each skill (and check its license) before it's cloned.
+
+```
+→ σ scout — skillsmp.com, domains: classic-ml, …, llm-engineering
+  target: project skills (.claude/skills)
+
+  1. rag-eval-kit   ★320  [owner/rag-eval-kit]
+     RAG evaluation harness: faithfulness, recall@k, citation grounding
+  …
+```
+
+- stdlib `urllib` only (no new dependency). Optional `SKILLSMP_API_KEY` in
+  `~/.sigma/.env` raises the daily rate limit; anonymous works at a lower rate.
+- Fail-safe: API down/rate-limited → empty result + a banner, never a crash.
+
+## 12b. `sigma prune` — cut unused MCP/plugin context bloat
+
+```bash
+$ sigma prune                  # surface loaded-but-unused items → confirm each
+$ sigma prune --check          # read-only; exit 1 if prunable bloat exists (CI)
+$ sigma prune --yes            # disable all prunable plugins without prompting
+```
+
+Every enabled plugin + connected MCP server injects its tool schemas into **every**
+context. Prune inventories what's loaded, estimates each item's context weight, scans
+recent transcripts for actual usage, and ranks the **loaded-but-unused** heaviest-first.
+
+```
+→ σ prune — loaded MCP servers + plugins vs recent usage
+  21 loaded-but-unused item(s) (~73,000 ctx tokens, scanned 40 transcript(s)):
+  1. [mcp-user] atlassian   ~8,000 tok  (manual: user-level MCP)
+  3. [plugin]   firebase    ~3,000 tok
+  …
+```
+
+- **Reversible, never destructive** — disabling flips `enabledPlugins=false` (immutable
+  settings merge; every other key preserved). The plugin stays installed; re-enable
+  anytime. User-level MCP servers are surfaced for a manual `~/.claude.json` edit.
+- **Never prunes on absent evidence** — no transcripts → surfaces nothing (an item with
+  unknown usage is treated as *used*).
+- Distinct hygiene layer: **scout grows** the bundle, **prune trims** it, **`sigma cost`
+  sizes** it. Orthogonal to RTK (proxy tokens) + caveman (output terseness).
+
+> Plugin: `/learn`, `/scout`, `/prune` are the in-session slash-command equivalents.
+
+---
+
 ## Cheat sheet
 
 | Command | What |
@@ -631,6 +712,12 @@ surfaces the same advice in-session; composes with RTK/caveman, never duplicates
 | `sigma review [PR\|a..b]` | three-axis review (code/ml-logic/system-logic) |
 | `sigma review --check` | CI gate: exit 1 on CRITICAL/HIGH or inconclusive axis |
 | `sigma cost` | token-cost ledger for heavy ops |
+| `sigma learn` | codebase map → ARCHITECTURE.md + .tour (graphify-grounded if installed) |
+| `sigma learn --no-graph` | skip the knowledge-graph build |
+| `sigma scout` | discover relevant skills on skillsmp.com → install on approval |
+| `sigma scout --vendor` / `--recent` | clone into the sigma bundle / sort by newest |
+| `sigma prune` | surface loaded-but-unused MCP/plugins → reversible disable |
+| `sigma prune --check` | CI gate: exit 1 if prunable context bloat exists |
 | `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
 | `... --gate <script>` | (loop/hermes) skip work if wakeAgent says nothing to do |
 | `sigma hermes "<msg>" --topic <t>` | conductor: route + run one stage |
@@ -639,7 +726,7 @@ surfaces the same advice in-session; composes with RTK/caveman, never duplicates
 | `sigma board --topic <t>` | kanban snapshot |
 | `sigma board --topic <t> --watch` | live kanban |
 | `sigma weave --topic <t>` | weave artifacts → chain.html + chain.json |
-| `sigma onboard` | first-run setup: domains, API keys, RTK |
+| `sigma onboard` | first-run setup: domains, API keys, RTK, caveman, statusline, graphify |
 | `sigma doctor` | diagnose + confirm-gated fixes |
 | `sigma doctor --check` | read-only health (CI gate, exit 1 on fail) |
 | `sigma doctor --yes` / `--update` | auto-fix / pull+re-vendor then check |

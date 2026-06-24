@@ -269,7 +269,12 @@ def cmd_learn(args: argparse.Namespace) -> int:
         persona=args.persona,
         topic=args.topic,
         dry_run=args.dry_run,
+        build_graph=not args.no_graph,
     )
+    if res.graph_built:
+        _print("  ✓ built knowledge graph (graphify)")
+    elif res.graph_note:
+        _print(f"  ℹ {res.graph_note}")
     if args.dry_run:
         _print("--- invocation (dry run) ---")
         _print(res.prompt)
@@ -287,6 +292,120 @@ def cmd_learn(args: argparse.Namespace) -> int:
                 _print(f"    - {p}")
         else:
             _print("  ✓ all tour anchors valid")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# scout (discover relevant skills on skillsmp.com → install on approval)
+# --------------------------------------------------------------------------- #
+def cmd_scout(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.paths import project_root
+    from cli.scout_run import discover, install_hits
+
+    cfg = load_config()
+    domains = cfg.domains or list(DOMAINS)
+    _print(f"σ scout — skillsmp.com, domains: {', '.join(domains)}")
+
+    # Where vendored/installed skills already live, for dedup; and the install target.
+    if args.vendor:
+        skills_dir = sigma_home() / "skills"
+        dest = skills_dir / "vendor"
+        _print("  target: sigma bundle (skills/vendor/) — commit after review")
+    else:
+        skills_dir = project_root() / ".claude" / "skills"
+        dest = skills_dir
+        _print(f"  target: project skills ({dest})")
+
+    res = discover(
+        domains,
+        category=args.category,
+        recent=args.recent,
+        skills_dir=skills_dir,
+    )
+    if not res.ok:
+        _print(f"  ℹ {res.note}")
+        return 1
+    if not res.hits:
+        _print(f"  ✓ {res.note or 'nothing new to add'}")
+        return 0
+
+    _print(f"\n{len(res.hits)} candidate skill(s) (relevance-ranked):\n")
+    for i, h in enumerate(res.hits, 1):
+        _print(f"  {i}. {h.name}  ★{h.stars}  [{h.github_url}]")
+        if h.description:
+            _print(f"     {h.description[:100]}")
+
+    if args.dry_run:
+        _print("\n--- dry run — nothing installed ---")
+        return 0
+
+    def _confirm(h) -> bool:
+        return render.confirm(f"Install '{h.name}' from {h.github_url}? (check its license)")
+
+    installed = install_hits(res.hits, dest, confirm=_confirm)
+    _print(f"\n✓ installed {len(installed)} skill(s) into {dest}")
+    if args.vendor and installed:
+        _print("  → review + commit the new skills into the sigma bundle")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# prune (surface loaded-but-unused MCP/plugins → reversible disable)
+# --------------------------------------------------------------------------- #
+def cmd_prune(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.paths import project_root
+    from cli.prune import KIND_MCP_USER
+    from cli.prune_run import build_report, disable_plugins
+
+    root = project_root()
+    project_mcp = root / ".mcp.json"
+    _print("σ prune — loaded MCP servers + plugins vs recent usage")
+
+    rep = build_report(
+        project_mcp_path=project_mcp if project_mcp.exists() else None,
+        max_files=args.files,
+    )
+    if not rep.candidates:
+        _print(f"  ✓ {rep.note or 'nothing to prune'}")
+        return 0
+
+    _print(
+        f"\n{len(rep.candidates)} loaded-but-unused item(s) "
+        f"(~{rep.freed_tokens:,} ctx tokens, scanned {rep.scanned_files} transcript(s)):\n"
+    )
+    for i, c in enumerate(rep.candidates, 1):
+        tag = "" if c.reversible else "  (manual: user-level MCP)"
+        _print(f"  {i}. [{c.kind}] {c.name}  ~{c.weight:,} tok{tag}")
+
+    if args.check:
+        # CI/read-only: exit 1 to flag that prunable bloat exists.
+        _print("\n(--check) prunable items found — not disabling")
+        return 1
+
+    # Only plugins are reversibly disableable via settings.json. User-level MCP
+    # servers live in ~/.claude.json and are surfaced for a manual edit (we never
+    # touch that file automatically).
+    plugins = [c.name for c in rep.candidates if c.reversible and c.kind != KIND_MCP_USER]
+    if not plugins:
+        _print("\n  ℹ only user-level MCP servers found — disable those manually in ~/.claude.json")
+        return 0
+
+    if args.yes:
+        chosen = plugins
+    else:
+        chosen = [n for n in plugins
+                  if render.confirm(f"Disable '{n}'? (reversible — re-enable anytime)")]
+    if not chosen:
+        _print("\n  nothing disabled")
+        return 0
+
+    if disable_plugins(chosen):
+        _print(f"\n✓ disabled {len(chosen)} plugin(s) in settings.json (reversible — restart Claude Code)")
+    else:
+        _print("\n✗ could not write settings.json")
+        return 1
     return 0
 
 
@@ -498,7 +617,23 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--topic", help="slug for the .tour file (default: from tour title)")
     plearn.add_argument("--persona", help="who the walkthrough is for (e.g. 'new backend dev')")
     plearn.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    plearn.add_argument("--no-graph", action="store_true",
+                        help="skip the graphify knowledge-graph build (on by default when installed)")
     plearn.set_defaults(func=cmd_learn)
+
+    pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
+    pscout.add_argument("--vendor", action="store_true",
+                        help="install into sigma's own skills/vendor/ (maintainer mode) instead of the project")
+    pscout.add_argument("--category", help="skillsmp category slug to filter by (default: per-domain)")
+    pscout.add_argument("--recent", action="store_true", help="sort by recently-added instead of stars")
+    pscout.add_argument("--dry-run", action="store_true", help="show candidates, install nothing")
+    pscout.set_defaults(func=cmd_scout)
+
+    pprune = sub.add_parser("prune", help="Surface loaded-but-unused MCP/plugins → reversible disable")
+    pprune.add_argument("--check", action="store_true", help="read-only; exit 1 if prunable bloat exists (CI)")
+    pprune.add_argument("--yes", action="store_true", help="disable all prunable plugins without prompting")
+    pprune.add_argument("--files", type=int, default=40, help="how many recent transcripts to scan for usage")
+    pprune.set_defaults(func=cmd_prune)
 
     pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
     pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")

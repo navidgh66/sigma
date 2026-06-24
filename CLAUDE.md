@@ -14,12 +14,15 @@ parallel `research`, the autonomous `loop`/`hermes` escape hatch, `board`,
 projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 **closed learning loop** (failures + `/sigma-learn-lesson` ratchet into `skills/`
 and are recalled by domain on the next run). An adversarial **`/grill`** gate
-pressure-tests the blueprint + spec before code. 419 pytest tests, ruff clean.
+pressure-tests the blueprint + spec before code. `sigma learn` grounds its map in a
+graphify knowledge graph; `sigma scout` keeps the skill bundle fresh from
+skillsmp.com; `sigma prune` cuts unused MCP/plugin context bloat. 482 pytest tests,
+ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 419 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 482 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -28,8 +31,14 @@ sigma init --domains nlp,rl          # scaffold sigma.config.yml for a project
 sigma research "topic"               # multi-model research → research.md
 sigma research "topic" --web         # quick web-grounded pass (light; --deep wins if both)
 sigma research "topic" --deep        # web-grounded deep research (exhaustive web search; slower)
-sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour
+sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour (+ graphify graph if installed)
+sigma learn --no-graph               # skip the graphify knowledge-graph build
 sigma learn --persona "new dev" --dry-run  # print the invocation, don't run claude
+
+sigma scout                          # discover skills relevant to your domains on skillsmp.com → install on approval
+sigma scout --vendor --recent        # maintainer mode (clone into skills/vendor/), sort by newest
+sigma prune                          # surface loaded-but-unused MCP/plugins → reversible disable (saves context tokens)
+sigma prune --check                  # read-only; exit 1 if prunable bloat exists (CI)
 # Pipeline stages (propose..verify) run IN-SESSION as plugin slash commands
 # (/propose .. /verify). They are NOT standalone CLI subcommands — running a
 # stage in Claude Code loads the domain context-engine and is steerable; an
@@ -93,12 +102,17 @@ about what's unresolved. Editor ≠ griller, same law as `execute_cycle`.
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / profile / review / cost / launch (pipeline stages are plugin-only)
+cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / scout / prune / profile / review / cost / launch (pipeline stages are plugin-only)
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
 cli/research.py     parallel fan-out + cited aggregation → research.md; --web quick / --deep exhaustive web-grounded brief
-cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour
+cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour; always-on graphify build (--no-graph to skip) injects GRAPH_REPORT.md into the prompt
+cli/graphify.py     pure+injectable: detect/install (uv→pipx→pip)/setup graphify (confirm-gated), build extract argv, read GRAPH_REPORT.md as a capped prompt block — shells out, never imports (sigma stays 3.9)
+cli/scout.py        pure: domain→query map, score_relevance, rank, dedup_against_bundle, parse skillsmp /search payload (sigma scout)
+cli/scout_run.py    thin: stdlib urllib fetch (fail-safe), aggregate per-domain, surface ranked candidates, git-clone on per-skill confirm
+cli/prune.py        pure: parse_plugins/parse_mcp_servers, belongs (tool→item match), usage_counts, rank_candidates (unused+heavy first), context-weight estimate
+cli/prune_run.py    thin: read settings/.claude.json/.mcp.json + scan transcripts for usage, build report, reversible disable (enabledPlugins=false, immutable merge)
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
 cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json. STAGES includes the two grill GATE stages (grill-blueprint/grill-spec, shared grill template via `template` key + GRILL_TARGET)
@@ -112,9 +126,9 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
-cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline
+cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline, graphify
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
@@ -128,7 +142,7 @@ cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
-commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
+commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
@@ -139,7 +153,9 @@ skills/sigma-lessons/  skill: recall past ratcheted lessons by domain in-session
 skills/sigma-grilling/  skill: the grilling rubric — adversarially interrogate a blueprint/spec before code (powers /grill); maker ≠ griller, BLOCK on doubt
 skills/sigma-grill-loop/  skill: bounded auto-grill loop (powers /grill-loop) — grill→triage→edit→re-grill; editor ≠ griller, mechanical-only auto-edit, CRITICAL/intent surfaced, round cap + no-progress stop
 skills/sigma-cost/  skill: estimate/measure/route token cost for heavy ops (review/profile/loop/research); composes with RTK/caveman, never duplicates
-installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK (TTY-safe)
+skills/sigma-scout/  skill: curation rubric for sigma scout — relevance > popularity, license/overlap vetting, surface never auto-install
+skills/sigma-prune/  skill: pruning rubric — never prune on absent evidence, disable ≠ delete; composes with scout (grows) + cost (sizes)
+installer/setup.sh  one-line install: CLI + deps + plugin auto-register + RTK + graphify (TTY-safe)
 .claude-plugin/     plugin.json + marketplace.json — makes sigma a Claude Code plugin
 docs/               design doc + roadmap + PLAYGROUND.md (hands-on guide to every feature)
 ```
@@ -342,3 +358,35 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `sigma/costs.jsonl` in the TARGET project (git-ignored here) — they are derived,
   deleting them never affects the pipeline. A real review run also ratchets findings
   into `skills/`; those are real lessons, not throwaway (unlike a smoke test's).
+- `sigma learn` SHELLS OUT to graphify, it does NOT import it. graphify needs
+  py3.10+; sigma stays 3.9 by installing graphify in its OWN isolated env (`uv tool
+  install graphifyy` / pipx) and subprocessing the `graphify` binary — the same
+  pattern as `claude`/`gemini`/`codex`/`rtk`. The OLD "no graph engine" rule meant
+  "don't import one", NOT "don't use one". `cli/graphify.py` is the seam: build is
+  always-on (`--no-graph` to skip) + best-effort (a failed/absent build degrades to
+  a plain agent read), and `report_block` injects GRAPH_REPORT.md only if present —
+  empty → the learn prompt is byte-identical to the pre-graphify prompt (regression-
+  locked by `test_no_graph_prompt_byte_identical_to_baseline`). `check_graphify` is
+  WARN-never-FAIL (optional, like rtk/caveman); onboard step 9 + setup.sh step 6
+  install it confirm-gated.
+- `sigma scout` (`cli/scout.py` pure / `cli/scout_run.py` thin) queries skillsmp.com
+  via **stdlib urllib** (NO `requests` dep — keep the runtime pyyaml+rich only).
+  Relevance score is domain-keyword-overlap-dominant with a CAPPED star bump, so a
+  popular-but-irrelevant skill never outranks a relevant one (asserted in tests).
+  Dedups against `skills/` + `skills/vendor/` by normalized repo AND dir name. NEVER
+  auto-installs — per-skill human confirm (surface, never auto-resolve, like
+  contradiction flagging). `--vendor` clones into the sigma bundle, default into the
+  project's `.claude/skills/`. `SKILLSMP_API_KEY` is OPTIONAL (env or ~/.sigma/.env,
+  NEVER prompted in onboard, never committed). Fail-safe: API down/rate-limited/bad
+  JSON → empty result + banner, never a crash; a partial sweep still ranks.
+- `sigma prune` (`cli/prune.py` pure / `cli/prune_run.py` thin) cuts loaded-but-
+  unused MCP servers + plugins (each injects tool schemas into EVERY context). Two
+  hard laws: (1) **never prune on absent evidence** — no transcripts scanned →
+  surface NOTHING (an item with unknown usage is treated as USED, the conservative
+  default, like gate-defaults-WAKE); (2) **disable ≠ uninstall** — flips
+  `enabledPlugins[name]=false` in settings.json via an IMMUTABLE merge (new dict,
+  every other key preserved, exactly like `cli/statusline.py`), reversible by
+  flipping back. User-level MCP servers (`~/.claude.json`) are SURFACED for a manual
+  edit — prune never auto-edits that file. `--check` is a read-only CI gate (exit 1
+  on prunable bloat). Distinct hygiene LAYER: scout grows the bundle, prune trims it,
+  sigma-cost sizes it.
