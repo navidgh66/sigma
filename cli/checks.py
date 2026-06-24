@@ -227,6 +227,28 @@ def check_caveman(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("caveman", OK, "caveman installed + active for Claude")
 
 
+def check_graphify(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
+    """graphify codebase knowledge-graph engine: installed (for `sigma learn`)?"""
+    if status_fn is None:
+        from cli.graphify import graphify_status
+
+        status_fn = graphify_status
+    st = status_fn()
+
+    def _fix() -> bool:
+        from cli.graphify import setup_graphify
+
+        return setup_graphify(status_fn=status_fn, confirm=lambda _msg: True)
+
+    if not st.get("installed"):
+        return Check(
+            "graphify", WARN,
+            "graphify not installed (optional — grounds `sigma learn` in a knowledge graph)",
+            fix=("install graphify (uv tool install graphifyy)", _fix),
+        )
+    return Check("graphify", OK, "graphify installed (sigma learn builds a knowledge graph)")
+
+
 def check_statusline(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     """ccstatusline: a node runtime present? statusLine configured in settings.json?"""
     if status_fn is None:
@@ -260,6 +282,7 @@ def run_all(
     rtk_status_fn: Optional[Callable] = None,
     caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
+    graphify_status_fn: Optional[Callable] = None,
 ) -> List[Check]:
     """Run every probe and return the results in display order."""
     return [
@@ -275,6 +298,7 @@ def run_all(
         check_rtk(status_fn=rtk_status_fn),
         check_caveman(status_fn=caveman_status_fn),
         check_statusline(status_fn=statusline_status_fn),
+        check_graphify(status_fn=graphify_status_fn),
     ]
 
 

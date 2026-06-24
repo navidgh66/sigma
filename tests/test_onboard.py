@@ -97,8 +97,9 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         secret_input=lambda key: "",
         confirm=lambda msg: True,                     # yes to rtk
         rtk_status_fn=lambda: {"installed": True, "hook_active": False, "gain_ok": True},
-        # caveman already active → its step is a no-op, isolating the rtk assertion.
+        # caveman + graphify already active → their steps no-op, isolating the rtk assertion.
         caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        graphify_status_fn=lambda: {"installed": True},
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
         which=lambda n: "/usr/bin/rtk" if n == "rtk" else None,
@@ -120,6 +121,7 @@ def test_onboard_sets_up_caveman_on_confirm(tmp_path, monkeypatch):
         confirm=lambda msg: True,                     # yes to everything
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
         caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
+        graphify_status_fn=lambda: {"installed": True},  # already installed → no-op
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
         which=lambda n: None,
@@ -164,6 +166,51 @@ def test_onboard_skips_rtk_when_declined(tmp_path, monkeypatch):
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
         which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert spawned == []
+
+
+# --------------------------- graphify --------------------------- #
+def test_onboard_installs_graphify_on_confirm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,
+        # rtk + caveman + statusline already satisfied → only graphify acts.
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: "/bin/uv" if n == "uv" else None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    # graphify install ran via uv.
+    assert any(a[:3] == ["uv", "tool", "install"] for a in spawned)
+
+
+def test_onboard_skips_graphify_when_declined(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: False,
+        rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
+        graphify_status_fn=lambda: {"installed": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: "/bin/uv",
         use_rich=False,
         domains=["nlp"],
     )

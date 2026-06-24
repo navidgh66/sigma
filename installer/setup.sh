@@ -23,7 +23,7 @@ else
   C_CYAN=""; C_GREEN=""; C_YEL=""; C_MAG=""; C_BLU=""; C_DIM=""; C_RST=""; C_B=""
 fi
 
-step() { printf "%s[%s/6]%s %s\n" "$C_DIM" "$1" "$C_RST" "$2"; }
+step() { printf "%s[%s/7]%s %s\n" "$C_DIM" "$1" "$C_RST" "$2"; }
 ok()   { printf "      %s✓%s %s\n" "$C_GREEN" "$C_RST" "$1"; }
 warn() { printf "      %s⚠%s %s\n" "$C_YEL" "$C_RST" "$1"; }
 
@@ -119,8 +119,24 @@ else
   warn "claude CLI not found — install it, then: claude plugin marketplace add $REPO_SLUG"
 fi
 
-# --- 6. PATH --------------------------------------------------------------- #
-step 6 "Finishing up…"
+# --- 6. graphify (codebase knowledge graph for `sigma learn`) -------------- #
+# Installed in its OWN isolated 3.10+ env via uv/pipx — sigma stays 3.9 and only
+# shells out to the `graphify` binary. Best-effort; skip cleanly if no installer.
+step 6 "Installing graphify (knowledge-graph engine; optional)…"
+if command -v graphify >/dev/null 2>&1; then
+  ok "graphify already installed"
+elif command -v uv >/dev/null 2>&1; then
+  uv tool install graphifyy >/dev/null 2>&1 && ok "graphify installed (uv)" \
+    || warn "graphify install skipped — run: uv tool install graphifyy"
+elif command -v pipx >/dev/null 2>&1; then
+  pipx install graphifyy >/dev/null 2>&1 && ok "graphify installed (pipx)" \
+    || warn "graphify install skipped — run: pipx install graphifyy"
+else
+  warn "no uv/pipx — for sigma learn graphs: uv tool install graphifyy"
+fi
+
+# --- 7. PATH --------------------------------------------------------------- #
+step 7 "Finishing up…"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ok "$BIN_DIR already on PATH" ;;
   *) warn "add to PATH:  export PATH=\"\$PATH:$BIN_DIR\"" ;;
