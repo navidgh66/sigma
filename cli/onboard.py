@@ -15,6 +15,7 @@ from typing import Callable, List, Optional
 
 from cli import caveman as caveman_mod
 from cli import checks as checks_mod
+from cli import graphify as graphify_mod
 from cli import render, rtk, secrets
 from cli import statusline as statusline_mod
 from cli.config import SigmaConfig, write_config
@@ -46,6 +47,7 @@ def run_onboard(
     rtk_status_fn: Optional[Callable] = None,
     caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
+    graphify_status_fn: Optional[Callable] = None,
     spawn: Optional[Callable] = None,
     which: Optional[Callable] = None,
     run_all: Optional[Callable] = None,
@@ -107,5 +109,13 @@ def run_onboard(
     )
     if sl_changed:
         print("  ✓ ccstatusline configured — restart Claude Code for it to take effect")
+
+    # 9. graphify — confirm-gated install of the codebase knowledge-graph engine
+    #    that `sigma learn` shells out to (isolated 3.10+ env; sigma stays 3.9).
+    graph_changed = graphify_mod.setup_graphify(
+        status_fn=graphify_status_fn, confirm=confirm, which=which, spawn=spawn
+    )
+    if graph_changed:
+        print("  ✓ graphify installed — `sigma learn` will build a knowledge graph")
 
     print("\n✓ onboarding complete. Try:  sigma research \"your topic\"")

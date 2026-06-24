@@ -269,7 +269,12 @@ def cmd_learn(args: argparse.Namespace) -> int:
         persona=args.persona,
         topic=args.topic,
         dry_run=args.dry_run,
+        build_graph=not args.no_graph,
     )
+    if res.graph_built:
+        _print("  ✓ built knowledge graph (graphify)")
+    elif res.graph_note:
+        _print(f"  ℹ {res.graph_note}")
     if args.dry_run:
         _print("--- invocation (dry run) ---")
         _print(res.prompt)
@@ -498,6 +503,8 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--topic", help="slug for the .tour file (default: from tour title)")
     plearn.add_argument("--persona", help="who the walkthrough is for (e.g. 'new backend dev')")
     plearn.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    plearn.add_argument("--no-graph", action="store_true",
+                        help="skip the graphify knowledge-graph build (on by default when installed)")
     plearn.set_defaults(func=cmd_learn)
 
     pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
