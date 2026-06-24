@@ -10,7 +10,7 @@ from cli.learn import (
     build_learn_prompt,
     run_learn,
     split_output,
-)
+)  # build_learn_prompt used by the byte-identical regression test
 from cli.runner import AgentResult
 
 
@@ -147,3 +147,87 @@ def test_run_learn_bad_tour_json_flagged(tmp_path):
     assert res.ok  # architecture still written
     assert res.tour_path is None
     assert any("did not parse" in p for p in res.tour_problems)
+
+
+# --------------------------- graphify integration --------------------------- #
+def _good_output():
+    tour = {"title": "T", "steps": [{"description": "x", "file": "main.py", "line": 1}]}
+    return f"{ARCH_HEADER}\n# Arch\nbody\n{TOUR_HEADER}\n{json.dumps(tour)}"
+
+
+def test_no_graph_prompt_byte_identical_to_baseline(tmp_path):
+    # Regression lock: with graphify absent (no report), the learn prompt must be
+    # exactly the prompt sigma built before graphify existed.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n")
+    vendor = _vendor(tmp_path)
+
+    baseline = build_learn_prompt(repo.resolve(), persona=None, vendor=vendor)
+    res = run_learn(
+        repo, agent=FakeAgent(_good_output()), vendor=vendor,
+        which=lambda exe: None,  # graphify not installed
+    )
+    assert res.ok
+    assert res.graph_built is False
+    assert res.prompt == baseline
+
+
+def test_graph_built_when_installed_runs_extract(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n")
+    vendor = _vendor(tmp_path)
+    calls = []
+
+    def graph_runner(argv, cwd):
+        calls.append((argv, cwd))
+        # Simulate graphify writing its report.
+        out = (repo.resolve()) / "graphify-out"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "GRAPH_REPORT.md").write_text("# Graph\nGod node: main.py")
+        return 0
+
+    res = run_learn(
+        repo, agent=FakeAgent(_good_output()), vendor=vendor,
+        which=lambda exe: "/bin/graphify",
+        graph_runner=graph_runner,
+    )
+    assert res.ok
+    assert res.graph_built is True
+    assert calls and calls[0][0][:2] == ["graphify", "extract"]
+    # The report got injected into the prompt.
+    assert "God node: main.py" in res.prompt
+
+
+def test_graph_build_failure_still_learns(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n")
+    vendor = _vendor(tmp_path)
+
+    res = run_learn(
+        repo, agent=FakeAgent(_good_output()), vendor=vendor,
+        which=lambda exe: "/bin/graphify",
+        graph_runner=lambda argv, cwd: 1,  # graphify failed
+    )
+    assert res.ok  # fail-safe: learn proceeds
+    assert res.graph_built is False
+    assert res.graph_note and "exited 1" in res.graph_note
+
+
+def test_no_graph_flag_skips_build(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n")
+    vendor = _vendor(tmp_path)
+
+    def boom(argv, cwd):  # pragma: no cover - must not run
+        raise AssertionError("graph build must be skipped when build_graph=False")
+
+    res = run_learn(
+        repo, agent=FakeAgent(_good_output()), vendor=vendor,
+        build_graph=False, which=lambda exe: "/bin/graphify", graph_runner=boom,
+    )
+    assert res.ok
+    assert res.graph_built is False

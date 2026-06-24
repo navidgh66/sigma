@@ -6,12 +6,15 @@ that survive the session:
   - ARCHITECTURE.md       — an onboarding architecture map (CLAUDE.md-style)
   - .tours/<slug>.tour    — a CodeTour JSON walkthrough anchored to real files
 
-No graph engine is bundled: the maintained tree-sitter / Graphify stack requires
-Python 3.10+, which conflicts with sigma's 3.9 floor. Instead the agent reads the
-repo and emits both artifacts, and we validate the tour's anchors with the pure
-cli/codetour validator. The bundled `code-tour` + `codebase-onboarding` skills are
-injected so the agent follows their conventions (and they also work standalone in
-Claude Code).
+graphify is NOT imported (it needs Python 3.10+; sigma stays on 3.9). Instead,
+`sigma learn` SHELLS OUT to a standalone `graphify` binary — when present, it
+builds an incremental knowledge graph and injects graphify's GRAPH_REPORT.md into
+the agent prompt, grounding both artifacts in extracted structure (god-nodes,
+communities, call/import edges). The build is best-effort and the injection is
+fail-safe: graphify absent or a build failure degrades to a plain agent read
+(byte-identical prompt), never a crash. See cli/graphify.py. The bundled
+`code-tour` + `codebase-onboarding` skills are injected so the agent follows their
+conventions (and they also work standalone in Claude Code).
 
 Output parsing, prompt building, and validation are pure/injectable so the whole
 flow is testable without spawning a real agent.
@@ -22,9 +25,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from cli.codetour import validate_tour
+from cli.graphify import build_extract_argv, graphify_status, report_block
 from cli.paths import slugify
 from cli.runner import AgentRunner, write_artifact
 from cli.skill_map import vendor_dir
@@ -66,10 +70,22 @@ class LearnResult:
     tour_problems: List[str] = field(default_factory=list)
     error: Optional[str] = None
     prompt: str = ""
+    graph_built: bool = False
+    graph_note: Optional[str] = None
 
 
-def build_learn_prompt(root: Path, persona: Optional[str], vendor: Optional[Path] = None) -> str:
-    """Build the learn prompt, injecting the bundled learn skills."""
+def build_learn_prompt(
+    root: Path,
+    persona: Optional[str],
+    vendor: Optional[Path] = None,
+    graph_block: str = "",
+) -> str:
+    """Build the learn prompt, injecting the bundled learn skills.
+
+    `graph_block` (graphify's GRAPH_REPORT.md, when present) is prepended to the
+    task body so the agent grounds its map in extracted structure. An empty block
+    leaves the prompt byte-identical to the no-graph case (fail-safe).
+    """
     persona_line = f"Target audience / persona: {persona}\n\n" if persona else ""
     body = LEARN_INSTRUCTIONS.format(
         persona_line=persona_line,
@@ -77,6 +93,8 @@ def build_learn_prompt(root: Path, persona: Optional[str], vendor: Optional[Path
         arch_header=ARCH_HEADER,
         tour_header=TOUR_HEADER,
     )
+    if graph_block:
+        body = f"{graph_block}\n\n{body}"
     vendor = vendor or vendor_dir()
     return _inject_learn_skills(body, vendor)
 
@@ -138,18 +156,36 @@ def run_learn(
     agent: Optional[AgentRunner] = None,
     vendor: Optional[Path] = None,
     dry_run: bool = False,
+    build_graph: bool = True,
+    graph_runner: Optional[Callable[[List[str], Path], int]] = None,
+    which: Optional[Callable] = None,
 ) -> LearnResult:
-    """Drive the agent to learn `root`, then write + validate the artifacts."""
+    """Drive the agent to learn `root`, then write + validate the artifacts.
+
+    When `build_graph` is set and graphify is installed, build (or incrementally
+    refresh) the repo's knowledge graph first, then inject graphify's report into
+    the prompt. Both steps are fail-safe — graphify absent, or a build that errors,
+    degrades to a plain agent read (the prompt is byte-identical to the no-graph
+    case). `graph_runner`/`which` are injectable so tests never spawn graphify.
+    """
     root = root.resolve()
-    prompt = build_learn_prompt(root, persona, vendor=vendor)
+
+    graph_built, graph_note = _maybe_build_graph(
+        root, build_graph, graph_runner, which, dry_run
+    )
+    graph_block = report_block(root)
+    prompt = build_learn_prompt(root, persona, vendor=vendor, graph_block=graph_block)
 
     if dry_run:
-        return LearnResult(ok=True, prompt=prompt)
+        return LearnResult(ok=True, prompt=prompt, graph_built=graph_built, graph_note=graph_note)
 
     agent = agent or AgentRunner()
     result = agent.run(prompt, cwd=root)
     if not result.ok:
-        return LearnResult(ok=False, error=result.error or "agent run failed", prompt=prompt)
+        return LearnResult(
+            ok=False, error=result.error or "agent run failed", prompt=prompt,
+            graph_built=graph_built, graph_note=graph_note,
+        )
 
     arch_text, tour_text = split_output(result.output)
     if not arch_text and not tour_text:
@@ -157,6 +193,8 @@ def run_learn(
             ok=False,
             error="agent output had neither an ARCHITECTURE.md nor a TOUR.json section",
             prompt=prompt,
+            graph_built=graph_built,
+            graph_note=graph_note,
         )
 
     arch_path: Optional[Path] = None
@@ -174,7 +212,48 @@ def run_learn(
         tour_path=tour_path,
         tour_problems=problems,
         prompt=prompt,
+        graph_built=graph_built,
+        graph_note=graph_note,
     )
+
+
+def _maybe_build_graph(
+    root: Path,
+    build_graph: bool,
+    graph_runner: Optional[Callable[[List[str], Path], int]],
+    which: Optional[Callable],
+    dry_run: bool,
+) -> tuple:
+    """Best-effort graphify extract. Returns (built?, note).
+
+    Fail-safe: skipped when disabled, on a dry run, or when graphify isn't
+    installed; a non-zero/raising run yields (False, note) but never propagates.
+    """
+    if not build_graph or dry_run:
+        return False, None
+    if not graphify_status(which=which).get("installed"):
+        return False, "graphify not installed — run without a knowledge graph (sigma onboard installs it)"
+
+    runner = graph_runner or _default_graph_runner
+    argv = build_extract_argv(root)
+    try:
+        code = runner(argv, root)
+    except OSError as exc:
+        return False, f"graphify extract failed to start: {exc}"
+    if code != 0:
+        return False, f"graphify extract exited {code} — proceeding without a fresh graph"
+    return True, None
+
+
+def _default_graph_runner(argv: List[str], cwd: Path) -> int:
+    """Run graphify extract with cwd=root; return its exit code (never raises here)."""
+    import subprocess
+
+    try:
+        proc = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True, timeout=1800)
+        return proc.returncode
+    except subprocess.SubprocessError as exc:  # timeout etc. — treat as a soft failure
+        raise OSError(str(exc)) from exc
 
 
 def _write_tour(root: Path, tour_text: str, topic: Optional[str]) -> tuple:

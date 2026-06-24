@@ -134,6 +134,44 @@ def test_parser_onboard():
     assert a.name == "proj"
 
 
+def test_parser_learn_no_graph_flag():
+    a = build_parser().parse_args(["learn", "--no-graph"])
+    assert a.command == "learn"
+    assert a.no_graph is True
+    b = build_parser().parse_args(["learn"])
+    assert b.no_graph is False  # graph on by default
+
+
+def test_parser_scout_flags():
+    a = build_parser().parse_args(["scout", "--vendor", "--recent", "--dry-run"])
+    assert a.command == "scout"
+    assert a.vendor is True
+    assert a.recent is True
+    assert a.dry_run is True
+    b = build_parser().parse_args(["scout"])
+    assert b.vendor is False and b.recent is False
+
+
+def test_help_lists_scout():
+    res = run_cli("--help")
+    assert "scout" in res.stdout
+
+
+def test_parser_prune_flags():
+    a = build_parser().parse_args(["prune", "--check", "--yes", "--files", "10"])
+    assert a.command == "prune"
+    assert a.check is True
+    assert a.yes is True
+    assert a.files == 10
+    b = build_parser().parse_args(["prune"])
+    assert b.files == 40  # default lookback
+
+
+def test_help_lists_prune():
+    res = run_cli("--help")
+    assert "prune" in res.stdout
+
+
 def test_parser_gate_flags():
     a = build_parser().parse_args(["loop", "--topic", "d", "--gate", "check.py"])
     assert a.gate == "check.py"

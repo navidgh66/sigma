@@ -206,11 +206,27 @@ def test_rtk_fail_when_absent():
     assert c.fixable  # offers install + activate
 
 
+# --------------------------- graphify --------------------------- #
+def test_graphify_ok_when_installed():
+    c = checks.check_graphify(status_fn=lambda: {"installed": True})
+    assert c.status == OK
+
+
+def test_graphify_warn_offers_fix_when_absent():
+    c = checks.check_graphify(status_fn=lambda: {"installed": False})
+    assert c.status == WARN  # never FAIL — graphify is optional
+    assert c.fixable
+
+
 # --------------------------- run_all --------------------------- #
 def test_run_all_returns_checks(tmp_path, monkeypatch):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    out = checks.run_all(home=tmp_path, root=tmp_path, which=_which({"claude"}))
+    out = checks.run_all(
+        home=tmp_path, root=tmp_path, which=_which({"claude"}),
+        graphify_status_fn=lambda: {"installed": True},
+    )
     assert isinstance(out, list)
     assert all(isinstance(c, checks.Check) for c in out)
     names = {c.name for c in out}
     assert "python" in names and "rtk" in names and "secrets" in names
+    assert "graphify" in names
