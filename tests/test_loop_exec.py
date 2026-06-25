@@ -334,6 +334,67 @@ def test_run_loop_tdd_mode(tmp_path):
     assert all(o.test_written for o in outcomes)
 
 
+# --------------------------- regression test on bug (verify fail) --------------------------- #
+def test_verify_fail_writes_regression_test_in_tdd_mode(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    # test_writer: [acceptance test (RED), regression test (after verify fail)]
+    test = ScriptedRunner([
+        AgentResult(ok=True, output="def test_acc(): assert tokenize"),
+        AgentResult(ok=True, output="def test_regress_tokenize_empty(): ..."),
+    ])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=test)
+    assert out.verified is False
+    assert out.ratcheted_skill.exists()        # lesson still ratchets
+    assert out.regression_test is not None      # regression test pinned
+    assert out.regression_test.exists()
+    assert (tmp_path / "regressions" / f"{plan.worktree_name}.md").exists()
+    # The regression prompt carries the failure reason so the test pins the real bug.
+    assert "VERDICT: FAIL" in test.prompts[1] or "verifier returned" in test.prompts[1]
+
+
+def test_verify_fail_no_regression_without_test_writer(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+    assert out.verified is False
+    assert out.ratcheted_skill.exists()         # lesson still ratchets
+    assert out.regression_test is None          # no test-writer → no regression artifact
+    assert not (tmp_path / "regressions").exists()
+
+
+def test_verify_pass_writes_no_regression_test(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    test = ScriptedRunner([AgentResult(ok=True, output="def test_acc(): pass")])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=test)
+    assert out.verified is True
+    assert out.regression_test is None          # no bug → no regression test
+    assert not (tmp_path / "regressions").exists()
+
+
+def test_regression_test_failure_is_non_fatal(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    # Acceptance test ok; regression-test write fails — must not crash the cycle.
+    test = ScriptedRunner([
+        AgentResult(ok=True, output="def test_acc(): pass"),
+        AgentResult(ok=False, output="", error="regress crash"),
+    ])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, test_writer=test)
+    assert out.verified is False
+    assert out.ratcheted_skill.exists()         # lesson still ratchets (regression best-effort)
+    assert out.regression_test is None          # failed write → no artifact, no crash
+
+
 # --------------------------- team mode (parallel tasks) --------------------------- #
 def test_run_loop_team_runs_all_tasks(tmp_path):
     outcomes = run_loop(
