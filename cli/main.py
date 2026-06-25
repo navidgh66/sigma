@@ -170,6 +170,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print(f"  {mark} {o.task_title}")
         if o.test_written is not None:
             _print(f"    test-first: {'✓ written' if o.test_written else '✗ failed'}")
+        if o.regression_test:
+            _print(f"    regression test pinned → {o.regression_test}")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
         if o.contradiction:
