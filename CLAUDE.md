@@ -150,7 +150,7 @@ skills/vendor/      bundled skills (superpowers subset + caveman + code-tour + c
 skills/sigma-present/  skill: export artifacts → single-file HTML deck/report/kanban
 skills/sigma-domains/  skill: auto-surface the right domain context-engine (indexes context-engines/, no duplication)
 skills/sigma-lessons/  skill: recall past ratcheted lessons by domain in-session (read side of the loop)
-skills/sigma-grilling/  skill: the grilling rubric — adversarially interrogate a blueprint/spec before code (powers /grill); maker ≠ griller, BLOCK on doubt
+skills/sigma-grilling/  skill: the grilling rubric — adversarially interrogate a blueprint/spec before code (powers /grill); maker ≠ griller, BLOCK on doubt; per-axis decomposed scoring (AXIS lines + derived overall VERDICT), 11 axes incl. singular-requirement / EARS error-path / traceability / constitution / behaviour-orientation (evidence-backed: decomposed grading ≈2× expert correlation vs holistic)
 skills/sigma-grill-loop/  skill: bounded auto-grill loop (powers /grill-loop) — grill→triage→edit→re-grill; editor ≠ griller, mechanical-only auto-edit, CRITICAL/intent surfaced, round cap + no-progress stop
 skills/sigma-cost/  skill: estimate/measure/route token cost for heavy ops (review/profile/loop/research); composes with RTK/caveman, never duplicates
 skills/sigma-scout/  skill: curation rubric for sigma scout — relevance > popularity, license/overlap vetting, surface never auto-install
@@ -245,6 +245,10 @@ keeps only what Claude Code cannot do in-session, plus setup.
   shared `commands/grill.md` with a `--target`; `hermes._grill_ready` parses the
   verdict skeptically (no `VERDICT: READY` → BLOCK, same default-deny as
   `_verdict_pass`) and a BLOCK stops the chain at `grill-blocked` for human review.
+  `_grill_ready` matches ONLY the final `VERDICT:` line — the rubric's per-axis
+  `AXIS | <name> | PASS|FAIL` lines (decomposed scoring) precede it and are
+  parser-inert by design (regression-locked by `test_grill_ready_ignores_per_axis_lines`).
+  Overall verdict is DERIVED: any axis with a CRITICAL/HIGH finding → BLOCK.
 - The board is a **pure projection**: it never mutates state. Hermes/loop append
   to `events.jsonl`; `build_columns` folds tasks + latest-event-per-task into
   columns. `events.Event.ts` is passed in by the caller, never generated in the

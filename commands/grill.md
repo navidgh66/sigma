@@ -15,7 +15,7 @@ artifact — and, like `/verify`, it **defaults to BLOCK on doubt**.
 
 > "You'd much rather have a human catch a logic flaw in your design than wait
 > until the AI has already generated thousands of lines of broken code."
-> — *Spec-Driven Production-Grade Development in the Age of Vibe Coding* (Boonstra, 2026)
+> — Lee Boonstra, *Spec-Driven, Production-Grade Development in the Age of Vibe Coding*
 
 Maker ≠ griller: the griller is a **separate agent** from whoever authored the
 artifact. Never let the author grill its own work (same law as `execute_cycle`).
@@ -40,21 +40,25 @@ human. Fail-safe, not silent.
    (via `sigma-lessons`).
 3. Interrogate the artifact against the rubric's axes (see `sigma-grilling`):
    ambiguity, hidden assumptions (pre-mortem), testability, edge/error paths,
-   scope, ML/data risk, plus the spec-quality checks (BDD scenarios present,
-   "why behind the what", pinned versions, format/token discipline).
-4. Write `grill/{target}.md`: findings + verdict.
+   scope, ML/data risk, singular requirements, EARS error-path coverage,
+   cross-artifact traceability, constitution (MUST invariants), behaviour-orientation,
+   plus the spec-quality checks (BDD scenarios present, "why behind the what",
+   pinned versions, format/token discipline).
+4. Write `grill/{target}.md`: per-axis verdicts + findings + overall verdict.
 
 ## Findings & verdict (skeptical, sigma-idiomatic)
 
-Each finding, one per line, EXACTLY (same shape as `/review`):
+Grade each axis SEPARATELY, then derive the overall verdict (per-axis decomposed scoring
+beats one holistic judgment — see `sigma-grilling`):
 ```
+AXIS | <axis-name> | <PASS|FAIL>
 FINDING | <CRITICAL|HIGH|MEDIUM|LOW> | <artifact section/anchor> | <one-line issue + what to add/decide>
 ```
-End with `VERDICT: READY` or `VERDICT: BLOCK`.
+End with `VERDICT: READY` or `VERDICT: BLOCK` as the FINAL line (what the gate parses).
 
-- **BLOCK** on any CRITICAL/HIGH finding, OR if the grill is inconclusive (a
+- **BLOCK** on any axis carrying a CRITICAL/HIGH finding, OR if the grill is inconclusive (a
   dead/silent pass is never READY — skeptical, like `_verdict_pass`).
-- **READY** only when clean of CRITICAL/HIGH.
+- **READY** only when no axis carries a CRITICAL/HIGH.
 
 ## Gate (blocking, human override)
 
