@@ -37,6 +37,13 @@ _CROSS_CUTTING = ("evaluation", "testing", "reproducibility", "experiment", "dat
 
 # Default cap on how many candidates scout surfaces, so a broad sweep stays scannable.
 _DEFAULT_LIMIT = 20
+# A hit must clear this relevance floor to surface at all. The star bump is capped at
+# 1.0, so a floor just above it guarantees a hit needs at least ONE real domain-keyword
+# overlap (worth 2.0) — popularity alone never surfaces pure noise.
+_RELEVANCE_FLOOR = 1.5
+# Cap on hits surfaced from any single author, so one prolific publisher can't flood
+# the table and crowd out diverse, relevant alternatives.
+_DEFAULT_MAX_PER_AUTHOR = 3
 
 
 @dataclass(frozen=True)
@@ -72,28 +79,52 @@ def score_relevance(hit: SkillHit, domains: List[str]) -> float:
     Combines keyword overlap with each domain's query terms, a cross-cutting bonus,
     and gentle popularity/quality signals (log-ish star bump). Higher is better.
     """
-    text = f"{hit.name} {hit.description}".lower()
+    # Tokenize BOTH sides and intersect on whole tokens — a raw substring test would
+    # credit "rag" for "sto-rag-e"/"f-rag-ment" and "data" for "meta-data", inflating
+    # relevance on noise. Whole-token matching is the fix.
+    text_tokens = set(_tokenize(f"{hit.name} {hit.description}"))
     terms = set()
     for d in domains:
         if d in _DOMAIN_QUERY:
             terms.update(_tokenize(_DOMAIN_QUERY[d][0]))
-    overlap = sum(1 for t in terms if t and t in text)
-    cross = sum(1 for t in _CROSS_CUTTING if t in text)
+    overlap = len(terms & text_tokens)
+    cross = sum(1 for t in _CROSS_CUTTING if t in text_tokens)
     # Star bump is capped so a popular-but-irrelevant skill never outranks a
     # relevant one purely on popularity.
     star_bump = min(hit.stars, 1000) / 1000.0
     return float(overlap) * 2.0 + float(cross) * 0.5 + star_bump
 
 
-def rank(hits: List[SkillHit], limit: int = _DEFAULT_LIMIT) -> List[SkillHit]:
-    """Sort by score (desc), then stars (desc), then name; cap at `limit`.
+def rank(
+    hits: List[SkillHit],
+    limit: int = _DEFAULT_LIMIT,
+    max_per_author: int = _DEFAULT_MAX_PER_AUTHOR,
+) -> List[SkillHit]:
+    """Drop sub-floor noise, sort, cap per author, then cap at `limit`.
 
-    Deterministic: ties break on stars then name, never on input order.
+    1. Relevance FLOOR: a hit below `_RELEVANCE_FLOOR` (i.e. no real domain-keyword
+       overlap, surviving only on the capped star bump) is dropped — scout never
+       surfaces pure noise just to fill the table.
+    2. Sort by score (desc), then stars (desc), then name. Deterministic — ties never
+       break on input order.
+    3. Per-author cap: at most `max_per_author` hits from one author, so a prolific
+       publisher can't crowd out diverse alternatives.
+    4. Cap at `limit`.
     """
-    ordered = sorted(
-        hits, key=lambda h: (-h.score, -h.stars, h.name.lower())
-    )
-    return ordered[:limit]
+    floored = [h for h in hits if h.score >= _RELEVANCE_FLOOR]
+    ordered = sorted(floored, key=lambda h: (-h.score, -h.stars, h.name.lower()))
+    out: List[SkillHit] = []
+    per_author: Dict[str, int] = {}
+    for h in ordered:
+        author = (h.author or "").strip().lower()
+        if author:
+            if per_author.get(author, 0) >= max_per_author:
+                continue
+            per_author[author] = per_author.get(author, 0) + 1
+        out.append(h)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def dedup_against_bundle(hits: List[SkillHit], skills_dir: Optional[Path]) -> List[SkillHit]:

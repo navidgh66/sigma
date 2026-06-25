@@ -165,6 +165,11 @@ def test_parser_prune_flags():
     assert a.files == 10
     b = build_parser().parse_args(["prune"])
     assert b.files == 40  # default lookback
+    assert b.recent_files is None  # default: usage window = full scan
+    assert b.idle_threshold == 0   # default: unused-only
+    c = build_parser().parse_args(["prune", "--recent-files", "5", "--idle-threshold", "1"])
+    assert c.recent_files == 5
+    assert c.idle_threshold == 1
 
 
 def test_help_lists_prune():

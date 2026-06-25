@@ -19,8 +19,16 @@ reads + reversible write in `cli/prune_run.py`. This skill is the judgment layer
 ## What counts as a candidate
 - **Loaded** — an enabled plugin (`enabledPlugins`) or a connected MCP server
   (user `~/.claude.json` or project `.mcp.json`).
-- **Unused** — zero `tool_use` / `Skill` invocations across recent transcripts.
-- Ranked heaviest-first: MCP servers (many tool schemas) outweigh plugins.
+- **Idle** — zero `tool_use` / `Skill` invocations in the usage window (default: all
+  scanned transcripts; narrow it with `--recent-files N` to prune servers idle
+  *lately* even if heavily used long ago).
+- **Ranked by REAL context weight.** A server's weight scales with its *distinct tool
+  count* (schema width, observed across history), not a flat per-kind constant — a
+  100-tool server dwarfs a 2-tool one instead of ranking identical. Unknown tool count
+  → conservative per-kind fallback.
+- **Rarely-used = low-confidence (opt-in).** `--idle-threshold N` also surfaces items
+  used ≤N times, flagged `⚠ rarely used` — a judgment call for the human, never an
+  auto-disable. Default 0 = unused-only (unchanged).
 
 ## Two non-negotiable laws
 1. **Never prune on absent evidence.** No transcripts to scan → surface nothing.
@@ -46,4 +54,6 @@ neither of those touches.
 
 ## Flags
 `--check` (read-only CI gate, exit 1 on bloat), `--yes` (disable all prunable
-plugins), `--files N` (transcript lookback). Default is confirm-per-item.
+plugins), `--files N` (transcript scan = schema width), `--recent-files N` (usage
+window — prune items idle in the last N), `--idle-threshold N` (also surface items
+used ≤N times as low-confidence). Default is confirm-per-item, unused-only.

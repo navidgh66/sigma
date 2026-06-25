@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from cli import prune
 
@@ -85,8 +85,14 @@ def scan_usage(
     name plus the `skill`/`command` arg of any `Skill` invocation. Fail-safe: a
     missing dir or a garbled line is skipped, never fatal.
     """
-    lister = lister or _default_lister
-    files = lister(transcripts_dir)[:max_files]
+    invocations, skill_refs, scanned = _scan_files(
+        (lister or _default_lister)(transcripts_dir)[:max_files]
+    )
+    return invocations, skill_refs, scanned
+
+
+def _scan_files(files: List[Path]) -> tuple:
+    """Pull (invocations, skill_refs, files_scanned) from a concrete file list."""
     invocations: List[str] = []
     skill_refs: List[str] = []
     scanned = 0
@@ -106,6 +112,27 @@ def scan_usage(
                 continue
             _collect_from_record(obj, invocations, skill_refs)
     return invocations, skill_refs, scanned
+
+
+def tool_counts_by_server(invocations: List[str]) -> dict:
+    """Distinct `mcp__<server>__<tool>` tool names seen, grouped by server name.
+
+    A server's distinct-tool count proxies its schema width (its context tax),
+    independent of how recently it was used — a server invoked heavily long ago but
+    idle now is still wide. Returns server_name → distinct-tool count.
+    """
+    by_server: Dict[str, set] = {}
+    for inv in invocations:
+        low = (inv or "").lower()
+        if not low.startswith("mcp__"):
+            continue
+        middle = low[len("mcp__"):]
+        parts = middle.split("__", 1)
+        if len(parts) != 2 or not parts[1]:
+            continue
+        server, tool = parts[0], parts[1]
+        by_server.setdefault(server, set()).add(tool)
+    return {s: len(tools) for s, tools in by_server.items()}
 
 
 def _default_lister(transcripts_dir: Path) -> List[Path]:
@@ -154,19 +181,29 @@ def build_report(
     transcripts_dir: Optional[Path] = None,
     max_files: int = _DEFAULT_TRANSCRIPT_FILES,
     lister: Optional[Callable[[Path], List[Path]]] = None,
+    recent_files: Optional[int] = None,
+    idle_threshold: int = 0,
 ) -> PruneReport:
-    """Inventory loaded items, score usage from transcripts, rank disable candidates."""
+    """Inventory loaded items, score usage from transcripts, rank disable candidates.
+
+    Two scan windows: the FULL `max_files` scan estimates each server's schema width
+    (distinct tool count → context weight), independent of recency; the RECENT
+    `recent_files` window (defaults to `max_files`) is what counts as "used" for the
+    keep/prune decision. Set `recent_files` smaller to prune servers idle *lately* even
+    if heavily used long ago. `idle_threshold` (passed through to `rank_candidates`)
+    surfaces rarely-used items as low-confidence when > 0.
+    """
     settings = _read_json(settings_path or _default_settings_path())
     claude_json = _read_json(claude_json_path or _default_claude_json_path())
     project_mcp = _read_json(project_mcp_path) if project_mcp_path else None
 
-    items = prune.parse_plugins(settings) + prune.parse_mcp_servers(claude_json, project_mcp)
-    if not items:
+    base_items = prune.parse_plugins(settings) + prune.parse_mcp_servers(claude_json, project_mcp)
+    if not base_items:
         return PruneReport(note="nothing loaded to prune (no plugins or MCP servers found)")
 
-    invocations, skill_refs, scanned = scan_usage(
-        transcripts_dir or _default_transcripts_dir(), max_files=max_files, lister=lister
-    )
+    tdir = transcripts_dir or _default_transcripts_dir()
+    files = (lister or _default_lister)(tdir)[:max_files]
+    invocations, skill_refs, scanned = _scan_files(files)
     if scanned == 0:
         # No usage evidence → don't guess. Surface nothing (conservative: keep all).
         return PruneReport(
@@ -174,14 +211,40 @@ def build_report(
             note="no session transcripts found — skipping (won't prune without usage evidence)",
         )
 
-    usage = prune.usage_counts(invocations, skill_refs, items)
-    candidates = prune.rank_candidates(items, usage)
+    # Schema width from the FULL scan → per-item tool_count → weight.
+    server_tools = tool_counts_by_server(invocations)
+    items = [_with_tool_count(it, server_tools) for it in base_items]
+
+    # Usage from the RECENT window only (defaults to the full scan = prior behavior).
+    if recent_files is None or recent_files >= scanned:
+        recent_inv, recent_skills = invocations, skill_refs
+    else:
+        recent_inv, recent_skills, _ = _scan_files(files[:recent_files])
+
+    usage = prune.usage_counts(recent_inv, recent_skills, items)
+    candidates = prune.rank_candidates(items, usage, idle_threshold=idle_threshold)
     return PruneReport(
         candidates=candidates,
         freed_tokens=prune.total_weight(candidates),
         scanned_files=scanned,
         note=None if candidates else "everything loaded was used recently — nothing to prune",
     )
+
+
+def _with_tool_count(item: prune.InventoryItem, server_tools: dict) -> prune.InventoryItem:
+    """Rebuild an item with its distinct-tool count from the scanned server map.
+
+    Matches every scanned server segment to this item via `prune.belongs` (so a
+    plugin-provided `plugin_<plugin>_<server>` maps to its plugin), summing distinct
+    tools. No match → tool_count 0 (item keeps the per-kind fallback weight).
+    """
+    total = 0
+    for server, count in server_tools.items():
+        if prune.belongs(f"mcp__{server}__x", item):
+            total += count
+    if total <= 0:
+        return item
+    return prune.InventoryItem(name=item.name, kind=item.kind, tool_count=total)
 
 
 # --------------------------------------------------------------------------- #
