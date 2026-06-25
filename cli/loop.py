@@ -210,6 +210,17 @@ TDD_IMPLEMENT_PREFIX = (
     "A failing test was written FIRST (TDD). Make it pass without weakening what "
     "it checks — do not edit the test to fit the code:\n{test}\n\n"
 )
+# On a verify failure in TDD mode, the test writer pens a REGRESSION test that
+# pins the bug the checker just found, so the loop can never silently regress on
+# it again. The maker never edits this test (maker ≠ tester is already enforced).
+REGRESSION_PROMPT = (
+    "You are the TEST WRITER. The implementation of this task FAILED verification. "
+    "Write a REGRESSION test that pins the specific bug the checker found, so it can "
+    "never silently recur. Do NOT fix the code — only encode the missing guarantee.\n"
+    "Domain: {domain}\nTask: {title}\n"
+    "Checker's failure reason: {reason}\n\n"
+    "Output the regression test code and one line naming the bug it guards against."
+)
 
 
 @dataclass
@@ -219,6 +230,7 @@ class CycleOutcome:
     verified: bool
     logic_ok: Optional[bool] = None
     test_written: Optional[bool] = None  # set only in TDD mode
+    regression_test: Optional[Path] = None  # TDD: test pinning a verify-fail bug
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
@@ -356,6 +368,20 @@ def execute_cycle(
         )
         outcome.contradiction = _contradiction_flag(skills_dir, outcome.ratcheted_skill)
         append_loop_log(workspace, f"{title}: verify FAILED ({reason})")
+        # TDD: pin the bug with a regression test so the loop can never silently
+        # regress on it. Best-effort — a failed write is logged, never fatal.
+        if test_writer is not None:
+            reg = test_writer.run(
+                REGRESSION_PROMPT.format(domain=domain, title=title, reason=reason),
+                cwd=workspace,
+            )
+            if reg.ok:
+                outcome.regression_test = write_artifact(
+                    workspace / "regressions" / f"{plan.worktree_name}.md", reg.output
+                )
+                append_loop_log(workspace, f"{title}: regression test pinned")
+            else:
+                outcome.notes.append(f"regression-test write failed: {reg.error}")
     return outcome
 
 

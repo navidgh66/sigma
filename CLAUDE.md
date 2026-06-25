@@ -226,7 +226,11 @@ keeps only what Claude Code cannot do in-session, plus setup.
   (`ValueError` on reuse — uses `is`, not `==`, because AgentRunner is a dataclass
   and two fresh instances compare equal). A failed test-writing step aborts the
   cycle (nothing to build against) and ratchets the failure; the maker never runs.
-  `CycleOutcome.test_written` is set only in TDD mode.
+  `CycleOutcome.test_written` is set only in TDD mode. On a VERIFY failure in TDD
+  mode the same test-writer pens a REGRESSION test pinning the bug the checker found
+  (`workspace/regressions/`, `CycleOutcome.regression_test`) — best-effort, a failed
+  write is noted, never fatal; the lesson still ratchets. Only fires on verify-fail
+  (a real bug), not impl/test-write crashes; no test-writer → no regression artifact.
 - `--team` runs the capped task batch CONCURRENTLY (ThreadPoolExecutor). The recall
   snapshot is pre-built for every batch domain BEFORE fan-out, so parallel threads
   only READ it — no races, deterministic. Result order matches batch order.
