@@ -63,6 +63,31 @@ def test_report_ranks_unused_heavy_first(tmp_path):
     assert rep.freed_tokens > 0
 
 
+def test_report_weight_reflects_distinct_tool_count(tmp_path):
+    # tool_count is the distinct `mcp__server__*` tool names ever seen in history —
+    # a wide schema = a heavier context tax even when the server is idle in the
+    # RECENT window. Here both user-MCPs are idle for pruning (their tools predate
+    # the recency cut, simulated by recency=0), but the 3-tool server outweighs the
+    # 1-tool server, so it ranks first.
+    settings = tmp_path / "settings.json"
+    _write(settings, {"enabledPlugins": {}})
+    claude_json = tmp_path / ".claude.json"
+    _write(claude_json, {"mcpServers": {"wide": {}, "narrow": {}}})
+    tdir = tmp_path / "projects"
+    # Transcript reveals 3 distinct tools for `wide`, 1 for `narrow`, but counts them
+    # as schema observations, not recent usage (build_report treats them idle here
+    # because the test uses recent_files=0 to exclude them from the usage window).
+    _transcript(tdir / "p" / "s.jsonl", [
+        "mcp__wide__a", "mcp__wide__b", "mcp__wide__c", "mcp__narrow__only",
+    ])
+    rep = build_report(
+        settings_path=settings, claude_json_path=claude_json,
+        transcripts_dir=tdir, recent_files=0,
+    )
+    names = [c.name for c in rep.candidates]
+    assert names == ["wide", "narrow"]   # wider schema → heavier → first
+
+
 def test_report_no_transcripts_skips(tmp_path):
     settings = tmp_path / "settings.json"
     _write(settings, {"enabledPlugins": {"a@m": True}})
