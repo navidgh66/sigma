@@ -368,6 +368,8 @@ def cmd_prune(args: argparse.Namespace) -> int:
     rep = build_report(
         project_mcp_path=project_mcp if project_mcp.exists() else None,
         max_files=args.files,
+        recent_files=args.recent_files,
+        idle_threshold=args.idle_threshold,
     )
     if not rep.candidates:
         _print(f"  ✓ {rep.note or 'nothing to prune'}")
@@ -379,7 +381,8 @@ def cmd_prune(args: argparse.Namespace) -> int:
     )
     for i, c in enumerate(rep.candidates, 1):
         tag = "" if c.reversible else "  (manual: user-level MCP)"
-        _print(f"  {i}. [{c.kind}] {c.name}  ~{c.weight:,} tok{tag}")
+        conf = f"  ⚠ rarely used ({c.uses}× — judgment call)" if c.low_confidence else ""
+        _print(f"  {i}. [{c.kind}] {c.name}  ~{c.weight:,} tok{tag}{conf}")
 
     if args.check:
         # CI/read-only: exit 1 to flag that prunable bloat exists.
@@ -634,7 +637,11 @@ def build_parser() -> argparse.ArgumentParser:
     pprune = sub.add_parser("prune", help="Surface loaded-but-unused MCP/plugins → reversible disable")
     pprune.add_argument("--check", action="store_true", help="read-only; exit 1 if prunable bloat exists (CI)")
     pprune.add_argument("--yes", action="store_true", help="disable all prunable plugins without prompting")
-    pprune.add_argument("--files", type=int, default=40, help="how many recent transcripts to scan for usage")
+    pprune.add_argument("--files", type=int, default=40, help="how many recent transcripts to scan (schema width)")
+    pprune.add_argument("--recent-files", type=int, default=None,
+                        help="usage window: prune items idle in the last N transcripts (default: all scanned)")
+    pprune.add_argument("--idle-threshold", type=int, default=0,
+                        help="also surface items used ≤N times as low-confidence candidates (default 0 = unused only)")
     pprune.set_defaults(func=cmd_prune)
 
     pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")

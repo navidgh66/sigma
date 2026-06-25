@@ -23,13 +23,19 @@ license before install. This is the same law as contradiction flagging and the
 review gate — the tool never silently mutates the bundle.
 
 ## Relevance bar (how candidates are judged)
-1. **Domain fit first.** Keyword overlap with the active domains' query terms
-   dominates the score. A popular-but-off-topic skill must never outrank a relevant
-   one (the star bump is capped for exactly this reason).
-2. **Quality signals second.** Stars + recency are a tiebreaker, not the driver.
-3. **Already-bundled → dropped.** Anything whose repo or name already lives under
-   `skills/` or `skills/vendor/` is deduped out — scout only ever surfaces *new*
-   skills.
+1. **Relevance FLOOR — pure noise is dropped, not just out-ranked.** A hit needs at
+   least one *whole-token* domain-keyword match to clear the floor; a popular-but-
+   off-topic skill scoring only on the capped star bump never surfaces. (Scout used
+   to surface whatever it found up to the cap — the floor closes that hole.)
+2. **Token match, not substring.** Domain terms match on whole tokens, so `rag`
+   credits "rag retrieval" but NOT "sto**rag**e"/"f**rag**ment", and `data` does not
+   match "meta**data**". Substring overlap inflated relevance on noise.
+3. **Domain fit dominates; quality second.** Keyword overlap drives the score; stars +
+   recency only break ties (the star bump is capped so popularity can't outrank fit).
+4. **Per-author diversity cap.** At most a few hits from one author surface, so a
+   prolific publisher can't flood the table and crowd out alternatives.
+5. **Already-bundled → dropped.** Anything whose repo or name already lives under
+   `skills/` or `skills/vendor/` is deduped out — scout only ever surfaces *new* skills.
 
 ## Before adding a skill (vetting checklist)
 - **License** — confirm it permits redistribution if going into the sigma bundle

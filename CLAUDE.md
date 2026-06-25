@@ -379,8 +379,12 @@ keeps only what Claude Code cannot do in-session, plus setup.
   install it confirm-gated.
 - `sigma scout` (`cli/scout.py` pure / `cli/scout_run.py` thin) queries skillsmp.com
   via **stdlib urllib** (NO `requests` dep — keep the runtime pyyaml+rich only).
-  Relevance score is domain-keyword-overlap-dominant with a CAPPED star bump, so a
-  popular-but-irrelevant skill never outranks a relevant one (asserted in tests).
+  Relevance score is **whole-token** domain-keyword-overlap-dominant (NOT substring —
+  `rag` no longer credits "sto**rag**e"/"f**rag**ment") with a CAPPED star bump, so a
+  popular-but-irrelevant skill never outranks a relevant one (asserted in tests). `rank`
+  enforces a **relevance FLOOR** (`_RELEVANCE_FLOOR=1.5`, just above the ≤1.0 star bump →
+  a hit needs ≥1 real token overlap) so pure noise is DROPPED, not just out-ranked, plus
+  a **per-author cap** (`max_per_author`) so one publisher can't flood the table.
   Dedups against `skills/` + `skills/vendor/` by normalized repo AND dir name. NEVER
   auto-installs — per-skill human confirm (surface, never auto-resolve, like
   contradiction flagging). `--vendor` clones into the sigma bundle, default into the
@@ -397,4 +401,14 @@ keeps only what Claude Code cannot do in-session, plus setup.
   flipping back. User-level MCP servers (`~/.claude.json`) are SURFACED for a manual
   edit — prune never auto-edits that file. `--check` is a read-only CI gate (exit 1
   on prunable bloat). Distinct hygiene LAYER: scout grows the bundle, prune trims it,
-  sigma-cost sizes it.
+  sigma-cost sizes it. **Weight scales with REAL schema width**: a server's context
+  weight = its distinct `mcp__<server>__*` tool count (scanned across history) ×
+  `_PER_TOOL_WEIGHT`, NOT a flat per-kind constant — a 100-tool server dwarfs a 2-tool
+  one; unknown count → per-kind fallback (`prune_run.tool_counts_by_server` +
+  `_with_tool_count`). Two scan windows: FULL `--files` scan = schema width (recency-
+  independent), RECENT `--recent-files N` = the usage window (prune servers idle
+  *lately* even if hot long ago; defaults to the full scan = prior behavior).
+  `--idle-threshold N` surfaces items used ≤N times as `low_confidence` candidates
+  (judgment call, never auto-disabled; default 0 = unused-only). `belongs` normalizes
+  `-`/`_` separators so a HYPHENATED plugin name (`code-review`) still matches its
+  `mcp__plugin_code-review_...` tools (was a false-negative → wrong prune candidate).

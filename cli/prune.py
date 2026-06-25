@@ -23,36 +23,55 @@ KIND_PLUGIN = "plugin"
 KIND_MCP_USER = "mcp-user"      # user-level server in ~/.claude.json (manual to disable)
 KIND_MCP_PROJECT = "mcp-project"  # project .mcp.json server (disable via settings list)
 
-# Static per-kind context-weight estimates (tokens). MCP servers carry full tool
-# schemas (often many tools) → heaviest; plugins bring skills/commands/maybe an MCP.
-# Deliberately rough, like cost.py's static factors — they rank, they don't bill.
+# Static per-kind context-weight estimates (tokens), used as a FALLBACK when the
+# real tool count is unknown. MCP servers carry full tool schemas (often many tools)
+# → heaviest; plugins bring skills/commands/maybe an MCP. Deliberately rough, like
+# cost.py's static factors — they rank, they don't bill.
 _KIND_WEIGHT = {
     KIND_MCP_USER: 8000,
     KIND_MCP_PROJECT: 8000,
     KIND_PLUGIN: 3000,
 }
 _DEFAULT_WEIGHT = 3000
+# Rough per-tool schema cost (tokens) when an item's distinct tool count is known.
+# An MCP tool's JSON schema (name + description + params) is ~250-400 tokens; 300 is
+# a sane midpoint. Weight = tool_count * this, so a 100-tool server dwarfs a 2-tool one.
+_PER_TOOL_WEIGHT = 300
 
 
 @dataclass(frozen=True)
 class InventoryItem:
-    """One loaded context contributor."""
+    """One loaded context contributor.
+
+    `tool_count` is the distinct tool-schema count observed for this item across
+    history (0/unknown → fall back to the per-kind estimate). It lets weight scale
+    with a server's real schema width instead of a flat per-kind constant.
+    """
 
     name: str
     kind: str
+    tool_count: int = 0
 
     @property
     def weight(self) -> int:
+        if self.tool_count > 0:
+            return self.tool_count * _PER_TOOL_WEIGHT
         return _KIND_WEIGHT.get(self.kind, _DEFAULT_WEIGHT)
 
 
 @dataclass(frozen=True)
 class Candidate:
-    """A ranked prune suggestion: a loaded item with its usage + weight."""
+    """A ranked prune suggestion: a loaded item with its usage + weight.
+
+    `low_confidence` marks an item surfaced because it was RARELY used (within an
+    `idle_threshold`), not truly unused — a judgment call for the human, never an
+    auto-disable. A zero-use item is high-confidence (low_confidence=False).
+    """
 
     item: InventoryItem
     uses: int
     reversible: bool  # True if sigma can disable it via a settings flag
+    low_confidence: bool = False
 
     @property
     def name(self) -> str:
@@ -113,10 +132,15 @@ def belongs(tool_name: str, item: InventoryItem) -> bool:
     base_low = base.lower()
 
     if low.startswith("mcp__"):
-        # tokens between the mcp__ prefix and the trailing __<tool>
+        # The server segment sits between the mcp__ prefix and the trailing __<tool>.
+        # A plugin-provided server reads `plugin_<plugin>_<server>`. The plugin name
+        # may contain hyphens AND the harness may render them as `_`, so normalize
+        # both separators to a single `_` and look for the base as a contiguous run.
         middle = low[len("mcp__"):]
         server = middle.split("__", 1)[0]
-        return base_low in server.split("_")
+        norm_server = f"_{server.replace('-', '_')}_"
+        norm_base = f"_{base_low.replace('-', '_')}_"
+        return norm_base in norm_server
     # Skill / command form: "<plugin>:<name>" or bare plugin name.
     head = low.split(":", 1)[0]
     return head == base_low
@@ -143,20 +167,29 @@ def rank_candidates(
     items: List[InventoryItem],
     usage: Dict[str, int],
     reversible_kinds: Optional[set] = None,
+    idle_threshold: int = 0,
 ) -> List[Candidate]:
-    """Rank disable candidates: UNUSED only, heaviest first.
+    """Rank disable candidates: idle items, heaviest first.
 
-    An item with any recorded use is excluded (kept). Among the unused, sort by
-    weight desc, then name. `reversible_kinds` marks which kinds sigma can disable
-    via a settings flag (the rest are surfaced for a manual edit).
+    An item with more than `idle_threshold` uses is excluded (kept). With the
+    default `idle_threshold=0`, only TRULY unused items surface (unchanged behavior).
+    Raise it (e.g. 1) to also surface RARELY-used items — those are flagged
+    `low_confidence` (a judgment call for the human, never auto-disabled). Among
+    the survivors, sort by weight desc, then name. `reversible_kinds` marks which
+    kinds sigma can disable via a settings flag (the rest are surfaced for manual edit).
     """
     reversible_kinds = reversible_kinds if reversible_kinds is not None else {
         KIND_PLUGIN, KIND_MCP_PROJECT,
     }
     cands = [
-        Candidate(item=it, uses=usage.get(it.name, 0), reversible=it.kind in reversible_kinds)
+        Candidate(
+            item=it,
+            uses=usage.get(it.name, 0),
+            reversible=it.kind in reversible_kinds,
+            low_confidence=usage.get(it.name, 0) > 0,  # surfaced despite some use
+        )
         for it in items
-        if usage.get(it.name, 0) == 0
+        if usage.get(it.name, 0) <= idle_threshold
     ]
     return sorted(cands, key=lambda c: (-c.weight, c.name.lower()))
 
