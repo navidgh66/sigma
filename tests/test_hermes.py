@@ -233,3 +233,33 @@ def test_hermes_gate_wakes(tmp_path):
         gate=_gate(tmp_path, wake=True),
     )
     assert calls == ["propose"]     # gate woke → ran the hop
+
+
+# --------------------------- grill verdict parsing (per-axis safe) --------------------------- #
+def test_grill_ready_reads_final_verdict():
+    assert hermes._grill_ready("FINDING | LOW | x | nit\nVERDICT: READY") is True
+    assert hermes._grill_ready("FINDING | CRITICAL | x | bug\nVERDICT: BLOCK") is False
+
+
+def test_grill_ready_defaults_block_when_silent():
+    assert hermes._grill_ready("no verdict line here") is False  # skeptical default
+
+
+def test_grill_ready_ignores_per_axis_lines():
+    # Per-axis scoring emits `AXIS | <name> | PASS|FAIL` lines BEFORE the overall
+    # verdict. These must not be mistaken for the verdict — only the final
+    # `VERDICT:` line decides. A passing per-axis set with a BLOCK overall = BLOCK.
+    out = (
+        "AXIS | testability | PASS\n"
+        "AXIS | edge-cases | FAIL | no error path for empty input\n"
+        "FINDING | HIGH | criteria | acceptance criterion not falsifiable\n"
+        "VERDICT: BLOCK"
+    )
+    assert hermes._grill_ready(out) is False
+    # All axes pass → overall READY still comes from the final line.
+    ok = (
+        "AXIS | testability | PASS\n"
+        "AXIS | edge-cases | PASS\n"
+        "VERDICT: READY"
+    )
+    assert hermes._grill_ready(ok) is True
