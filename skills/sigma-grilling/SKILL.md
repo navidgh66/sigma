@@ -17,7 +17,8 @@ origin: sigma
 The **grilling rubric** — what a skeptical reviewer interrogates in a design or
 spec before any code is written. Grilling is the cheap gate: a flaw caught here
 costs a sentence; the same flaw caught after the agent generates a thousand lines
-costs a rewrite (Boonstra, 2026 — *Spec-Driven Production-Grade Development*).
+costs a rewrite (Lee Boonstra — *Spec-Driven, Production-Grade Development in the
+Age of Vibe Coding*).
 
 **Two laws (non-negotiable, sigma-wide):**
 - **Maker ≠ griller** — the griller is a *distinct agent* from the artifact's
@@ -66,6 +67,36 @@ costs a rewrite (Boonstra, 2026 — *Spec-Driven Production-Grade Development*).
 - **Metric correctness**: metric matches the objective (class imbalance, ordering variance)?
 - **Determinism**: seeds pinned, eval reproducible?
 
+### 7. Singular requirements (ISO/IEC/IEEE 29148 — *singular*)
+- Any criterion hiding TWO behaviours in one line ("…and…", "…also…", "…as well as…")?
+  → split into separate criteria. Conjoined requirements get half-implemented.
+- Each acceptance criterion expresses exactly ONE testable outcome.
+
+### 8. Error-path coverage (EARS unwanted-behaviour pattern)
+- Each operation that can fail has ≥1 explicit `IF <trigger> THEN the system SHALL …`
+  criterion. The EARS error pattern is a structural edge-case checklist — a risky
+  operation with only happy-path criteria → HIGH (missing error path).
+- Maps onto axis 4; this axis demands the coverage be *present*, not just enumerable.
+
+### 9. Cross-artifact traceability (chain check, not single-doc)
+- Every requirement maps to ≥1 downstream task; every task traces back to a requirement.
+- Flag zero-coverage requirements (will silently not get built) + orphaned tasks
+  (built but unmotivated → scope creep). Use the chain context (`chain.json`) when grilling
+  a spec that already has `tasks.md`.
+
+### 10. Constitution (MUST invariants — higher-order gate)
+- A persistent set of project MUST-principles the artifact may NOT violate, independent
+  of the per-finding axes: ML leakage/splits discipline, maker ≠ checker separation, no
+  secrets in committed config, fail-safe defaults (default-deny verdicts, default-WAKE gate).
+- A constitution violation is **CRITICAL** regardless of how small it looks.
+
+### 11. Behaviour-orientation (anti context-dump)
+- Is the artifact behaviour-oriented (testable criteria) or long prose / a context dump?
+  Agents demonstrably *ignore* prose — a spec that reads like a brief, not a contract,
+  → HIGH. Reward self-enforcing, testable statements over narrative.
+- **Scale-adaptive rigor**: a one-file change is not a multi-PR system; demand depth
+  proportional to blast radius, not uniform ceremony.
+
 ## Spec-quality checks (from the whitepaper — a *good* spec)
 
 - **BDD scenarios**: are acceptance criteria expressed as Scenario / Given / When /
@@ -80,13 +111,29 @@ costs a rewrite (Boonstra, 2026 — *Spec-Driven Production-Grade Development*).
 - **Format / token discipline**: deeply nested config (>3 levels) rendered as flat
   YAML, narrative as Markdown — not heavy nested JSON in prose (the "format tax").
 
-## Output contract
+## Output contract — per-axis decomposed scoring
 
-Findings, one per line, EXACTLY:
+Grade each axis **separately**, then derive the overall verdict mechanically. A holistic
+"this spec looks risky" judgment correlates far worse with expert review than per-criterion
+grading with evidence (decomposed criteria-based eval ≈ 2× the expert correlation of a single
+holistic score) — and the per-axis breakdown is the calibration signal a panel can vote on.
+
+1. One **AXIS** line per interrogated axis (skip axes the artifact genuinely doesn't touch):
+```
+AXIS | <axis-name> | <PASS|FAIL>
+```
+2. One **FINDING** line per issue (EXACTLY this shape — same as `/review`):
 ```
 FINDING | <CRITICAL|HIGH|MEDIUM|LOW> | <artifact section/anchor> | <one-line issue + what to add/decide>
 ```
-Then `VERDICT: READY` or `VERDICT: BLOCK`.
+3. The **overall verdict** as the FINAL line (derived, not vibes):
+```
+VERDICT: READY  or  VERDICT: BLOCK
+```
+
+Derivation (mechanical): any axis FAIL with a CRITICAL/HIGH finding → overall **BLOCK**.
+READY only when no axis carries a CRITICAL/HIGH. The final `VERDICT:` line is what the gate
+parses (`hermes._grill_ready`) — AXIS/FINDING lines never substitute for it.
 
 Severity guide:
 - **CRITICAL** — a flaw that, if built, breaks correctness or safety (leakage,
