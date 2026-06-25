@@ -40,12 +40,53 @@ def test_score_star_bump_cannot_beat_relevance():
 # --------------------------- ranking --------------------------- #
 def test_rank_is_deterministic_and_capped():
     hits = [
-        SkillHit("A", "", "a/a", stars=1, score=1.0),
+        SkillHit("A", "", "a/a", stars=1, score=2.0),
         SkillHit("B", "", "b/b", stars=9, score=3.0),
         SkillHit("C", "", "c/c", stars=5, score=3.0),  # tie with B on score → stars break
     ]
     out = rank(hits, limit=2)
     assert [h.name for h in out] == ["B", "C"]  # B before C (more stars), capped to 2
+
+
+# --------------------------- relevance floor (#1) --------------------------- #
+def test_rank_drops_below_relevance_floor():
+    # A popular-but-irrelevant hit scores only on the capped star bump (≤1.0); it
+    # must be DROPPED, not merely out-ranked — scout never surfaces pure noise.
+    noise = SkillHit("Popular Noise", "unrelated web framework", "a/b", stars=100000, score=1.0)
+    relevant = SkillHit("RAG Tool", "llm rag eval", "c/d", stars=2, score=4.0)
+    out = rank([noise, relevant])
+    assert [h.name for h in out] == ["RAG Tool"]  # noise dropped by the floor
+
+
+def test_rank_floor_keeps_topical_low_star():
+    # One real domain-keyword (overlap=1 → 2.0) clears the floor even with 0 stars.
+    hit = SkillHit("Niche", "tokenization helper", "a/b", score=2.0)
+    assert [h.name for h in rank([hit])] == ["Niche"]
+
+
+# --------------------------- token match, not substring (#3) --------------------------- #
+def test_score_token_match_not_substring():
+    # "rag" is a domain term for llm-engineering; it must NOT match "storage"/"fragment".
+    substring_trap = SkillHit("Storage Lib", "a storage and fragment manager", "a/b")
+    real = SkillHit("RAG Lib", "rag retrieval helper", "c/d")
+    s_trap = score_relevance(substring_trap, ["llm-engineering"])
+    s_real = score_relevance(real, ["llm-engineering"])
+    assert s_real > s_trap
+    assert s_trap == 0.0  # zero real overlap → zero relevance (no substring credit)
+
+
+# --------------------------- per-author diversity cap (#5b) --------------------------- #
+def test_rank_caps_hits_per_author():
+    # One prolific author must not flood the table; cap surfaced hits per author.
+    hits = [
+        SkillHit(f"S{i}", "llm rag eval", f"alice/r{i}", author="alice", score=5.0 - i * 0.1)
+        for i in range(5)
+    ]
+    hits.append(SkillHit("Other", "llm rag eval", "bob/x", author="bob", score=4.0))
+    out = rank(hits, max_per_author=2)
+    alice = [h for h in out if h.author == "alice"]
+    assert len(alice) == 2          # capped
+    assert any(h.author == "bob" for h in out)  # other authors still surface
 
 
 # --------------------------- dedup --------------------------- #
