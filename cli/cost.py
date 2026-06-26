@@ -39,6 +39,7 @@ _STATIC_TOKENS_PER_UNIT = {
     "profile": 3000,   # per file walked
     "loop": 6000,      # per cycle (implement + verify + logic)
     "research": 8000,  # per model (full brief + findings)
+    "eval": 3500,      # per unit (a SUT run or a grade)
 }
 _DEFAULT_TOKENS_PER_UNIT = 4000
 
@@ -94,6 +95,9 @@ def routing_for(op: str) -> Dict[str, str]:
         return {"implement": TIER_MID, "verify": TIER_MID, "logic": TIER_STRONG}
     if op == "research":
         return {"fan-out": TIER_MID}
+    if op == "eval":
+        # The system-under-test can be any tier; the judge reasons → strong.
+        return {"sut": TIER_MID, "judge": TIER_STRONG}
     return {}
 
 
