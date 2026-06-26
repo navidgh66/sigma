@@ -308,7 +308,9 @@ def execute_cycle(
     # against) and ratchets the failure.
     implement_prompt = IMPLEMENT_PROMPT.format(domain=domain, title=title)
     if test_writer is not None:
-        test = test_writer.run(TEST_PROMPT.format(domain=domain, title=title), cwd=workspace)
+        test = test_writer.run(
+            TEST_PROMPT.format(domain=domain, title=title), cwd=workspace, role="test-writer"
+        )
         outcome.test_written = test.ok
         if not test.ok:
             outcome.notes.append(f"test-writing failed: {test.error}")
@@ -324,6 +326,7 @@ def execute_cycle(
     impl = implementer.run(
         _with_recall(implement_prompt, recall),
         cwd=workspace,
+        role="implementer",
     )
     outcome.implemented = impl.ok
     if not impl.ok:
@@ -340,6 +343,7 @@ def execute_cycle(
     chk = verifier.run(
         _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
         cwd=workspace,
+        role="verifier",
     )
     write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
     quality_passed = chk.ok and _verdict_pass(chk.output)
@@ -347,7 +351,9 @@ def execute_cycle(
     # Second axis: logic evaluator (optional, independent agent).
     logic_passed = True
     if logic_checker is not None:
-        logic = logic_checker.run(LOGIC_PROMPT.format(domain=domain, title=title), cwd=workspace)
+        logic = logic_checker.run(
+            LOGIC_PROMPT.format(domain=domain, title=title), cwd=workspace, role="logic"
+        )
         write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
         logic_passed = logic.ok and _verdict_pass(logic.output)
         outcome.logic_ok = logic_passed
@@ -374,6 +380,7 @@ def execute_cycle(
             reg = test_writer.run(
                 REGRESSION_PROMPT.format(domain=domain, title=title, reason=reason),
                 cwd=workspace,
+                role="test-writer",
             )
             if reg.ok:
                 outcome.regression_test = write_artifact(

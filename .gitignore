@@ -38,3 +38,5 @@ scratch/
 sigma/reviews/
 sigma/profile/
 sigma/costs.jsonl
+sigma/evals/*/report.md
+sigma/specs/*/trajectory.jsonl
