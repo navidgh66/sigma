@@ -1,0 +1,128 @@
+{
+  "title": "Sigma Codebase Tour",
+  "steps": [
+    {
+      "description": "## Welcome to Sigma\n\nSigma is an **agentic engineering harness** — not just a tool, but the system that produces code. The Google SDLC paper calls this the *factory model*: the developer's output is the assembly line, not the widgets.\n\nSigma implements that factory as a spec-driven pipeline:\n```\nresearch → propose → blueprint → [grill] → spec → [grill] → tasks → implement → verify → loop\n```\nIt runs as a **Claude Code plugin** (primary) or a **CLI escape hatch** (autonomous runs, parallel research, board/weave).\n\nStart here: `CLAUDE.md` has the full layout, conventions, and gotchas."
+    },
+    {
+      "description": "## Entry point: `cli/main.py`\n\nEvery CLI subcommand is a `cmd_*` function. The parser is built in `build_parser()`. All heavy imports are deferred inside the function bodies — the top-level stays fast.\n\nNotice: pure logic lives elsewhere; `cmd_loop` just wires `run_loop` from `cli/loop.py`.",
+      "file": "cli/main.py",
+      "pattern": "def cmd_loop"
+    },
+    {
+      "description": "## The single execution chokepoint: `AgentRunner`\n\nEvery agent call — pipeline stage, loop cycle, logic checker, test writer — goes through `AgentRunner.run`. It shells out `claude -p <prompt>` (never via the shell string, so no injection risk). The `runner` callable is injectable, making the whole system testable without real subprocesses.",
+      "file": "cli/runner.py",
+      "pattern": "class AgentRunner"
+    },
+    {
+      "description": "## Pipeline stages: `cli/pipeline.py`\n\n`STAGES` is the ordered list of pipeline stages. Each has a `name`, an `artifact` path, and an optional `template` override (the two grill gates both reuse `commands/grill.md`).\n\nThis list is the single source of truth — `weave_manifest`, `intent`, and `hermes` all import it.",
+      "file": "cli/pipeline.py",
+      "pattern": "STAGES: List"
+    },
+    {
+      "description": "## Context chaining: `chain_context`\n\nThe `verify` stage is special — it reviews the **whole artifact chain**, not just its upstream. When `chain.json` exists (written by `sigma weave`), `chain_context` inlines every present file artifact. Fail-safe: missing manifest → falls back to single upstream, never blocks.",
+      "file": "cli/pipeline.py",
+      "pattern": "def chain_context"
+    },
+    {
+      "description": "## The loop engine: `execute_cycle`\n\nThis is the heart of agentic engineering. One cycle:\n1. **[TDD]** test writer pens a FAILING test first (RED)\n2. **Implementer** makes it pass (GREEN)\n3. **Verifier** (distinct agent) grades quality\n4. **[Logic]** logic evaluator grades reasoning\n5. On FAIL: ratchet lesson to `skills/` + optional regression test\n\nThe maker≠checker invariant is enforced with `ValueError` on `implementer is verifier`.",
+      "file": "cli/loop.py",
+      "pattern": "def execute_cycle"
+    },
+    {
+      "description": "## Skeptical verdict parsing\n\nA checker reply missing `VERDICT: PASS` is treated as FAIL. This is deliberate — the same default-deny posture as a security gate. Never assume pass; require explicit proof.",
+      "file": "cli/loop.py",
+      "pattern": "def _verdict_pass"
+    },
+    {
+      "description": "## Ratchet: failures become permanent skills\n\nWhen a cycle fails, `ratchet_to_skills` writes a `SKILL.md` into `skills/`. The same domain's past lessons are pre-loaded into the next cycle's implement and verify prompts via `skills_recall`. This closes the learning loop: the loop never repeats a mistake.",
+      "file": "cli/loop.py",
+      "pattern": "def ratchet_to_skills"
+    },
+    {
+      "description": "## Team mode: parallel cycles\n\n`run_loop` with `team=True` fans tasks out via `ThreadPoolExecutor`. The recall snapshot is built **before** fan-out so parallel threads only read it — no races. Result order matches batch order.",
+      "file": "cli/loop.py",
+      "pattern": "def run_loop"
+    },
+    {
+      "description": "## Hermes: the conductor\n\nHermes turns plain language into stage execution. It routes a message to the next stage, injects the stage's bundled skill into the prompt prefix, runs the stage, appends an event, and either stops or continues the chain.\n\nHuman gates: `spec-approval` (always), `grill-blocked` (BLOCK verdict), `verify-failed`.",
+      "file": "cli/hermes.py",
+      "pattern": "def run_hermes"
+    },
+    {
+      "description": "## Grill gate verdict: default BLOCK\n\nSame skeptical posture as `_verdict_pass`. A grill reply without `VERDICT: READY` → BLOCK. The griller is always a distinct agent from the author (maker≠griller, same law as maker≠checker).",
+      "file": "cli/hermes.py",
+      "pattern": "def _grill_ready"
+    },
+    {
+      "description": "## Hybrid routing: `cli/intent.py`\n\n`route` is free by default — it just scans which artifacts exist in the workspace (`scan_state`) and returns the first missing stage. Only when the message contains an override signal (\"redo\", \"skip\", stage name) does it spend one model call to classify intent.",
+      "file": "cli/intent.py",
+      "pattern": "def route"
+    },
+    {
+      "description": "## State scan: artifact-presence routing\n\nThe cheapest possible router. No model call, no cost. Just check which files exist. The pipeline order in `STAGES` makes this deterministic.",
+      "file": "cli/intent.py",
+      "pattern": "def scan_state"
+    },
+    {
+      "description": "## Cost loop: estimate before, record after\n\nThe Google paper flags token burn rate as hidden OpEx debt. Sigma closes a loop around it: `estimate(op, units)` before a heavy op (advisory + model-tier routing), `record` after into `sigma/costs.jsonl`, `calibrate` sharpens factors from the ledger.\n\nFail-safe: garbage ledger → static factors, never blocks.",
+      "file": "cli/cost.py",
+      "pattern": "def estimate"
+    },
+    {
+      "description": "## Model-tier routing recommendation\n\nSigma's cost module aligns with the paper's \"intelligent model routing\" concept — don't use frontier models for mechanical work. `routing_for(op)` maps axes to tiers: `code` → haiku (cheap), `ml-logic` → opus (strong), `system-logic` → sonnet (mid).",
+      "file": "cli/cost.py",
+      "pattern": "def routing_for"
+    },
+    {
+      "description": "## Weave manifest: chain.json\n\n`build_manifest` is **pure and agent-independent** — it writes `chain.json` before the HTML-generating agent runs. So even if the agent fails, the machine manifest exists. No timestamp in the pure path (same discipline as `events.Event.ts`).",
+      "file": "cli/weave_manifest.py",
+      "pattern": "def build_manifest"
+    },
+    {
+      "description": "## Skills recall: the read side of the loop\n\n`recall_lessons` filters skills by `domain:` tag — vendor/sigma-*/sigma-domains skills never leak in. `render_recall_block` caps output. Empty recall → prompts byte-identical to no-lessons case (fail-safe).",
+      "file": "cli/skills_recall.py",
+      "pattern": "def recall_lessons"
+    },
+    {
+      "description": "## Scout: relevance-first skill discovery\n\nSigma scout never auto-installs. Relevance score is whole-token domain-keyword overlap dominant — `rag` does NOT credit \"sto**rag**e\". A relevance floor drops pure noise. A per-author cap prevents one publisher flooding the table.",
+      "file": "cli/scout.py",
+      "pattern": "def score_relevance"
+    },
+    {
+      "description": "## Prune: cut loaded-but-unused context\n\nTwo hard laws: (1) never prune on absent evidence — no transcripts scanned → surface nothing; (2) disable ≠ uninstall — flips `enabledPlugins[name]=false` via immutable settings merge (new dict, every other key preserved). Context weight = tool count × per-tool weight, not a flat constant.",
+      "file": "cli/prune.py",
+      "pattern": "def rank_candidates"
+    },
+    {
+      "description": "## Gate: wakeAgent pre-check\n\nThe gate pattern is the inverse of verdict parsing — it defaults WAKE (not SLEEP) on error. A broken gate never silently blocks the pipeline. The script prints `{\"wakeAgent\": true|false}`; anything else → WAKE.",
+      "file": "cli/gate.py",
+      "pattern": "def run_gate"
+    },
+    {
+      "description": "## Commands: slash-command templates\n\nEach `commands/*.md` file is a native Claude Code slash command. YAML frontmatter carries `command:`, `stage:`, `inputs:` (beyond CC's required `description:` — harmless). The body is the prompt template injected when you run `/propose`, `/spec`, `/grill`, etc.\n\nThe grill command is shared by both `grill-blueprint` and `grill-spec` gates via a `--target` argument.",
+      "file": "commands/grill.md",
+      "pattern": "description:"
+    },
+    {
+      "description": "## sigma-grilling skill\n\nThe grilling rubric lives here. 11 axes of adversarial interrogation, each scored independently (AXIS lines), with a DERIVED overall VERDICT. Any axis with CRITICAL/HIGH → BLOCK. Maker ≠ griller is the same law as maker ≠ checker.\n\nThis is sigma's implementation of the paper's key insight: *verification, judgment, and direction are the new craft*.",
+      "file": "skills/sigma-grilling/SKILL.md",
+      "pattern": "SKILL"
+    },
+    {
+      "description": "## Domain context engines\n\n9 domains (`nlp`, `classic-ml`, `mlops`, `data-engineering`, `rl`, `cv`, `ai-agent-engineering`, `llm-engineering`, `time-series`). Each has:\n- `implementers/` — domain-specific implementation guidance\n- `verifiers/` — domain-specific verification checklist  \n- `logic-evaluator.md` — reasoning + plan-coherence grading\n\n`skills/sigma-domains` auto-surfaces the right domain in-session.",
+      "file": "context-engines/nlp/verifiers/logic-evaluator.md",
+      "pattern": "logic"
+    },
+    {
+      "description": "## The learning loop: skills/\n\nRatcheted lessons from loop failures live here. Each `SKILL.md` has a `domain:` tag so `skills_recall` can filter by domain. `CONTRADICTIONS.md` flags conflicts for human review — sigma never auto-resolves.\n\nThe `/sigma-learn-lesson` command lets a human ratchet a lesson from any session using the same format, so manual and loop lessons share one contradiction/recall system.",
+      "file": "skills/sigma-lessons/SKILL.md",
+      "pattern": "SKILL"
+    },
+    {
+      "description": "## pyproject.toml: Python 3.9 target\n\nSigma stays Python 3.9. Use `Optional[X]` / `List[X]` from `typing`, NOT `X | None` (ruff UP rule disabled). Runtime deps: `pyyaml` + `rich` only — keep it lean.",
+      "file": "pyproject.toml",
+      "pattern": "python"
+    }
+  ]
+}
