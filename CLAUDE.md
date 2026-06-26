@@ -16,13 +16,15 @@ projects task/event state; the loop adds a **logic-evaluator** verify axis and a
 and are recalled by domain on the next run). An adversarial **`/grill`** gate
 pressure-tests the blueprint + spec before code. `sigma learn` grounds its map in a
 graphify knowledge graph; `sigma scout` keeps the skill bundle fresh from
-skillsmp.com; `sigma prune` cuts unused MCP/plugin context bloat. 482 pytest tests,
-ruff clean.
+skillsmp.com; `sigma prune` cuts unused MCP/plugin context bloat. `sigma eval` runs
+eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
+actually did; `--route` (loop/eval) does intelligent model-tier routing. 536 pytest
+tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 482 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 536 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -49,6 +51,18 @@ sigma loop --topic <t> --execute     # run maker→checker cycles
 sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN)
 sigma loop --topic <t> --execute --team   # independent tasks run in parallel
 sigma loop --topic <t> --execute --logic  # add logic-evaluator axis (combine: --team --tdd --logic)
+sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
+
+# Eval — run an eval set, LM-judge each case, gate at a pass-rate threshold (set the bar at the eval, not the demo)
+sigma eval --set <name>              # prompt mode: run each case input through a SUT, grade with a DISTINCT judge
+sigma eval --set <name> --artifact spec.md  # artifact mode: grade an existing file vs each case rubric (no SUT run)
+sigma eval --set <name> --threshold 0.9     # require a 90% pass rate (default 0.8)
+sigma eval --set <name> --check      # CI gate: exit 1 below threshold
+sigma eval --set <name> --route      # route the judge to a strong tier
+
+# Trajectory — observe what agents actually did in a workspace (loop/hermes record steps)
+sigma trajectory --topic <t>         # summary: step count, failures, per-role/model, total agent time
+sigma trajectory --topic <t> --json  # machine-readable summary
 
 # Hermes — autonomous CLI conductor (escape hatch for hands-off runs)
 sigma hermes "continue" --topic <t>         # route → run ONE stage, then stop
@@ -102,7 +116,7 @@ about what's unresolved. Editor ≠ griller, same law as `execute_cycle`.
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / scout / prune / profile / review / cost / launch (pipeline stages are plugin-only)
+cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / scout / prune / profile / review / eval / trajectory / cost / launch (pipeline stages are plugin-only)
 cli/config.py       sigma.config.yml load/write/validate + local override merge
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
@@ -114,7 +128,10 @@ cli/scout_run.py    thin: stdlib urllib fetch (fail-safe), aggregate per-domain,
 cli/prune.py        pure: parse_plugins/parse_mcp_servers, belongs (tool→item match), usage_counts, rank_candidates (unused+heavy first), context-weight estimate
 cli/prune_run.py    thin: read settings/.claude.json/.mcp.json + scan transcripts for usage, build report, reversible disable (enabledPlugins=false, immutable merge)
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
-cli/runner.py       AgentRunner — the single execution chokepoint (injectable)
+cli/runner.py       AgentRunner — the single execution chokepoint (injectable); optional `model` (→ --model alias, intelligent routing) + `trajectory_sink` (observability), both fail-safe no-ops by default
+cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration) + summarize projection + make_sink (best-effort, never breaks a run)
+cli/eval.py         pure: parse eval set (markdown cases) + build LM-judge prompt + skeptical parse_grade + aggregate/gate(threshold) + ensure_distinct (SUT≠judge)
+cli/eval_run.py     thin: resolve eval set, prompt mode (run SUT → grade w/ distinct judge) or artifact mode, parallel grading fan-out, cost record, write report, --check gate
 cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json. STAGES includes the two grill GATE stages (grill-blueprint/grill-spec, shared grill template via `template` key + GRILL_TARGET)
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
@@ -142,7 +159,7 @@ cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
-commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /sigma-learn-lesson), YAML frontmatter
+commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /eval + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
@@ -412,3 +429,33 @@ keeps only what Claude Code cannot do in-session, plus setup.
   (judgment call, never auto-disabled; default 0 = unused-only). `belongs` normalizes
   `-`/`_` separators so a HYPHENATED plugin name (`code-review`) still matches its
   `mcp__plugin_code-review_...` tools (was a false-negative → wrong prune candidate).
+- `sigma eval` (`cli/eval.py` pure / `cli/eval_run.py` thin) runs an EVAL SET (the
+  paper's "set the bar at the eval, not the demo"). Eval sets are markdown
+  (`sigma/evals/<name>.md`, `## case:` blocks with input + expected/rubric). Two
+  modes: PROMPT (run each input through a system-under-test agent, grade the output)
+  and ARTIFACT (`--artifact <file>` grades an existing file vs each rubric, no SUT
+  run). The LM judge is a DISTINCT agent from the SUT — `eval.ensure_distinct` raises
+  `ValueError` on reuse (`is`, not `==`, like maker≠checker), enforced per case in
+  prompt mode. `parse_grade` is SKEPTICAL (missing `VERDICT: PASS` → FAIL, same
+  default-deny as the loop/review). `gate(threshold=0.8)` FAILs below the bar AND on
+  an empty set (a dead eval is never a silent pass). Grading fans out in parallel
+  (`ThreadPoolExecutor`, CLI-only like review). `--check` exits 1 below threshold.
+  Report → `sigma/evals/<name>/report.md` (git-ignored, derived); a sample set ships
+  at `sigma/evals/sample.md`. Cost op `"eval"` records into the ledger; routing puts
+  the judge on a strong tier.
+- Model routing + trajectory both extend `AgentRunner` via OPTIONAL fields that
+  default to prior behavior (a bare `AgentRunner()` is byte-identical). `model` →
+  injects `--model <alias>` into the argv (alias passed straight through — no
+  model-ID map to drift); `--route` on `loop`/`eval` wires `cost.routing_for(op)`
+  onto the factories (mechanical roles→cheap/mid, reasoning role→strong). OFF by
+  default = no behavior change (so `--model` validity per claude version can't break
+  an unrouted run). `trajectory_sink` is a best-effort `Callable[[dict], None]`
+  called once per run — a failing sink is SWALLOWED (observability must never break a
+  run, the inverse of a hard gate). `AgentRunner.run` gained a `role=` label
+  (default `"agent"`); loop/hermes pass it (implementer/verifier/logic/test-writer/
+  eval-sut/eval-judge) so the trajectory can attribute steps. Test fakes that
+  subclass AgentRunner must accept `role=` in their `run` signature.
+- `cli/trajectory.py` (pure, like `events.py`) appends one step per agent run to
+  `trajectory.jsonl` in the workspace; caller passes `ts` (no clock in the pure
+  path). `summarize` is a deterministic projection. `sigma trajectory --topic <t>`
+  renders it. Missing file → empty (lenient read-model). Git-ignored (derived).
