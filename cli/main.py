@@ -137,8 +137,10 @@ def cmd_loop(args: argparse.Namespace) -> int:
         return 0
 
     # Execute: real maker→checker cycles with distinct agents.
+    from cli.cost import routing_for
     from cli.keepawake import keep_awake
     from cli.runner import AgentRunner
+    from cli.trajectory import make_sink
 
     skills_dir = sigma_home() / "skills"
     if args.keep_awake:
@@ -147,16 +149,30 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print("  🧪 TDD mode: a distinct agent writes a failing test before each implementer")
     if args.team:
         _print("  👥 team mode: independent tasks run in parallel")
+
+    # Trajectory capture: every agent run appends a step to the workspace
+    # (best-effort observability, never breaks a run).
+    sink = make_sink(ws, ts=_now_iso())
+
+    # Intelligent model routing (opt-in): mechanical roles → cheaper tier,
+    # reasoning role (logic) → strong tier. Off by default = current behavior.
+    routes = routing_for("loop") if args.route else {}
+    if args.route:
+        _print(f"  🧭 routing: implement/verify→{routes['implement']}, logic→{routes['logic']}")
+
+    def _make(role_tier: Optional[str]):
+        return AgentRunner(model=role_tier, trajectory_sink=sink)
+
     with keep_awake(enabled=args.keep_awake):
         outcomes = run_loop(
             tasks,
             ws,
             skills_dir,
             cfg.loop.max_cycles,
-            make_implementer=lambda: AgentRunner(),
-            make_verifier=lambda: AgentRunner(),
-            make_logic_checker=(lambda: AgentRunner()) if args.logic else None,
-            make_test_writer=(lambda: AgentRunner()) if args.tdd else None,
+            make_implementer=lambda: _make(routes.get("implement")),
+            make_verifier=lambda: _make(routes.get("verify")),
+            make_logic_checker=(lambda: _make(routes.get("logic"))) if args.logic else None,
+            make_test_writer=(lambda: _make(routes.get("verify"))) if args.tdd else None,
             team=args.team,
             gate=args.gate,
         )
@@ -186,6 +202,7 @@ def cmd_hermes(args: argparse.Namespace) -> int:
     from cli.hermes import run_hermes
     from cli.keepawake import keep_awake
     from cli.runner import AgentRunner
+    from cli.trajectory import make_sink
 
     ws = spec_workspace(args.topic)
     ws.mkdir(parents=True, exist_ok=True)
@@ -193,13 +210,14 @@ def cmd_hermes(args: argparse.Namespace) -> int:
     _print(f"σ hermes — topic={args.topic!r} mode={mode}{' terse' if args.terse else ''}")
     if args.keep_awake:
         _print("  ☕ keep-awake on (caffeinate)")
+    sink = make_sink(ws, ts=_now_iso())
     with keep_awake(enabled=args.keep_awake):
         result = run_hermes(
             args.message,
             ws,
             auto=args.auto,
             terse=args.terse,
-            make_runner=lambda: AgentRunner(),
+            make_runner=lambda: AgentRunner(trajectory_sink=sink),
             now=_now_iso(),
             gate=args.gate,
         )
@@ -519,6 +537,80 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# eval (run an eval set, LM-judge each case, gate at a threshold)
+# --------------------------------------------------------------------------- #
+def cmd_eval(args: argparse.Namespace) -> int:
+    from cli.cost import routing_for
+    from cli.eval_run import eval_set_path, run_eval
+    from cli.paths import project_root
+    from cli.runner import AgentRunner
+    from cli.trajectory import make_sink
+
+    root = project_root()
+    name = args.set
+    _print(f"σ eval — set={name!r} threshold={args.threshold}")
+    if not eval_set_path(root, name).exists():
+        _print(f"✗ no eval set at {eval_set_path(root, name)}")
+        _print("  create sigma/evals/<name>.md (see commands/eval.md for the format)")
+        return 1
+
+    # Trajectory sink lives in the eval set's report dir.
+    ws = root / "sigma" / "evals" / name
+    sink = make_sink(ws, ts=_now_iso())
+    routes = routing_for("eval") if args.route else {}
+    if args.route:
+        _print(f"  🧭 routing: sut→{routes['sut']}, judge→{routes['judge']}")
+
+    artifact = Path(args.artifact).expanduser() if args.artifact else None
+    res = run_eval(
+        name,
+        root,
+        make_sut=lambda: AgentRunner(model=routes.get("sut"), trajectory_sink=sink),
+        make_grader=lambda: AgentRunner(model=routes.get("judge"), trajectory_sink=sink),
+        threshold=args.threshold,
+        artifact=artifact,
+        ts=_now_iso(),
+    )
+    if res.skipped_reason:
+        _print(f"  {res.skipped_reason}")
+        return 0
+    if not res.ok:
+        _print(f"✗ eval failed: {res.error}")
+        return 1
+    if res.report_path:
+        _print(f"✓ wrote {res.report_path}")
+    decision = res.gate
+    if decision is not None:
+        mark = "✅ PASS" if decision.passed else "❌ FAIL"
+        _print(f"  verdict: {mark} — {decision.reason}")
+    if args.check and decision is not None and not decision.passed:
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# trajectory (observe what agents actually did in a workspace)
+# --------------------------------------------------------------------------- #
+def cmd_trajectory(args: argparse.Namespace) -> int:
+    from cli.trajectory import read_steps, summarize
+
+    ws = spec_workspace(args.topic)
+    if not ws.exists():
+        _print(f"✗ no spec workspace at {ws}. Run a loop or hermes first.")
+        return 1
+    steps = read_steps(ws)
+    summary = summarize(steps)
+    if args.json:
+        import json
+        from dataclasses import asdict
+
+        _print(json.dumps(asdict(summary), sort_keys=True))
+    else:
+        _print(summary.render())
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # cost (report the cost ledger)
 # --------------------------------------------------------------------------- #
 def cmd_cost(args: argparse.Namespace) -> int:
@@ -590,6 +682,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="run independent tasks in parallel (each its own cycle)")
     pl.add_argument("--logic", action="store_true",
                     help="add the logic-evaluator axis (cycle passes only if logic also passes)")
+    pl.add_argument("--route", action="store_true",
+                    help="intelligent model routing: mechanical roles→cheaper tier, logic→strong tier")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)
@@ -661,6 +755,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
+
+    ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
+    ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
+    ptraj.set_defaults(func=cmd_trajectory)
+
+    peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")
+    peval.add_argument("--set", required=True, help="eval set name (sigma/evals/<name>.md)")
+    peval.add_argument("--threshold", type=float, default=0.8,
+                       help="pass-rate bar the gate requires (default 0.8)")
+    peval.add_argument("--artifact",
+                       help="grade an existing file's text against each case (skip the SUT run)")
+    peval.add_argument("--route", action="store_true",
+                       help="intelligent model routing: judge→strong tier")
+    peval.add_argument("--check", action="store_true", help="exit 1 if the eval gate FAILs (CI)")
+    peval.set_defaults(func=cmd_eval)
 
     plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
     plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")

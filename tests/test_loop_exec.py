@@ -26,7 +26,7 @@ class ScriptedRunner(AgentRunner):
     def available(self):
         return True
 
-    def run(self, prompt, cwd=None):
+    def run(self, prompt, cwd=None, role="agent"):
         self.prompts.append(prompt)
         return self._results.pop(0)
 

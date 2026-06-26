@@ -114,6 +114,27 @@ def test_parser_board_watch_flag():
     assert args.watch is True
 
 
+def test_parser_loop_route_flag():
+    a = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--route"])
+    assert a.command == "loop"
+    assert a.route is True
+    b = build_parser().parse_args(["loop", "--topic", "demo"])
+    assert b.route is False
+
+
+def test_parser_trajectory():
+    a = build_parser().parse_args(["trajectory", "--topic", "demo", "--json"])
+    assert a.command == "trajectory"
+    assert a.topic == "demo"
+    assert a.json is True
+
+
+def test_help_lists_trajectory_and_eval():
+    res = run_cli("--help")
+    assert "trajectory" in res.stdout
+    assert "eval" in res.stdout
+
+
 def test_help_lists_doctor_and_onboard():
     res = run_cli("--help")
     assert "doctor" in res.stdout
