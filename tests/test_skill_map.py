@@ -24,6 +24,9 @@ def _make_vendor(tmp_path: Path) -> Path:
     cv = vendor / "caveman"
     cv.mkdir(parents=True)
     (cv / "SKILL.md").write_text("---\nname: caveman\n---\n# Caveman\nCompress output.\n")
+    cs = vendor / "code-simplifier"
+    cs.mkdir(parents=True)
+    (cs / "SKILL.md").write_text("---\nname: code-simplifier\n---\n# Simplify\nFight slop, preserve behaviour.\n")
     return vendor
 
 
@@ -42,6 +45,25 @@ def test_verify_stage_maps_both_checkers():
 
 def test_unknown_stage_returns_empty():
     assert skill_map.skills_for_stage("nonexistent") == []
+
+
+def test_simplify_stage_maps_code_simplifier():
+    assert skill_map.skills_for_stage("simplify") == ["code-simplifier"]
+
+
+def test_simplify_skill_is_top_level_path(tmp_path):
+    # code-simplifier lives directly under vendor/<slug>/, not under superpowers/.
+    vendor = _make_vendor(tmp_path)
+    paths = skill_map.skill_paths("simplify", vendor)
+    assert paths and paths[0].exists()
+    assert "superpowers" not in str(paths[0])
+
+
+def test_inject_simplify_skill_body(tmp_path):
+    vendor = _make_vendor(tmp_path)
+    out = skill_map.inject_skill("ORIGINAL", "simplify", vendor)
+    assert "Fight slop, preserve behaviour." in out
+    assert "ORIGINAL" in out
 
 
 def test_skill_paths_resolve_existing_files(tmp_path):

@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -263,6 +264,40 @@ def test_cmd_profile_dry_run_prints_invocation(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# session-context (SessionStart hook command — must always exit 0)
+# --------------------------------------------------------------------------- #
+def _run_cli_in(cwd, *args):
+    return subprocess.run(
+        [sys.executable, "-m", "cli.main", *args],
+        cwd=cwd,  # run in the temp project, not the sigma repo
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_cmd_session_context_lazy_hint(tmp_path):
+    # Mark tmp_path as a project root so project_root() stops here, not the
+    # real sigma repo (which has its own ARCHITECTURE.md).
+    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\n")
+    res = _run_cli_in(tmp_path, "session-context")
+    assert res.returncode == 0
+    assert "/learn" in res.stdout  # no artifacts → lazy hint
+
+
+def test_cmd_session_context_points_to_artifacts(tmp_path):
+    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\n")
+    (tmp_path / "ARCHITECTURE.md").write_text("# Arch\n")
+    tours = tmp_path / ".tours"
+    tours.mkdir()
+    (tours / "x.tour").write_text("{}")
+    res = _run_cli_in(tmp_path, "session-context")
+    assert res.returncode == 0
+    assert "ARCHITECTURE.md" in res.stdout
+    assert ".tours/x.tour" in res.stdout
+
+
+# --------------------------------------------------------------------------- #
 # loop --tdd / --team / --logic  and  research --web flags
 # --------------------------------------------------------------------------- #
 def test_parser_loop_tdd_team_logic_flags():
@@ -270,6 +305,13 @@ def test_parser_loop_tdd_team_logic_flags():
     assert a.tdd is True and a.team is True and a.logic is True
     b = build_parser().parse_args(["loop", "--topic", "d"])
     assert b.tdd is False and b.team is False and b.logic is False
+
+
+def test_parser_loop_simplify_flag():
+    a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--simplify"])
+    assert a.simplify is True
+    b = build_parser().parse_args(["loop", "--topic", "d"])
+    assert b.simplify is False
 
 
 def test_parser_research_web_flag():

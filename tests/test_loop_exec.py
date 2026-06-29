@@ -156,6 +156,92 @@ def test_run_loop_with_logic_checker(tmp_path):
     assert all(o.verified and o.logic_ok for o in outcomes)
 
 
+# --------------------------- simplifier (anti-slop, post-pass) --------------------------- #
+def test_simplify_runs_after_pass_and_preserves_behaviour(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    # verifier runs twice: initial verify, then re-verify after simplify.
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: PASS"),
+        AgentResult(ok=True, output="VERDICT: PASS"),
+    ])
+    simp = ScriptedRunner([AgentResult(ok=True, output="cleaned up")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=simp)
+    assert out.verified is True
+    assert out.simplified is True
+    assert (tmp_path / "simplify" / f"{plan.worktree_name}.md").exists()
+    # the simplifier got the anti-slop prompt
+    assert any("SIMPLIFIER" in p for p in simp.prompts)
+
+
+def test_simplify_reverts_when_reverify_fails(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: PASS"),   # initial pass
+        AgentResult(ok=True, output="VERDICT: FAIL"),   # re-verify after simplify
+    ])
+    simp = ScriptedRunner([AgentResult(ok=True, output="broke something")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=simp)
+    # cycle stays GREEN (cleanup is not a gate); simplify just didn't stick.
+    assert out.verified is True
+    assert out.simplified is False
+    assert any("reverted" in n for n in out.notes)
+
+
+def test_simplify_does_not_run_on_failed_cycle(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    simp = ScriptedRunner([AgentResult(ok=True, output="should not run")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=simp)
+    assert out.verified is False
+    assert out.simplified is None  # never attempted
+    assert simp.prompts == []  # simplifier was not called
+
+
+def test_simplify_crash_keeps_verified_code(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    simp = ScriptedRunner([AgentResult(ok=False, output="", error="boom")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=simp)
+    assert out.verified is True        # cycle still green
+    assert out.simplified is False
+    assert any("simplify skipped" in n for n in out.notes)
+
+
+def test_simplifier_must_be_distinct(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=impl)
+
+
+def test_run_loop_with_simplifier(tmp_path):
+    tasks = parse_tasks(TASKS)
+    outcomes = run_loop(
+        tasks,
+        tmp_path,
+        tmp_path / "skills",
+        max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([
+            AgentResult(ok=True, output="VERDICT: PASS"),
+            AgentResult(ok=True, output="VERDICT: PASS"),
+        ]),
+        make_simplifier=lambda: ScriptedRunner([AgentResult(ok=True, output="clean")]),
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified and o.simplified for o in outcomes)
+
+
 # --------------------------- contradiction flagging --------------------------- #
 def test_ratchet_flags_contradiction(tmp_path):
     from cli.loop import ratchet_to_skills

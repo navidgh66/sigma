@@ -92,6 +92,27 @@ def test_run_learn_writes_both_artifacts(tmp_path):
     json.loads(res.tour_path.read_text())
 
 
+def test_run_learn_refreshes_claude_local(tmp_path):
+    # After writing artifacts, run_learn upserts a pointer into CLAUDE.local.md
+    # so the artifacts surface in every session even without the hook.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')\n")
+    vendor = _vendor(tmp_path)
+    tour = {"title": "T", "steps": [{"description": "x", "file": "main.py", "line": 1}]}
+    output = f"{ARCH_HEADER}\n# Arch\nbody\n{TOUR_HEADER}\n{json.dumps(tour)}"
+
+    res = run_learn(repo, agent=FakeAgent(output), vendor=vendor)
+    assert res.ok
+    local = repo / "CLAUDE.local.md"
+    assert local.exists()
+    text = local.read_text()
+    assert "sigma:learn:start" in text
+    assert "ARCHITECTURE.md" in text
+    # gitignored so it never gets committed
+    assert "CLAUDE.local.md" in (repo / ".gitignore").read_text()
+
+
 def test_run_learn_surfaces_tour_anchor_problems(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
