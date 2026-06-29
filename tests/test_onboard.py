@@ -96,6 +96,7 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         domain_input=lambda: "",
         secret_input=lambda key: "",
         confirm=lambda msg: True,                     # yes to rtk
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
         rtk_status_fn=lambda: {"installed": True, "hook_active": False, "gain_ok": True},
         # caveman + graphify already active → their steps no-op, isolating the rtk assertion.
         caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
@@ -119,6 +120,7 @@ def test_onboard_sets_up_caveman_on_confirm(tmp_path, monkeypatch):
         domain_input=lambda: "",
         secret_input=lambda key: "",
         confirm=lambda msg: True,                     # yes to everything
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
         caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
         graphify_status_fn=lambda: {"installed": True},  # already installed → no-op
@@ -182,6 +184,7 @@ def test_onboard_installs_graphify_on_confirm(tmp_path, monkeypatch):
         domain_input=lambda: "",
         secret_input=lambda key: "",
         confirm=lambda msg: True,
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
         # rtk + caveman + statusline already satisfied → only graphify acts.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
         caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
@@ -217,6 +220,71 @@ def test_onboard_skips_graphify_when_declined(tmp_path, monkeypatch):
     assert spawned == []
 
 
+# --------------------------- learn artifacts (step 11) --------------------------- #
+class _LearnRes:
+    def __init__(self, ok=True, error=None):
+        self.ok = ok
+        self.error = error
+
+
+def _base_kwargs(tmp_path):
+    """Onboard kwargs with every install step satisfied → isolate the learn step."""
+    return dict(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": True},
+        spawn=lambda argv: 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+
+
+def test_onboard_builds_learn_on_confirm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")  # mark project root
+    called = []
+    onboard.run_onboard(
+        confirm=lambda msg: True,
+        learn_fn=lambda root: called.append(root) or _LearnRes(ok=True),
+        **_base_kwargs(tmp_path),
+    )
+    assert called, "learn_fn should run when confirmed and no artifacts exist"
+
+
+def test_onboard_skips_learn_when_declined(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")
+    called = []
+    onboard.run_onboard(
+        confirm=lambda msg: False,
+        learn_fn=lambda root: called.append(root) or _LearnRes(ok=True),
+        **_base_kwargs(tmp_path),
+    )
+    assert called == []
+
+
+def test_onboard_skips_learn_when_artifacts_exist(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")
+    (tmp_path / "ARCHITECTURE.md").write_text("# already here\n")
+    called = []
+    onboard.run_onboard(
+        confirm=lambda msg: True,  # would say yes, but artifacts exist → no-op
+        learn_fn=lambda root: called.append(root) or _LearnRes(ok=True),
+        **_base_kwargs(tmp_path),
+    )
+    assert called == [], "must not rebuild when ARCHITECTURE.md already exists"
+
+
 # --------------------------- session hook --------------------------- #
 def test_onboard_adds_session_hook_on_confirm(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -226,6 +294,7 @@ def test_onboard_adds_session_hook_on_confirm(tmp_path, monkeypatch):
         domain_input=lambda: "",
         secret_input=lambda key: "",
         confirm=lambda msg: True,
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
         # everything else already satisfied → isolate the session-hook step.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
         caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
