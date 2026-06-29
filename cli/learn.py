@@ -206,6 +206,11 @@ def run_learn(
     if tour_text:
         tour_path, problems = _write_tour(root, tour_text, topic)
 
+    # Refresh the static CLAUDE.local.md pointer so the artifacts surface in every
+    # session even without the SessionStart hook. Best-effort — a failed write is
+    # never fatal (same fail-safe discipline as the graphify build above).
+    _refresh_local_pointer(root)
+
     return LearnResult(
         ok=True,
         architecture_path=arch_path,
@@ -254,6 +259,17 @@ def _default_graph_runner(argv: List[str], cwd: Path) -> int:
         return proc.returncode
     except subprocess.SubprocessError as exc:  # timeout etc. — treat as a soft failure
         raise OSError(str(exc)) from exc
+
+
+def _refresh_local_pointer(root: Path) -> None:
+    """Upsert the learn-artifact pointer into CLAUDE.local.md (best-effort)."""
+    try:
+        from cli.claude_local import write_block
+        from cli.session_context import build_pointer
+
+        write_block(root, build_pointer(root))
+    except Exception:  # noqa: BLE001 — the static fallback must never break learn
+        pass
 
 
 def _write_tour(root: Path, tour_text: str, topic: Optional[str]) -> tuple:

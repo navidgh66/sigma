@@ -217,6 +217,50 @@ def test_onboard_skips_graphify_when_declined(tmp_path, monkeypatch):
     assert spawned == []
 
 
+# --------------------------- session hook --------------------------- #
+def test_onboard_adds_session_hook_on_confirm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,
+        # everything else already satisfied → isolate the session-hook step.
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": True},
+        spawn=lambda argv: 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    settings = tmp_path / ".claude" / "settings.json"
+    assert settings.exists()
+    assert "session-context" in settings.read_text()
+
+
+def test_onboard_skips_session_hook_when_declined(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: False,
+        rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
+        graphify_status_fn=lambda: {"installed": False},
+        spawn=lambda argv: 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+
+
 def test_onboard_idempotent_rerun(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))

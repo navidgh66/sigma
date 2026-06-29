@@ -221,6 +221,33 @@ REGRESSION_PROMPT = (
     "Checker's failure reason: {reason}\n\n"
     "Output the regression test code and one line naming the bug it guards against."
 )
+# Anti-slop axis: a DISTINCT simplifier agent runs AFTER a cycle PASSES (cleanup,
+# not a gate). It only changes HOW the code reads, never WHAT it does — the
+# behaviour-preservation guard is a re-verify (a regression reverts the simplify,
+# never the feature). Four axes mirror Anthropic's bundled /simplify: reuse,
+# simplification, efficiency, right-altitude.
+SIMPLIFY_PROMPT = (
+    "You are the SIMPLIFIER — a distinct agent from the implementer, checker, "
+    "logic evaluator, and test writer. The implementation already PASSED "
+    "verification. Refine it to fight AI slop while PRESERVING BEHAVIOUR EXACTLY "
+    "— change only HOW the code reads, never WHAT it does. Touch only code this "
+    "task changed.\n"
+    "Domain: {domain}\nTask: {title}\n\n"
+    "Apply four axes:\n"
+    "1. Reuse — does it duplicate logic that an existing helper/util already "
+    "provides? Call the existing one.\n"
+    "2. Simplify — remove dead code, unused params/imports, needless wrappers and "
+    "single-use abstractions, deep nesting (use early returns), nested ternaries, "
+    "clever one-liners. Clarity over brevity.\n"
+    "3. Efficiency — only behaviour-preserving wins (hoist repeated work, obvious "
+    "O(n^2)->O(n)).\n"
+    "4. Right altitude — neither premature generality (YAGNI) nor copy-paste that "
+    "should be one helper.\n\n"
+    "Do NOT over-simplify: keep abstractions that genuinely reduce duplication; "
+    "never trade readability for fewer lines. If a change's behavioural safety is "
+    "uncertain, DO NOT make it — leave the code and note it.\n"
+    "Output the refined code (or 'NO CHANGES NEEDED' if already clean)."
+)
 
 
 @dataclass
@@ -231,6 +258,7 @@ class CycleOutcome:
     logic_ok: Optional[bool] = None
     test_written: Optional[bool] = None  # set only in TDD mode
     regression_test: Optional[Path] = None  # TDD: test pinning a verify-fail bug
+    simplified: Optional[bool] = None  # set only in --simplify mode: did cleanup stick?
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
@@ -265,6 +293,7 @@ def execute_cycle(
     logic_checker: Optional[AgentRunner] = None,
     recall: str = "",
     test_writer: Optional[AgentRunner] = None,
+    simplifier: Optional[AgentRunner] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -298,6 +327,15 @@ def execute_cycle(
         or test_writer is logic_checker
     ):
         raise ValueError("test writer must be distinct from maker, checker, and logic agents")
+    if simplifier is not None and (
+        simplifier is implementer
+        or simplifier is verifier
+        or simplifier is logic_checker
+        or simplifier is test_writer
+    ):
+        raise ValueError(
+            "simplifier must be distinct from maker, checker, logic, and test agents"
+        )
 
     title = plan.task.title
     domain = plan.implementer_domain
@@ -363,6 +401,13 @@ def execute_cycle(
 
     if passed:
         append_loop_log(workspace, f"{title}: PASS")
+        # Anti-slop cleanup runs ONLY after a pass (it polishes verified code, it
+        # is not a gate). A distinct simplifier refines for clarity; the verifier
+        # then re-checks to confirm behaviour was preserved — a regression reverts
+        # the simplify, never the feature. Best-effort: a failed simplify is logged
+        # and the (already-passing) cycle stands.
+        if simplifier is not None:
+            _run_simplify(plan, workspace, simplifier, verifier, outcome)
     else:
         if not quality_passed:
             reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
@@ -392,6 +437,51 @@ def execute_cycle(
     return outcome
 
 
+def _run_simplify(
+    plan: CyclePlan,
+    workspace: Path,
+    simplifier: AgentRunner,
+    verifier: AgentRunner,
+    outcome: CycleOutcome,
+) -> None:
+    """Run the post-pass anti-slop cleanup with a behaviour-preservation guard.
+
+    The simplifier refines the already-verified implementation; the SAME verifier
+    re-checks the result. `outcome.simplified` is True only when the cleanup ran
+    AND survived re-verification (behaviour preserved). A simplifier crash, or a
+    re-verify FAIL, leaves the passing cycle untouched and records the reason —
+    cleanup never turns a green cycle red.
+    """
+    title = plan.task.title
+    domain = plan.implementer_domain
+    simp = simplifier.run(
+        SIMPLIFY_PROMPT.format(domain=domain, title=title),
+        cwd=workspace,
+        role="simplifier",
+    )
+    if not simp.ok:
+        outcome.simplified = False
+        outcome.notes.append(f"simplify skipped: {simp.error}")
+        append_loop_log(workspace, f"{title}: simplify FAILED ({simp.error}) — kept verified code")
+        return
+
+    write_artifact(workspace / "simplify" / f"{plan.worktree_name}.md", simp.output)
+
+    # Behaviour-preservation guard: re-verify the simplified code.
+    reverify = verifier.run(
+        VERIFY_PROMPT.format(domain=domain, title=title),
+        cwd=workspace,
+        role="verifier",
+    )
+    if reverify.ok and _verdict_pass(reverify.output):
+        outcome.simplified = True
+        append_loop_log(workspace, f"{title}: simplified (behaviour preserved)")
+    else:
+        outcome.simplified = False
+        outcome.notes.append("simplify reverted: re-verify did not pass")
+        append_loop_log(workspace, f"{title}: simplify reverted — re-verify failed")
+
+
 def _contradiction_flag(skills_dir: Path, ratcheted: Optional[Path]) -> Optional[Path]:
     """Return the CONTRADICTIONS.md path if the just-written skill flagged one."""
     if ratcheted is None or "⚠ CONTRADICTION" not in ratcheted.read_text():
@@ -410,6 +500,7 @@ def run_loop(
     make_logic_checker=None,
     gate: Optional[str] = None,
     make_test_writer=None,
+    make_simplifier=None,
     team: bool = False,
     max_workers: int = 3,
 ) -> List[CycleOutcome]:
@@ -466,6 +557,7 @@ def run_loop(
             make_logic_checker() if make_logic_checker else None,
             recall=recall_cache.get(plan.implementer_domain, ""),
             test_writer=make_test_writer() if make_test_writer else None,
+            simplifier=make_simplifier() if make_simplifier else None,
         )
 
     if team:

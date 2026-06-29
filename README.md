@@ -1,5 +1,13 @@
 <div align="center">
 
+```
+     ___ _
+    / __(_)__ _ _ __  __ _
+    \__ \ / _` | '  \/ _` |      σ
+    |___/_\__, |_|_|_\__,_|      personal AI workflow toolkit
+          |___/
+```
+
 # σ · sigma
 
 **A portable, spec-driven, loop-engineered AI workflow toolkit for data science & AI engineering.**
@@ -8,7 +16,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-482%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-578%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -27,7 +35,7 @@ Claude Code can't do in a single session — real parallel multi-model research,
 autonomous hands-off runs, a live kanban board, and setup.
 
 > "You shouldn't be prompting coding agents anymore. You should be designing
-> loops that prompt your agents." — [Addy Osmani](https://addyosmani.com/blog/loop-engineering/)
+> loops that prompt your agents."
 
 `sigma` is that loop.
 
@@ -278,10 +286,10 @@ command and feature with copy-paste examples and expected output.
 
 ## 📄 License
 
-MIT © Navid Ghayazi
+MIT
 
 <div align="center">
 <sub>Built on <a href="https://docs.anthropic.com/claude-code">Claude Code</a> ·
-inspired by <a href="https://addyosmani.com/blog/loop-engineering/">Loop Engineering</a>
+inspired by loop-engineering principles
 and the <a href="https://www.anthropic.com/research/building-effective-agents">Anthropic agentic playbook</a>.</sub>
 </div>
