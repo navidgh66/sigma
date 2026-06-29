@@ -1,7 +1,7 @@
 {
   "name": "sigma",
   "description": "Personal AI workflow toolkit for data science & AI engineering. Research-first, spec-driven, loop-engineered pipeline (research → propose → blueprint → spec → tasks → implement-task → verify → loop), plus the Hermes conductor, a kanban board, and HTML artifact export.",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "author": {
     "name": "Navid Ghayazi"
   },
