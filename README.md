@@ -40,35 +40,6 @@ autonomous hands-off runs, a live kanban board, and setup.
 
 `sigma` is that loop.
 
-## 📚 What it's built on
-
-sigma is a synthesis of published practice, not invention — it operationalizes
-the playbooks the field already converged on:
-
-- **Anthropic — *Building Effective Agents* & Claude Code best practices** →
-  maker ≠ checker separation, distinct verification agents, "give the agent a way
-  to verify its work", show-evidence-don't-assert, and the adversarial **`/grill`**
-  gate. ([building-effective-agents](https://www.anthropic.com/research/building-effective-agents))
-- **Google — agentic SDLC / "factory model"** → the developer's output is the
-  assembly line, not the widget; spec-driven stages, intelligent model-tier
-  routing, and treating token burn as tracked OpEx (the **cost loop**).
-- **Loop engineering** → design loops that prompt agents instead of hand-prompting;
-  failures **ratchet** into reusable skills and are recalled on the next run (the
-  closed learning loop).
-- **TDD & verification literature** → the optional **`--tdd`** axis (failing test
-  first, RED→GREEN), the **`verification-before-completion`** discipline, and the
-  evidence that *decomposed, independent* checks beat holistic self-review — which
-  is why grill scores per-axis and verify uses a distinct agent.
-- **Eval-first practice ("set the bar at the eval, not the demo")** → `sigma eval`
-  runs eval sets with an LM judge that is always a *distinct* agent from the
-  system under test, gated at a pass-rate threshold.
-- **Anti-slop refactoring practice** → the **`--simplify`** pass mirrors the
-  bundled `/simplify` four-axis cleanup, behaviour-preserving and re-verified.
-
-What's original here is the *integration*: one portable, plugin-first harness that
-wires these into a single research → spec → grill → implement → verify → loop
-pipeline with a closed learning loop on top.
-
 ---
 
 ## ✨ Why sigma
@@ -101,6 +72,37 @@ pipeline with a closed learning loop on top.
   *extracted* structure, not an eyeball read.
 - **🛰️ Self-refreshing bundle** — `sigma scout` discovers skills relevant to your
   domains on skillsmp.com and pulls in the keepers (you approve each one).
+
+---
+
+## 📚 What it's built on
+
+sigma is a synthesis of published practice, not invention — it operationalizes
+the playbooks the field already converged on:
+
+- **Anthropic — *Building Effective Agents* & Claude Code best practices** →
+  maker ≠ checker separation, distinct verification agents, "give the agent a way
+  to verify its work", show-evidence-don't-assert, and the adversarial **`/grill`**
+  gate. ([building-effective-agents](https://www.anthropic.com/research/building-effective-agents))
+- **Google — agentic SDLC / "factory model"** → the developer's output is the
+  assembly line, not the widget; spec-driven stages, intelligent model-tier
+  routing, and treating token burn as tracked OpEx (the **cost loop**).
+- **Loop engineering** → design loops that prompt agents instead of hand-prompting;
+  failures **ratchet** into reusable skills and are recalled on the next run (the
+  closed learning loop).
+- **TDD & verification literature** → the optional **`--tdd`** axis (failing test
+  first, RED→GREEN), the **`verification-before-completion`** discipline, and the
+  evidence that *decomposed, independent* checks beat holistic self-review — which
+  is why grill scores per-axis and verify uses a distinct agent.
+- **Eval-first practice ("set the bar at the eval, not the demo")** → `sigma eval`
+  runs eval sets with an LM judge that is always a *distinct* agent from the
+  system under test, gated at a pass-rate threshold.
+- **Anti-slop refactoring practice** → the **`--simplify`** pass mirrors the
+  bundled `/simplify` four-axis cleanup, behaviour-preserving and re-verified.
+
+What's original here is the *integration*: one portable, plugin-first harness that
+wires these into a single research → spec → grill → implement → verify → loop
+pipeline with a closed learning loop on top.
 
 ---
 
