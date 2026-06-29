@@ -75,3 +75,27 @@ def test_pointer_tours_not_a_dir_is_tolerated(tmp_path):
     (tmp_path / ".tours").write_text("i am a file, not a dir")  # pathological
     out = sc.build_pointer(tmp_path)
     assert "ARCHITECTURE.md" in out  # still works, no crash
+
+
+# --------------------------- arch_context (inject map into CLI prompts) --------------------------- #
+def test_arch_context_empty_when_absent(tmp_path):
+    assert sc.arch_context(tmp_path) == ""  # no ARCHITECTURE.md → byte-identical no-op
+
+
+def test_arch_context_includes_map(tmp_path):
+    (tmp_path / "ARCHITECTURE.md").write_text("# Arch\nentry: cli/main.py\n")
+    out = sc.arch_context(tmp_path)
+    assert "entry: cli/main.py" in out
+    assert "architecture map" in out.lower()
+
+
+def test_arch_context_caps_long_file(tmp_path):
+    (tmp_path / "ARCHITECTURE.md").write_text("x" * 9000)
+    out = sc.arch_context(tmp_path, cap=1000)
+    assert "truncated" in out
+    assert len(out) < 1500  # capped, not the full 9000
+
+
+def test_arch_context_empty_file_is_noop(tmp_path):
+    (tmp_path / "ARCHITECTURE.md").write_text("   \n")
+    assert sc.arch_context(tmp_path) == ""

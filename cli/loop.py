@@ -531,6 +531,7 @@ def run_loop(
             append_loop_log(workspace, decision.reason)
             return []
 
+    from cli.session_context import arch_context
     from cli.skills_recall import recall_lessons, render_recall_block
 
     # Select the capped batch up front (so recall can be pre-built for team mode).
@@ -538,15 +539,27 @@ def run_loop(
     if len(incomplete_tasks(tasks)) > max_cycles:
         append_loop_log(workspace, f"budget cap reached ({max_cycles} cycles)")
 
+    # Ground the amnesiac `claude -p` agents in the repo's architecture map (the
+    # in-session plugin path gets it via the SessionStart hook; the CLI path does
+    # not). Read ONCE from the project root and prepended to every domain's recall
+    # block below. Empty when ARCHITECTURE.md is absent → no change (fail-safe).
+    from cli.paths import project_root
+
+    arch_block = arch_context(project_root())
+    if arch_block:
+        append_loop_log(workspace, "injected repo architecture map into agent prompts")
+
     # Pre-build the per-domain recall snapshot for the whole batch (one read per
     # domain). In team mode this MUST happen before fan-out so threads only read it.
     recall_cache: Dict[str, str] = {}
     for task in batch:
         domain = plan_cycle(task).implementer_domain
         if domain not in recall_cache:
-            block = render_recall_block(recall_lessons(skills_dir, domain))
-            recall_cache[domain] = block
-            if block:
+            lessons = render_recall_block(recall_lessons(skills_dir, domain))
+            # Architecture map first, then past lessons; either may be empty.
+            combined = "\n\n".join(b for b in (arch_block, lessons) if b)
+            recall_cache[domain] = combined
+            if lessons:
                 append_loop_log(workspace, f"recalled past lessons for domain '{domain}'")
 
     def run_one(task: Task) -> CycleOutcome:

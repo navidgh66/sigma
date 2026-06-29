@@ -280,6 +280,48 @@ def test_execute_cycle_sets_contradiction(tmp_path):
     assert out.contradiction is not None
 
 
+# --------------------------- architecture-map injection (CLI path) --------------------------- #
+def test_run_loop_injects_architecture_map(tmp_path, monkeypatch):
+    # Amnesiac `claude -p` agents don't see the SessionStart hook; run_loop should
+    # inject ARCHITECTURE.md into their prompts so the autonomous path is grounded.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")  # mark project root
+    (tmp_path / "ARCHITECTURE.md").write_text("# Arch\nentry point: cli/main.py\n")
+
+    seen = []
+
+    class Recorder(ScriptedRunner):
+        def run(self, prompt, cwd=None, role="agent"):
+            seen.append((role, prompt))
+            return super().run(prompt, cwd=cwd, role=role)
+
+    run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=1,
+        make_implementer=lambda: Recorder([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: Recorder([AgentResult(ok=True, output="VERDICT: PASS")]),
+    )
+    impl_prompts = [p for r, p in seen if r == "implementer"]
+    assert impl_prompts and "entry point: cli/main.py" in impl_prompts[0]
+
+
+def test_run_loop_no_map_leaves_prompts_clean(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")  # root, but NO ARCHITECTURE.md
+    seen = []
+
+    class Recorder(ScriptedRunner):
+        def run(self, prompt, cwd=None, role="agent"):
+            seen.append(prompt)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=1,
+        make_implementer=lambda: Recorder([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: Recorder([AgentResult(ok=True, output="VERDICT: PASS")]),
+    )
+    assert not any("architecture map" in p.lower() for p in seen)
+
+
 # --------------------------- recall injection --------------------------- #
 RECALL = "--- past lessons (avoid repeating these mistakes) ---\n- use BPE\n--- end past lessons ---"
 
