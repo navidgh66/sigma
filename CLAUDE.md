@@ -21,12 +21,12 @@ eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
 actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
 session-context` + a SessionStart hook feed `learn` artifacts back into every new
 session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
-cleanup pass after each verified cycle. 578 pytest tests, ruff clean.
+cleanup pass after each verified cycle. 589 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 578 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 589 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -95,6 +95,7 @@ sigma doctor                         # diagnose + confirm-gated fixes
 sigma doctor --check                 # read-only, exit 1 on any failure (CI)
 sigma doctor --yes                   # apply all fixes without prompting
 sigma doctor --update                # update BOTH surfaces: git pull the CLI + refresh the plugin (claude plugin update sigma@sigma; restart CC to apply), then check
+sigma uninstall                      # reverse the installer: launcher + ~/.sigma + Claude plugin (confirm-gated; --yes to skip; leaves global RTK/caveman/statusline)
 ```
 
 ## Pipeline
@@ -153,6 +154,7 @@ cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long
 cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline, graphify
+cli/uninstall.py    pure build_plan (launcher/~/.sigma/plugin surfaces) + run_uninstall (confirm-gated, separate .env-secrets confirm, best-effort, injectable I/O); leaves global RTK/caveman/statusline
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
@@ -501,3 +503,14 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `_TOP_LEVEL` since it lives at `vendor/<slug>/`, not under `superpowers/`). The
   simplifier is NOT given recall (it grades form, not domain patterns — same reason
   logic is excluded). `--simplify` routes to the `implement` tier under `--route`.
+- `sigma uninstall` (`cli/uninstall.py`) reverses the installer's CORE surfaces
+  only: the launcher (`~/.local/bin/sigma`), the clone (`~/.sigma`, which holds the
+  `.env` API keys), and the Claude plugin + marketplace. It deliberately LEAVES the
+  shared global state (RTK / caveman / ccstatusline / SessionStart hook in the
+  user's `~/.claude/settings.json`) — those may be wanted independently; remove by
+  hand. `build_plan` is pure (stats the FS, `which` injectable); `run_uninstall` is
+  confirm-gated per surface with a SEPARATE secret-warning confirm before deleting
+  `~/.sigma/.env` (API keys never dropped silently), best-effort (an OSError is
+  recorded in `result.errors`, never raised — one stuck surface never blocks the
+  rest). `spawn`/`rmtree`/`unlink` injectable (tests delete nothing). `--yes` skips
+  prompts. Plugin ops skipped when `claude` CLI absent.

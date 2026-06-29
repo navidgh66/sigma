@@ -307,6 +307,13 @@ def test_parser_loop_tdd_team_logic_flags():
     assert b.tdd is False and b.team is False and b.logic is False
 
 
+def test_parser_uninstall_flag():
+    a = build_parser().parse_args(["uninstall", "--yes"])
+    assert a.yes is True
+    b = build_parser().parse_args(["uninstall"])
+    assert b.yes is False
+
+
 def test_parser_loop_simplify_flag():
     a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--simplify"])
     assert a.simplify is True
