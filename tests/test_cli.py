@@ -307,6 +307,13 @@ def test_parser_loop_tdd_team_logic_flags():
     assert b.tdd is False and b.team is False and b.logic is False
 
 
+def test_parser_learn_force_flag():
+    a = build_parser().parse_args(["learn", "--force"])
+    assert a.force is True
+    b = build_parser().parse_args(["learn"])
+    assert b.force is False
+
+
 def test_parser_uninstall_flag():
     a = build_parser().parse_args(["uninstall", "--yes"])
     assert a.yes is True

@@ -8,10 +8,31 @@ from cli.learn import (
     ARCH_HEADER,
     TOUR_HEADER,
     build_learn_prompt,
+    existing_artifacts,
     run_learn,
     split_output,
 )  # build_learn_prompt used by the byte-identical regression test
 from cli.runner import AgentResult
+
+
+# --------------------------- existing_artifacts (overwrite guard) --------------------------- #
+def test_existing_artifacts_none_when_clean(tmp_path):
+    assert existing_artifacts(tmp_path) == []
+
+
+def test_existing_artifacts_finds_arch_and_tours(tmp_path):
+    (tmp_path / "ARCHITECTURE.md").write_text("# Arch\n")
+    tours = tmp_path / ".tours"
+    tours.mkdir()
+    (tours / "a.tour").write_text("{}")
+    (tours / "b.tour").write_text("{}")
+    found = {p.name for p in existing_artifacts(tmp_path)}
+    assert found == {"ARCHITECTURE.md", "a.tour", "b.tour"}
+
+
+def test_existing_artifacts_arch_only(tmp_path):
+    (tmp_path / "ARCHITECTURE.md").write_text("# Arch\n")
+    assert [p.name for p in existing_artifacts(tmp_path)] == ["ARCHITECTURE.md"]
 
 
 class FakeAgent:

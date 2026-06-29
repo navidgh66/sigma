@@ -282,13 +282,27 @@ def cmd_onboard(args: argparse.Namespace) -> int:
 # learn (learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour)
 # --------------------------------------------------------------------------- #
 def cmd_learn(args: argparse.Namespace) -> int:
-    from cli.learn import run_learn
+    from cli import render
+    from cli.learn import existing_artifacts, run_learn
     from cli.paths import project_root
 
     root = project_root()
     _print(f"sigma learn — codebase at {root}")
     if args.persona:
         _print(f"  persona: {args.persona}")
+
+    # Overwrite guard: sigma learn regenerates ARCHITECTURE.md + the tour. If a
+    # prior run's artifacts exist, confirm before clobbering them (unless --force
+    # or --dry-run). Skipped on a dry run (nothing is written).
+    if not args.dry_run and not args.force:
+        prior = existing_artifacts(root)
+        if prior:
+            _print("  ⚠ learn artifacts already exist:")
+            for p in prior:
+                _print(f"    - {p.relative_to(root)}")
+            if not render.confirm("Regenerate and OVERWRITE them?"):
+                _print("  aborted — kept existing artifacts (use --force to skip this prompt)")
+                return 0
     res = run_learn(
         root,
         persona=args.persona,
@@ -781,6 +795,8 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     plearn.add_argument("--no-graph", action="store_true",
                         help="skip the graphify knowledge-graph build (on by default when installed)")
+    plearn.add_argument("--force", action="store_true",
+                        help="overwrite existing ARCHITECTURE.md / .tours without prompting")
     plearn.set_defaults(func=cmd_learn)
 
     psc = sub.add_parser("session-context",

@@ -41,6 +41,26 @@ TOUR_HEADER = "=== TOUR.json ==="
 # Bundled skills that teach the agent the two artifact formats.
 LEARN_SKILLS = ["codebase-onboarding", "code-tour"]
 
+
+def existing_artifacts(root: Path) -> List[Path]:
+    """Return the learn artifacts that already exist under `root`.
+
+    Used by the CLI to warn before `sigma learn` overwrites a prior run's
+    ARCHITECTURE.md / .tours/*.tour. Pure: only stats the tree, never raises on a
+    missing/odd tree (returns []).
+    """
+    found: List[Path] = []
+    arch = root / "ARCHITECTURE.md"
+    if arch.is_file():
+        found.append(arch)
+    tours = root / ".tours"
+    try:
+        if tours.is_dir():
+            found.extend(sorted(tours.glob("*.tour")))
+    except OSError:
+        pass
+    return found
+
 LEARN_INSTRUCTIONS = """Learn this codebase and produce TWO artifacts in one reply.
 
 {persona_line}Read the project under: {root}
