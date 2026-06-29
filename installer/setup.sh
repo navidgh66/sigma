@@ -45,7 +45,7 @@ print_banner() {
   done
   printf "%s" "$C_RST"
   printf "  %s%spersonal AI workflow toolkit%s\n" "$C_B" "$C_CYAN" "$C_RST"
-  printf "  %sby %s   ·   github.com/%s%s\n\n" "$C_DIM" "$AUTHOR" "$REPO_SLUG" "$C_RST"
+  printf "  %screated by %s   ·   github.com/%s%s\n\n" "$C_DIM" "$AUTHOR" "$REPO_SLUG" "$C_RST"
 }
 
 print_banner

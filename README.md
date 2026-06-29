@@ -8,9 +8,8 @@
   ███████║██║╚██████╔╝██║ ╚═╝ ██║██║  ██║
   ╚══════╝╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝
   σ · personal AI workflow toolkit
+  created by Navid Ghayazi
 ```
-
-# σ · sigma
 
 **A portable, spec-driven, loop-engineered AI workflow toolkit for data science & AI engineering.**
 
