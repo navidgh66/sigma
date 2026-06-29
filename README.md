@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-578%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-589%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -39,6 +39,35 @@ autonomous hands-off runs, a live kanban board, and setup.
 > loops that prompt your agents."
 
 `sigma` is that loop.
+
+## 📚 What it's built on
+
+sigma is a synthesis of published practice, not invention — it operationalizes
+the playbooks the field already converged on:
+
+- **Anthropic — *Building Effective Agents* & Claude Code best practices** →
+  maker ≠ checker separation, distinct verification agents, "give the agent a way
+  to verify its work", show-evidence-don't-assert, and the adversarial **`/grill`**
+  gate. ([building-effective-agents](https://www.anthropic.com/research/building-effective-agents))
+- **Google — agentic SDLC / "factory model"** → the developer's output is the
+  assembly line, not the widget; spec-driven stages, intelligent model-tier
+  routing, and treating token burn as tracked OpEx (the **cost loop**).
+- **Loop engineering** → design loops that prompt agents instead of hand-prompting;
+  failures **ratchet** into reusable skills and are recalled on the next run (the
+  closed learning loop).
+- **TDD & verification literature** → the optional **`--tdd`** axis (failing test
+  first, RED→GREEN), the **`verification-before-completion`** discipline, and the
+  evidence that *decomposed, independent* checks beat holistic self-review — which
+  is why grill scores per-axis and verify uses a distinct agent.
+- **Eval-first practice ("set the bar at the eval, not the demo")** → `sigma eval`
+  runs eval sets with an LM judge that is always a *distinct* agent from the
+  system under test, gated at a pass-rate threshold.
+- **Anti-slop refactoring practice** → the **`--simplify`** pass mirrors the
+  bundled `/simplify` four-axis cleanup, behaviour-preserving and re-verified.
+
+What's original here is the *integration*: one portable, plugin-first harness that
+wires these into a single research → spec → grill → implement → verify → loop
+pipeline with a closed learning loop on top.
 
 ---
 
@@ -97,7 +126,9 @@ Then, **inside Claude Code**, add the plugin and go:
 ```
 
 `sigma doctor` health-checks and repairs the install anytime; `sigma doctor
---update` refreshes both the CLI and the plugin in one shot.
+--update` refreshes both the CLI and the plugin in one shot. To remove sigma,
+`sigma uninstall` reverses the installer (launcher + `~/.sigma` + the Claude
+plugin), confirm-gated and with a separate warning before deleting your API keys.
 
 ---
 

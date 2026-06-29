@@ -344,6 +344,39 @@ def cmd_session_context(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# uninstall (reverse the installer: launcher + ~/.sigma + Claude plugin)
+# --------------------------------------------------------------------------- #
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.uninstall import build_plan, run_uninstall
+
+    plan = build_plan()
+    if plan.nothing_to_do():
+        _print("sigma is not installed (no launcher, install dir, or Claude CLI found).")
+        return 0
+
+    _print("sigma uninstall — will remove (each step confirmed):")
+    if plan.launcher_exists:
+        _print(f"  • launcher       {plan.launcher}")
+    if plan.install_dir_exists:
+        secret = "  ⚠ contains API keys (~/.sigma/.env)" if plan.has_secrets else ""
+        _print(f"  • install dir    {plan.install_dir}{secret}")
+    if plan.has_claude_cli:
+        _print("  • Claude plugin  sigma@sigma + marketplace")
+    _print("  (global RTK / caveman / statusline are left untouched — remove by hand if wanted)")
+
+    res = run_uninstall(plan, confirm=render.confirm, assume_yes=args.yes)
+    for r in res.removed:
+        _print(f"  ✓ removed {r}")
+    for s in res.skipped:
+        _print(f"  – kept    {s}")
+    for e in res.errors:
+        _print(f"  ✗ {e}")
+    _print("✓ uninstall complete" if not res.errors else "⚠ uninstall finished with errors")
+    return 1 if res.errors else 0
+
+
+# --------------------------------------------------------------------------- #
 # scout (discover relevant skills on skillsmp.com → install on approval)
 # --------------------------------------------------------------------------- #
 def cmd_scout(args: argparse.Namespace) -> int:
@@ -753,6 +786,11 @@ def build_parser() -> argparse.ArgumentParser:
     psc = sub.add_parser("session-context",
                          help="Print the learn-artifact pointer (wired as a SessionStart hook)")
     psc.set_defaults(func=cmd_session_context)
+
+    pun = sub.add_parser("uninstall",
+                         help="Remove sigma: launcher + ~/.sigma + Claude plugin (confirm-gated)")
+    pun.add_argument("--yes", action="store_true", help="remove all surfaces without prompting")
+    pun.set_defaults(func=cmd_uninstall)
 
     pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
     pscout.add_argument("--vendor", action="store_true",
