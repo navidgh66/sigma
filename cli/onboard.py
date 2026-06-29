@@ -52,6 +52,7 @@ def run_onboard(
     spawn: Optional[Callable] = None,
     which: Optional[Callable] = None,
     run_all: Optional[Callable] = None,
+    learn_fn: Optional[Callable] = None,
     use_rich: bool = True,
 ) -> None:
     """Interactive setup. Writes sigma.config.yml + ~/.sigma/.env; offers RTK."""
@@ -124,6 +125,50 @@ def run_onboard(
     hook_changed = session_hook_mod.setup_session_hook(confirm=confirm)
     if hook_changed:
         print("  ✓ session hook added — new sessions will read this repo's learn artifacts")
-        print("    (run `sigma learn` to build them if you haven't yet)")
+
+    # 11. Build the learn artifacts now (confirm-gated). ARCHITECTURE.md + a tour
+    #     persist in the repo and are read by Claude every session (via the hook or
+    #     CLAUDE.local.md) — so the codebase is mapped ONCE, not re-explored each
+    #     time. Useful even if you never run another sigma command. Skipped when
+    #     they already exist (the guard lives in `sigma learn` / run_learn).
+    _maybe_learn(confirm=confirm, learn_fn=learn_fn)
 
     print("\n✓ onboarding complete. Try:  sigma research \"your topic\"")
+
+
+def _maybe_learn(confirm: Callable[[str], bool], learn_fn: Optional[Callable]) -> None:
+    """Offer to build the learn artifacts during onboarding (confirm-gated).
+
+    No-ops when ARCHITECTURE.md / a tour already exist (don't clobber a prior run),
+    or when the user declines. `learn_fn` is injected in tests so onboarding never
+    spawns a real agent; in production it drives the real `sigma learn`.
+    """
+    from cli.learn import existing_artifacts
+    from cli.paths import project_root
+
+    root = project_root()
+    if existing_artifacts(root):
+        print("  ℹ learn artifacts already present — skipping (run `sigma learn --force` to rebuild)")
+        return
+    if not confirm(
+        "Map this codebase now? Builds ARCHITECTURE.md + a CodeTour so Claude reads "
+        "them every session instead of re-exploring (runs an agent, ~mins)"
+    ):
+        print("  – skipped — run `sigma learn` anytime to build them")
+        return
+
+    learn_fn = learn_fn or _default_learn
+    print("  … running sigma learn (this maps the repo; may take a few minutes)")
+    res = learn_fn(root)
+    if getattr(res, "ok", False):
+        print("  ✓ built ARCHITECTURE.md + CodeTour — Claude will read them each session")
+    else:
+        err = getattr(res, "error", "unknown")
+        print(f"  ⚠ learn did not finish ({err}) — run `sigma learn` later")
+
+
+def _default_learn(root):
+    """Drive the real `sigma learn` (force=skip the overwrite prompt — guarded above)."""
+    from cli.learn import run_learn
+
+    return run_learn(root)
