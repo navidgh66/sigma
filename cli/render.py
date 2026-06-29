@@ -19,7 +19,7 @@ _LOGO = r"""
   ███████║██║╚██████╔╝██║ ╚═╝ ██║██║  ██║
   ╚══════╝╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝
   σ · personal AI workflow toolkit
-  by Navid Ghayazi · github.com/navidgh66/sigma
+  created by Navid Ghayazi · github.com/navidgh66/sigma
 """
 
 _GLYPH = {OK: "✓", WARN: "⚠", FAIL: "✗"}
