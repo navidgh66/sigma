@@ -18,13 +18,15 @@ pressure-tests the blueprint + spec before code. `sigma learn` grounds its map i
 graphify knowledge graph; `sigma scout` keeps the skill bundle fresh from
 skillsmp.com; `sigma prune` cuts unused MCP/plugin context bloat. `sigma eval` runs
 eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
-actually did; `--route` (loop/eval) does intelligent model-tier routing. 536 pytest
-tests, ruff clean.
+actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
+session-context` + a SessionStart hook feed `learn` artifacts back into every new
+session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
+cleanup pass after each verified cycle. 578 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 536 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 578 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -34,6 +36,7 @@ sigma research "topic"               # multi-model research → research.md
 sigma research "topic" --web         # quick web-grounded pass (light; --deep wins if both)
 sigma research "topic" --deep        # web-grounded deep research (exhaustive web search; slower)
 sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour (+ graphify graph if installed)
+sigma session-context                # print the learn-artifact pointer (wired as a SessionStart hook → every new session reads the map)
 sigma learn --no-graph               # skip the graphify knowledge-graph build
 sigma learn --persona "new dev" --dry-run  # print the invocation, don't run claude
 
@@ -51,6 +54,7 @@ sigma loop --topic <t> --execute     # run maker→checker cycles
 sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN)
 sigma loop --topic <t> --execute --team   # independent tasks run in parallel
 sigma loop --topic <t> --execute --logic  # add logic-evaluator axis (combine: --team --tdd --logic)
+sigma loop --topic <t> --execute --simplify  # distinct anti-slop cleanup after each PASS (re-verified to preserve behaviour)
 sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
 
 # Eval — run an eval set, LM-judge each case, gate at a pass-rate threshold (set the bar at the eval, not the demo)
@@ -130,13 +134,16 @@ cli/prune_run.py    thin: read settings/.claude.json/.mcp.json + scan transcript
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable); optional `model` (→ --model alias, intelligent routing) + `trajectory_sink` (observability), both fail-safe no-ops by default
 cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration) + summarize projection + make_sink (best-effort, never breaks a run)
+cli/session_context.py  pure: build_pointer(root) → names ARCHITECTURE.md + .tours/*.tour for a SessionStart hook (lazy /learn hint when absent); never raises (read side of learn)
+cli/session_hook.py     thin: confirm-gated idempotent install of the SessionStart hook into project .claude/settings.json (immutable merge, like statusline.py)
+cli/claude_local.py     pure upsert_block (marker-delimited) + thin write_block into gitignored CLAUDE.local.md — static fallback for the learn pointer
 cli/eval.py         pure: parse eval set (markdown cases) + build LM-judge prompt + skeptical parse_grade + aggregate/gate(threshold) + ensure_distinct (SUT≠judge)
 cli/eval_run.py     thin: resolve eval set, prompt mode (run SUT → grade w/ distinct judge) or artifact mode, parallel grading fan-out, cost record, write report, --check gate
 cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json. STAGES includes the two grill GATE stages (grill-blueprint/grill-spec, shared grill template via `template` key + GRILL_TARGET)
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
 cli/domains_index.py  pure: resolve each domain → implementer/verifier/logic-evaluator files; powers skills/sigma-domains
-cli/loop.py         parse tasks, execute_cycle (maker→checker + logic + optional TDD test-writer), run_loop (sequential or --team parallel)
+cli/loop.py         parse tasks, execute_cycle (maker→checker + logic + optional TDD test-writer + optional post-pass --simplify cleanup w/ re-verify guard), run_loop (sequential or --team parallel)
 cli/hermes.py       conductor: route → inject skill → execute_stage → emit event
 cli/intent.py       hybrid routing: state-scan default + intent-override classify
 cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
@@ -459,3 +466,38 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `trajectory.jsonl` in the workspace; caller passes `ts` (no clock in the pure
   path). `summarize` is a deterministic projection. `sigma trajectory --topic <t>`
   renders it. Missing file → empty (lenient read-model). Git-ignored (derived).
+- `sigma session-context` (`cli/session_context.py` pure) closes the LEARN loop —
+  the read side of `sigma learn`. `build_pointer(root)` names the durable learn
+  artifacts (ARCHITECTURE.md + `.tours/*.tour`) so a Claude Code SessionStart hook
+  surfaces them at the start of EVERY session; neither present → a lazy "run /learn"
+  hint, so the hook always emits something. It is PURE (only stats the tree, no
+  clock/mutation) and NEVER raises — `cmd_session_context` wraps it and ALWAYS exits
+  0 (a session-start hook must never break a session; inverse of verify's
+  default-FAIL — here errors degrade to the harmless hint). Two surfaces:
+  `cli/session_hook.py` (confirm-gated, idempotent install of the hook into the
+  PROJECT `.claude/settings.json` via an IMMUTABLE merge — exactly like
+  `cli/statusline.py`; appends to any existing SessionStart hooks, never replaces)
+  and `cli/claude_local.py` (`upsert_block` — pure insert/replace between
+  `<!-- sigma:learn:start/end -->` markers in the gitignored `CLAUDE.local.md`, the
+  static fallback for hook-less envs). `sigma learn` calls `_refresh_local_pointer`
+  after writing artifacts (best-effort, never fatal — same fail-safe as the graphify
+  build). Onboard step 10 offers the hook (confirm-gated). NOTE: the installed CLI
+  runs from `~/.sigma` (separate checkout), so the `sigma session-context` hook
+  command resolves only after the install updates (`sigma doctor --update`) — the
+  two-surface split.
+- `loop --simplify` adds a DISTINCT anti-slop SIMPLIFIER agent (the paper's "70%
+  problem" cleanup; Anthropic ships the same as bundled `/simplify`). It runs ONLY
+  AFTER a cycle PASSES — cleanup, NOT a gate (a failed cycle never reaches it;
+  `CycleOutcome.simplified` stays None). Enforced distinct from
+  implementer/verifier/logic/test-writer via the `is`-identity `ValueError` (NOT
+  `==` — AgentRunner is a dataclass, two fresh instances compare equal; same law as
+  maker≠checker). Behaviour-preservation guard: after the simplifier edits, the SAME
+  verifier RE-VERIFIES; `simplified=True` only when re-verify PASSES — a regression
+  reverts the simplify, NEVER the feature, and the cycle stays GREEN regardless
+  (`_run_simplify` is best-effort: a simplifier crash or re-verify FAIL is logged,
+  the passing cycle stands). Four-axis rubric (reuse / simplify / efficiency /
+  right-altitude) in `skills/vendor/code-simplifier/SKILL.md` (a sigma-authored
+  vendored skill — `skill_map` maps stage `simplify`→`code-simplifier`, added to
+  `_TOP_LEVEL` since it lives at `vendor/<slug>/`, not under `superpowers/`). The
+  simplifier is NOT given recall (it grades form, not domain patterns — same reason
+  logic is excluded). `--simplify` routes to the `implement` tier under `--route`.

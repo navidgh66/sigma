@@ -17,6 +17,7 @@ from cli import caveman as caveman_mod
 from cli import checks as checks_mod
 from cli import graphify as graphify_mod
 from cli import render, rtk, secrets
+from cli import session_hook as session_hook_mod
 from cli import statusline as statusline_mod
 from cli.config import SigmaConfig, write_config
 from cli.paths import DOMAINS
@@ -117,5 +118,12 @@ def run_onboard(
     )
     if graph_changed:
         print("  ✓ graphify installed — `sigma learn` will build a knowledge graph")
+
+    # 10. SessionStart hook — confirm-gated. Surfaces this repo's learn artifacts
+    #     (ARCHITECTURE.md / tour) at the start of every Claude Code session.
+    hook_changed = session_hook_mod.setup_session_hook(confirm=confirm)
+    if hook_changed:
+        print("  ✓ session hook added — new sessions will read this repo's learn artifacts")
+        print("    (run `sigma learn` to build them if you haven't yet)")
 
     print("\n✓ onboarding complete. Try:  sigma research \"your topic\"")

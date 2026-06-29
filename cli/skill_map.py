@@ -24,13 +24,15 @@ STAGE_SKILLS: Dict[str, List[str]] = {
     "verify": ["systematic-debugging", "verification-before-completion"],
     # `loop` reuses the verify checkers when a cycle fails.
     "loop": ["systematic-debugging"],
+    # Anti-slop cleanup pass (loop --simplify). Distinct agent, behaviour-preserving.
+    "simplify": ["code-simplifier"],
 }
 
 # Slug used for terse/compressed output across every stage.
 CAVEMAN_SLUG = "caveman"
 
 # Slugs that live directly under skills/vendor/<slug>/ (not superpowers/).
-_TOP_LEVEL = {CAVEMAN_SLUG}
+_TOP_LEVEL = {CAVEMAN_SLUG, "code-simplifier"}
 
 
 def vendor_dir() -> Path:

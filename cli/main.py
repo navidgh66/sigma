@@ -149,6 +149,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print("  🧪 TDD mode: a distinct agent writes a failing test before each implementer")
     if args.team:
         _print("  👥 team mode: independent tasks run in parallel")
+    if args.simplify:
+        _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified)")
 
     # Trajectory capture: every agent run appends a step to the workspace
     # (best-effort observability, never breaks a run).
@@ -173,6 +175,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
             make_verifier=lambda: _make(routes.get("verify")),
             make_logic_checker=(lambda: _make(routes.get("logic"))) if args.logic else None,
             make_test_writer=(lambda: _make(routes.get("verify"))) if args.tdd else None,
+            make_simplifier=(lambda: _make(routes.get("implement"))) if args.simplify else None,
             team=args.team,
             gate=args.gate,
         )
@@ -188,6 +191,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
             _print(f"    test-first: {'✓ written' if o.test_written else '✗ failed'}")
         if o.regression_test:
             _print(f"    regression test pinned → {o.regression_test}")
+        if o.simplified is not None:
+            _print(f"    simplify: {'✓ applied (re-verified)' if o.simplified else '✗ skipped/reverted'}")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
         if o.contradiction:
@@ -312,6 +317,29 @@ def cmd_learn(args: argparse.Namespace) -> int:
                 _print(f"    - {p}")
         else:
             _print("  ✓ all tour anchors valid")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# session-context (print the learn-artifact pointer for a SessionStart hook)
+# --------------------------------------------------------------------------- #
+def cmd_session_context(args: argparse.Namespace) -> int:
+    """Print the pointer to this repo's learn artifacts.
+
+    Wired as a Claude Code SessionStart hook (its stdout is injected as session
+    context). ALWAYS exits 0 and never raises — a session-start hook must never
+    break a session (inverse of verify's default-FAIL: here we default to a
+    harmless nudge). Errors degrade to the lazy hint.
+    """
+    try:
+        from cli.paths import project_root
+        from cli.session_context import build_pointer
+
+        print(build_pointer(project_root()))
+    except Exception:  # noqa: BLE001 — a hook must never propagate an error
+        from cli.session_context import LAZY_HINT
+
+        print(LAZY_HINT)
     return 0
 
 
@@ -682,6 +710,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="run independent tasks in parallel (each its own cycle)")
     pl.add_argument("--logic", action="store_true",
                     help="add the logic-evaluator axis (cycle passes only if logic also passes)")
+    pl.add_argument("--simplify", action="store_true",
+                    help="after each pass, a distinct agent cleans up AI slop (re-verified to preserve behaviour)")
     pl.add_argument("--route", action="store_true",
                     help="intelligent model routing: mechanical roles→cheaper tier, logic→strong tier")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
@@ -719,6 +749,10 @@ def build_parser() -> argparse.ArgumentParser:
     plearn.add_argument("--no-graph", action="store_true",
                         help="skip the graphify knowledge-graph build (on by default when installed)")
     plearn.set_defaults(func=cmd_learn)
+
+    psc = sub.add_parser("session-context",
+                         help="Print the learn-artifact pointer (wired as a SessionStart hook)")
+    psc.set_defaults(func=cmd_session_context)
 
     pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
     pscout.add_argument("--vendor", action="store_true",
