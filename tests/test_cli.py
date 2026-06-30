@@ -314,6 +314,13 @@ def test_parser_learn_force_flag():
     assert b.force is False
 
 
+def test_parser_setup_repo_flags():
+    a = build_parser().parse_args(["setup-repo", "--domains", "nlp,rl", "--no-learn"])
+    assert a.domains == "nlp,rl" and a.no_learn is True
+    b = build_parser().parse_args(["setup-repo"])
+    assert b.domains is None and b.no_learn is False
+
+
 def test_parser_uninstall_flag():
     a = build_parser().parse_args(["uninstall", "--yes"])
     assert a.yes is True

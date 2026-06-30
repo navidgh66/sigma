@@ -358,6 +358,25 @@ def cmd_session_context(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# setup-repo (one-shot per-repo bootstrap: config + hook + CLAUDE.local + map)
+# --------------------------------------------------------------------------- #
+def cmd_setup_repo(args: argparse.Namespace) -> int:
+    from cli.paths import project_root
+    from cli.setup_repo import run_setup_repo
+
+    root = project_root()
+    _print(f"sigma setup-repo — bootstrapping {root}")
+    domains = [d.strip() for d in args.domains.split(",")] if args.domains else None
+    if not args.no_learn:
+        _print("  (will map the codebase with an agent — pass --no-learn to skip)")
+    res = run_setup_repo(root, domains=domains, no_learn=args.no_learn)
+    for step in res.steps:
+        _print(f"  • {step}")
+    _print("✓ repo ready — Claude will read this repo's architecture map each session")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # uninstall (reverse the installer: launcher + ~/.sigma + Claude plugin)
 # --------------------------------------------------------------------------- #
 def cmd_uninstall(args: argparse.Namespace) -> int:
@@ -807,6 +826,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Remove sigma: launcher + ~/.sigma + Claude plugin (confirm-gated)")
     pun.add_argument("--yes", action="store_true", help="remove all surfaces without prompting")
     pun.set_defaults(func=cmd_uninstall)
+
+    psr = sub.add_parser("setup-repo",
+                         help="Bootstrap THIS repo: config + SessionStart hook + CLAUDE.local + codebase map")
+    psr.add_argument("--domains", help="comma list for sigma.config.yml (default: all) — only if config is missing")
+    psr.add_argument("--no-learn", action="store_true",
+                     help="skip building the codebase map (no agent run)")
+    psr.set_defaults(func=cmd_setup_repo)
 
     pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
     pscout.add_argument("--vendor", action="store_true",

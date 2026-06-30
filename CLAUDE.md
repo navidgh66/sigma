@@ -21,12 +21,12 @@ eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
 actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
 session-context` + a SessionStart hook feed `learn` artifacts back into every new
 session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
-cleanup pass after each verified cycle. 596 pytest tests, ruff clean.
+cleanup pass after each verified cycle. 613 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 596 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 613 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -96,6 +96,7 @@ sigma doctor --check                 # read-only, exit 1 on any failure (CI)
 sigma doctor --yes                   # apply all fixes without prompting
 sigma doctor --update                # update BOTH surfaces: git pull the CLI + refresh the plugin (claude plugin update sigma@sigma; restart CC to apply), then check
 sigma uninstall                      # reverse the installer: launcher + ~/.sigma + Claude plugin (confirm-gated; --yes to skip; leaves global RTK/caveman/statusline)
+sigma setup-repo                     # one-shot per-repo bootstrap: config + SessionStart hook + CLAUDE.local + codebase map (--no-learn skips the agent map; --domains for config)
 ```
 
 ## Pipeline
@@ -155,6 +156,7 @@ cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/pl
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline, graphify, SessionStart hook, + offer to build learn artifacts (step 11, confirm-gated, no-op if they exist; learn_fn injectable so tests never spawn an agent)
 cli/uninstall.py    pure build_plan (launcher/~/.sigma/plugin surfaces) + run_uninstall (confirm-gated, separate .env-secrets confirm, best-effort, injectable I/O); leaves global RTK/caveman/statusline
+cli/setup_repo.py   one-shot per-repo bootstrap: composes config + session_hook + claude_local + learn (config-if-missing → hook idempotent → CLAUDE.local → map unless --no-learn / artifacts exist); learn_fn injectable (tests never spawn an agent)
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
