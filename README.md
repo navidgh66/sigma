@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-589%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-613%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -113,9 +113,19 @@ pipeline with a closed learning loop on top.
 curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
 export PATH="$PATH:$HOME/.local/bin"
 
-# friendly first run: pick domains, capture API keys, optional RTK / status line
+# friendly first run (once per machine): pick domains, capture API keys, optional RTK / status line
 sigma onboard
+
+# bootstrap any repo (per repo): config + SessionStart hook + CLAUDE.local + codebase map
+sigma setup-repo            # add --no-learn to skip the agent-built map
 ```
+
+`sigma onboard` is the once-per-machine setup (keys, RTK, caveman, status line,
+graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
+give it the four local artifacts (`sigma.config.yml`, the SessionStart hook,
+`CLAUDE.local.md`, and the `ARCHITECTURE.md` + CodeTour map) so Claude reads that
+repo's architecture every session instead of re-exploring. It's idempotent and
+never clobbers existing artifacts.
 
 Then, **inside Claude Code**, add the plugin and go:
 
