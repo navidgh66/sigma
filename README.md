@@ -61,8 +61,12 @@ autonomous hands-off runs, a live kanban board, and setup.
   logic-evaluator are always *distinct* agents. Separation is a `ValueError`, not
   a guideline.
 - **🤖 Autonomous when you want it** — `sigma loop --execute` runs maker→checker
-  cycles; `--tdd` writes the failing test first; `--team` runs independent tasks
-  in parallel; `--logic` adds a reasoning axis. `hermes --auto` chains whole
+  cycles, **routed by model tier by default** (mechanical roles → sonnet, logic →
+  opus; `--no-route` opts out); `--tdd` writes the failing test first; `--team`
+  runs independent tasks in parallel, each in its own **real git worktree**
+  (merged back on pass, conflicts surfaced — never auto-resolved); `--logic` adds
+  a reasoning axis; `--advisor` escalates a verify failure to a distinct opus-tier
+  agent for a correction plan before giving up. `hermes --auto` chains whole
   stages until a human gate.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
@@ -203,7 +207,7 @@ in-session, plus setup:
 
 ```bash
 sigma research "topic" --deep   # exhaustive web-grounded multi-model brief
-sigma loop --topic <t> --execute --team --tdd --logic   # autonomous, parallel, test-first
+sigma loop --topic <t> --execute --team --tdd --logic --advisor   # autonomous, parallel, test-first, self-correcting
 sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
 sigma board --topic <t> --watch                         # live kanban over agent progress
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
@@ -212,6 +216,7 @@ sigma profile                                           # codebase logic invaria
 sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
 sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
 sigma prune                                             # cut loaded-but-unused MCP/plugins → reversible disable
+sigma trajectory --topic <t> --efficiency               # real cycle pass rate + escalation rate (measured, not estimated)
 sigma doctor --update                                   # refresh CLI + plugin, then health-check
 ```
 
@@ -289,6 +294,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 | `sigma-grilling` | the adversarial grilling rubric (powers `/grill`) |
 | `sigma-grill-loop` | the bounded auto-grill loop (powers `/grill-loop`) |
 | `sigma-present` | exports an artifact to a single-file HTML deck / report |
+| `sigma-docs` | README / API-reference / CHANGELOG / presentation for external audiences |
 | `sigma-cost` | estimates + routes token cost for heavy ops |
 | `sigma-scout` | curation rubric for `sigma scout` (relevance + license vetting) |
 | `sigma-prune` | pruning rubric — disable ≠ delete, never prune on absent evidence |
@@ -310,10 +316,11 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **480+ pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
-  projection, cost, graph/scout/prune) is separated from subprocess execution and
-  fully tested with fakes. No real agent, network, or settings file is touched in
-  the test suite.
+- **663 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+  projection, cost, graph/scout/prune, git worktrees) is separated from subprocess
+  execution and fully tested with fakes (worktree/merge logic is tested against
+  real temp git repos). No real agent, network, or settings file is touched in
+  the CLI-behavior test suite.
 - **Plugin-first** — `commands/*.md` are native slash commands; `skills/*` are
   native skills; `.claude-plugin/` makes it a one-command marketplace install.
 - **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime.
