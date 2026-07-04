@@ -41,3 +41,4 @@ sigma/costs.jsonl
 sigma/evals/*/report.md
 sigma/specs/*/trajectory.jsonl
 CLAUDE.local.md
+.worktrees/
