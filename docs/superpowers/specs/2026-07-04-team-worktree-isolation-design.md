@@ -1,7 +1,7 @@
 # Design: `--team` real git-worktree isolation
 
 **Date:** 2026-07-04
-**Status:** approved (brainstorm → plan), ready to implement
+**Status:** implemented and verified (live functional test + full suite green)
 **Branch:** `feat/team-worktree-isolation`
 
 ---
