@@ -51,6 +51,60 @@ def test_execute_cycle_pass(tmp_path):
     assert (tmp_path / "verify").exists()
 
 
+def test_execute_cycle_agent_cwd_used_for_agent_calls_not_artifacts(tmp_path):
+    agent_dir = tmp_path / "agent-dir"
+    agent_dir.mkdir()
+    artifact_dir = tmp_path / "artifact-dir"
+
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    impl = CwdRecorder([AgentResult(ok=True, output="implemented")])
+    chk = CwdRecorder([AgentResult(ok=True, output="VERDICT: PASS")])
+
+    out = execute_cycle(plan, artifact_dir, artifact_dir / "skills", impl, chk, agent_cwd=agent_dir)
+
+    assert out.verified is True
+    assert impl.cwds == [agent_dir]
+    assert chk.cwds == [agent_dir]
+    assert (artifact_dir / "impl" / f"{plan.worktree_name}.md").exists()
+    assert (artifact_dir / "verify" / f"{plan.worktree_name}.md").exists()
+    assert not (agent_dir / "impl").exists()
+
+
+def test_execute_cycle_agent_cwd_none_falls_back_to_workspace(tmp_path):
+    """Regression guard: agent_cwd=None (every existing caller) is byte-identical
+    to today — the agent's cwd IS the workspace, same as before this param existed."""
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    impl = CwdRecorder([AgentResult(ok=True, output="implemented")])
+    chk = CwdRecorder([AgentResult(ok=True, output="VERDICT: PASS")])
+
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+
+    assert impl.cwds == [tmp_path]
+    assert chk.cwds == [tmp_path]
+
+
 def test_execute_cycle_verify_fail_ratchets(tmp_path):
     tasks = parse_tasks(TASKS)
     plan = plan_cycle(tasks[0])

@@ -316,6 +316,7 @@ def _run_verify(
     verifier: AgentRunner,
     logic_checker: Optional[AgentRunner],
     recall: str,
+    cwd: Optional[Path] = None,
 ) -> tuple:
     """Run the verify (+ optional logic) axis once. Returns (passed, logic_ok, reason, detail).
 
@@ -325,16 +326,19 @@ def _run_verify(
     failure *kinds*, e.g. "verifier returned VERDICT: FAIL"); `detail` is the raw
     checker/logic output text, used by the advisor's no-progress check so two FAILs of
     the same kind but with genuinely different content aren't mistaken for no-progress.
-    Writes the same verify/logic artifacts execute_cycle always wrote — callers may
-    invoke this more than once (advisor retries), each call overwriting the prior
-    attempt's artifacts, so only the LAST attempt's verify output persists on disk (the
-    outcome/ratchet bookkeeping still reflects every round via the caller).
+    `cwd` is where the verifier/logic subprocess runs; `None` falls back to `workspace`
+    (byte-identical to before this param existed). Writes the same verify/logic
+    artifacts execute_cycle always wrote — callers may invoke this more than once
+    (advisor retries), each call overwriting the prior attempt's artifacts, so only the
+    LAST attempt's verify output persists on disk (the outcome/ratchet bookkeeping
+    still reflects every round via the caller).
     """
+    cwd = cwd if cwd is not None else workspace
     title = plan.task.title
     domain = plan.implementer_domain
     chk = verifier.run(
         _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
-        cwd=workspace,
+        cwd=cwd,
         role="verifier",
     )
     write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
@@ -345,7 +349,7 @@ def _run_verify(
     logic_output = ""
     if logic_checker is not None:
         logic = logic_checker.run(
-            LOGIC_PROMPT.format(domain=domain, title=title), cwd=workspace, role="logic"
+            LOGIC_PROMPT.format(domain=domain, title=title), cwd=cwd, role="logic"
         )
         write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
         logic_passed = logic.ok and _verdict_pass(logic.output)
@@ -376,6 +380,7 @@ def _run_advisor_escalation(
     recall: str,
     impl_output: str,
     outcome: CycleOutcome,
+    cwd: Optional[Path] = None,
 ) -> tuple:
     """Escalate a verify/logic FAIL to a distinct advisor before ratcheting.
 
@@ -390,7 +395,10 @@ def _run_advisor_escalation(
     edits may be worse than the original failing code — there is no guarantee an
     unfinished correction is an improvement) and returns (False, <last reason>).
     An advisor crash stops escalation immediately (best-effort, never fatal).
+    `cwd` is where the advisor/implementer subprocesses run; `None` falls back to
+    `workspace` (byte-identical to before this param existed).
     """
+    cwd = cwd if cwd is not None else workspace
     title = plan.task.title
     domain = plan.implementer_domain
     original_impl_output = impl_output
@@ -400,7 +408,7 @@ def _run_advisor_escalation(
         rounds_used = round_i
         plan_result = advisor.run(
             ADVISOR_PROMPT.format(domain=domain, title=title, impl=impl_output, reason=reason),
-            cwd=workspace,
+            cwd=cwd,
             role="advisor",
         )
         if not plan_result.ok:
@@ -413,7 +421,7 @@ def _run_advisor_escalation(
         retry_prompt = ADVISOR_RETRY_PREFIX.format(plan=plan_result.output) + IMPLEMENT_PROMPT.format(
             domain=domain, title=title
         )
-        impl = implementer.run(_with_recall(retry_prompt, recall), cwd=workspace, role="implementer")
+        impl = implementer.run(_with_recall(retry_prompt, recall), cwd=cwd, role="implementer")
         if not impl.ok:
             outcome.notes.append(f"advisor retry implement failed: {impl.error}")
             break
@@ -421,7 +429,7 @@ def _run_advisor_escalation(
         write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl_output)
 
         passed, logic_ok, new_reason, new_detail = _run_verify(
-            plan, workspace, verifier, logic_checker, recall
+            plan, workspace, verifier, logic_checker, recall, cwd=cwd
         )
         if logic_ok is not None:
             outcome.logic_ok = logic_ok
@@ -469,6 +477,7 @@ def execute_cycle(
     simplifier: Optional[AgentRunner] = None,
     advisor: Optional[AgentRunner] = None,
     advisor_rounds: int = 1,
+    agent_cwd: Optional[Path] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -490,6 +499,12 @@ def execute_cycle(
     `advisor` is None by default, so the escalation branch never runs unless the
     caller opts in — the rest of the function is byte-identical to before this axis
     existed.
+
+    `agent_cwd`, when set, is where the implementer/verifier/logic/test-writer/
+    simplifier/advisor subprocesses actually run (`cwd=` on every `.run()` call).
+    `workspace` always stays where artifacts/logs/ratchets are written — the two
+    are the same value (today's behavior) unless a caller splits them. `None`
+    (every caller before --team) falls back to `workspace` — byte-identical.
 
     `recall` is an optional past-lessons block (from cli.skills_recall) prepended
     to the implement + verify prompts so the maker avoids prior mistakes and the
@@ -528,6 +543,7 @@ def execute_cycle(
             "advisor must be distinct from maker, checker, logic, test, and simplifier agents"
         )
 
+    cwd = agent_cwd if agent_cwd is not None else workspace
     title = plan.task.title
     domain = plan.implementer_domain
     outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
@@ -538,7 +554,7 @@ def execute_cycle(
     implement_prompt = IMPLEMENT_PROMPT.format(domain=domain, title=title)
     if test_writer is not None:
         test = test_writer.run(
-            TEST_PROMPT.format(domain=domain, title=title), cwd=workspace, role="test-writer"
+            TEST_PROMPT.format(domain=domain, title=title), cwd=cwd, role="test-writer"
         )
         outcome.test_written = test.ok
         if not test.ok:
@@ -554,7 +570,7 @@ def execute_cycle(
 
     impl = implementer.run(
         _with_recall(implement_prompt, recall),
-        cwd=workspace,
+        cwd=cwd,
         role="implementer",
     )
     outcome.implemented = impl.ok
@@ -569,7 +585,9 @@ def execute_cycle(
 
     write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl.output)
 
-    passed, logic_ok, reason, detail = _run_verify(plan, workspace, verifier, logic_checker, recall)
+    passed, logic_ok, reason, detail = _run_verify(
+        plan, workspace, verifier, logic_checker, recall, cwd=cwd
+    )
     if logic_ok is not None:
         outcome.logic_ok = logic_ok
     outcome.verified = passed
@@ -581,6 +599,7 @@ def execute_cycle(
         passed, reason = _run_advisor_escalation(
             plan, workspace, implementer, verifier, logic_checker,
             advisor, advisor_rounds, reason, detail, recall, impl.output, outcome,
+            cwd=cwd,
         )
         outcome.verified = passed
 
