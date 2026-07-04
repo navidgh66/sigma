@@ -144,6 +144,7 @@ def test_report_skips_zero_token_rows_from_run_count():
 def test_routing_for_other_ops():
     assert routing_for("profile") == {"walk": "sonnet"}
     assert "logic" in routing_for("loop")
+    assert routing_for("loop")["advisor"] == "opus"
     assert routing_for("research") == {"fan-out": "sonnet"}
     assert routing_for("unknown-op") == {}
 

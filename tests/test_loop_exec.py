@@ -1,3 +1,5 @@
+import subprocess as _subprocess
+
 import pytest
 
 from cli.loop import (
@@ -5,9 +7,22 @@ from cli.loop import (
     execute_cycle,
     parse_tasks,
     plan_cycle,
+    record_cycle_steps,
     run_loop,
 )
 from cli.runner import AgentResult, AgentRunner
+
+
+def _init_git_repo(root):
+    """Real minimal git repo with one commit on `main`, for team+worktree tests."""
+    _subprocess.run(["git", "init", "-b", "main"], cwd=str(root), check=True, capture_output=True)
+    _subprocess.run(
+        ["git", "config", "user.email", "t@example.com"], cwd=str(root), check=True, capture_output=True
+    )
+    _subprocess.run(["git", "config", "user.name", "T"], cwd=str(root), check=True, capture_output=True)
+    (root / "README.md").write_text("x\n")
+    _subprocess.run(["git", "add", "README.md"], cwd=str(root), check=True, capture_output=True)
+    _subprocess.run(["git", "commit", "-m", "init"], cwd=str(root), check=True, capture_output=True)
 
 TASKS = """
 - [ ] T1 (nlp): tokenize corpus
@@ -48,6 +63,60 @@ def test_execute_cycle_pass(tmp_path):
     assert out.ratcheted_skill is None
     assert (tmp_path / "impl").exists()
     assert (tmp_path / "verify").exists()
+
+
+def test_execute_cycle_agent_cwd_used_for_agent_calls_not_artifacts(tmp_path):
+    agent_dir = tmp_path / "agent-dir"
+    agent_dir.mkdir()
+    artifact_dir = tmp_path / "artifact-dir"
+
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    impl = CwdRecorder([AgentResult(ok=True, output="implemented")])
+    chk = CwdRecorder([AgentResult(ok=True, output="VERDICT: PASS")])
+
+    out = execute_cycle(plan, artifact_dir, artifact_dir / "skills", impl, chk, agent_cwd=agent_dir)
+
+    assert out.verified is True
+    assert impl.cwds == [agent_dir]
+    assert chk.cwds == [agent_dir]
+    assert (artifact_dir / "impl" / f"{plan.worktree_name}.md").exists()
+    assert (artifact_dir / "verify" / f"{plan.worktree_name}.md").exists()
+    assert not (agent_dir / "impl").exists()
+
+
+def test_execute_cycle_agent_cwd_none_falls_back_to_workspace(tmp_path):
+    """Regression guard: agent_cwd=None (every existing caller) is byte-identical
+    to today — the agent's cwd IS the workspace, same as before this param existed."""
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    impl = CwdRecorder([AgentResult(ok=True, output="implemented")])
+    chk = CwdRecorder([AgentResult(ok=True, output="VERDICT: PASS")])
+
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+
+    assert impl.cwds == [tmp_path]
+    assert chk.cwds == [tmp_path]
 
 
 def test_execute_cycle_verify_fail_ratchets(tmp_path):
@@ -240,6 +309,195 @@ def test_run_loop_with_simplifier(tmp_path):
     )
     assert len(outcomes) == 2
     assert all(o.verified and o.simplified for o in outcomes)
+
+
+# --------------------------- advisor (fail-path escalation) --------------------------- #
+def test_advisor_must_be_distinct(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, advisor=impl)
+
+
+def test_advisor_not_called_on_pass(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="should not run")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor)
+    assert out.verified is True
+    assert out.advised is None
+    assert out.advisor_rounds_used is None
+    assert advisor.prompts == []
+
+
+def test_advisor_rescues_cycle_on_fail(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([
+        AgentResult(ok=True, output="broken attempt"),
+        AgentResult(ok=True, output="fixed attempt"),
+    ])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: FAIL"),
+        AgentResult(ok=True, output="VERDICT: PASS"),
+    ])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="1. fix the root cause")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor)
+    assert out.verified is True
+    assert out.advised is True
+    assert out.advisor_rounds_used == 1
+    assert out.ratcheted_skill is None
+    assert any("ADVISOR" in p for p in advisor.prompts)
+    assert "1. fix the root cause" in impl.prompts[1]
+    assert (tmp_path / "advisor" / f"{plan.worktree_name}.round1.md").exists()
+    # the RESCUED implementation persists, not the original broken one.
+    assert "fixed attempt" in (tmp_path / "impl" / f"{plan.worktree_name}.md").read_text()
+
+
+def test_advisor_exhaustion_reverts_and_ratchets(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([
+        AgentResult(ok=True, output="original broken"),
+        AgentResult(ok=True, output="still broken retry"),
+    ])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: FAIL"),
+        AgentResult(ok=True, output="VERDICT: FAIL"),
+    ])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="1. try this")])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor, advisor_rounds=1
+    )
+    assert out.verified is False
+    assert out.advised is False
+    assert out.advisor_rounds_used == 1
+    assert out.ratcheted_skill is not None
+    assert out.ratcheted_skill.exists()
+    # reverted to the ORIGINAL pre-escalation implementation, not the failed retry.
+    assert "original broken" in (tmp_path / "impl" / f"{plan.worktree_name}.md").read_text()
+
+
+def test_advisor_round_cap_respected(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output=f"attempt {i}") for i in range(4)])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: FAIL body A"),
+        AgentResult(ok=True, output="VERDICT: FAIL body B"),
+        AgentResult(ok=True, output="VERDICT: FAIL body C"),
+    ])
+    advisor = ScriptedRunner([
+        AgentResult(ok=True, output="plan 1"),
+        AgentResult(ok=True, output="plan 2"),
+    ])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor, advisor_rounds=2
+    )
+    assert out.verified is False
+    assert out.advisor_rounds_used == 2
+    assert len(advisor.prompts) == 2
+
+
+def test_advisor_no_progress_early_stop(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output=f"attempt {i}") for i in range(4)])
+    # Identical failure reason every round → advisor isn't helping, stop early.
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL") for _ in range(3)])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="plan") for _ in range(3)])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor, advisor_rounds=3
+    )
+    assert out.verified is False
+    assert out.advisor_rounds_used == 1
+    assert any("no-progress" in n for n in out.notes)
+
+
+def test_advisor_crash_is_non_fatal(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    advisor = ScriptedRunner([AgentResult(ok=False, output="", error="boom")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, advisor=advisor)
+    assert out.verified is False
+    assert out.advised is False
+    assert out.ratcheted_skill.exists()
+    assert any("advisor skipped" in n for n in out.notes)
+
+
+def test_advisor_with_logic_axis(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([
+        AgentResult(ok=True, output="broken"),
+        AgentResult(ok=True, output="fixed"),
+    ])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: PASS"),
+        AgentResult(ok=True, output="VERDICT: PASS"),
+    ])
+    logic = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: FAIL"),
+        AgentResult(ok=True, output="VERDICT: PASS"),
+    ])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="fix the logic")])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk, logic, advisor=advisor
+    )
+    assert out.verified is True
+    assert out.advised is True
+    assert out.logic_ok is True
+
+
+def test_advisor_off_byte_identical(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl_a = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk_a = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out_a = execute_cycle(plan, tmp_path, tmp_path / "skills", impl_a, chk_a)  # advisor=None default
+
+    impl_b = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk_b = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    out_b = execute_cycle(plan, tmp_path, tmp_path / "skills", impl_b, chk_b, advisor=None)
+
+    assert impl_a.prompts == impl_b.prompts
+    assert chk_a.prompts == chk_b.prompts
+    assert out_a.verified is False and out_b.verified is False
+    assert out_a.advised is None and out_b.advised is None
+
+
+def test_advisor_must_be_distinct_from_simplifier(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    simp = ScriptedRunner([AgentResult(ok=True, output="s")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, simplifier=simp, advisor=simp)
+
+
+def test_run_loop_with_advisor(tmp_path):
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([
+            AgentResult(ok=True, output="broken"),
+            AgentResult(ok=True, output="fixed"),
+        ]),
+        make_verifier=lambda: ScriptedRunner([
+            AgentResult(ok=True, output="VERDICT: FAIL"),
+            AgentResult(ok=True, output="VERDICT: PASS"),
+        ]),
+        make_advisor=lambda: ScriptedRunner([AgentResult(ok=True, output="plan")]),
+    )
+    assert len(outcomes) == 2
+    assert all(o.advised and o.verified for o in outcomes)
+    assert all(o.advisor_rounds_used == 1 for o in outcomes)
 
 
 # --------------------------- contradiction flagging --------------------------- #
@@ -523,6 +781,88 @@ def test_regression_test_failure_is_non_fatal(tmp_path):
     assert out.regression_test is None          # failed write → no artifact, no crash
 
 
+# --------------------------- routing (Feature 1: on-by-default) --------------------------- #
+class RecordingRunner(ScriptedRunner):
+    """Like ScriptedRunner, but exposes the model it was constructed with."""
+
+
+def test_run_loop_default_routing_injects_models(tmp_path):
+    from cli.cost import routing_for
+
+    routes = routing_for("loop")
+    seen_models = {}
+
+    def mk_impl():
+        r = RecordingRunner([AgentResult(ok=True, output="i")])
+        r.model = routes.get("implement")
+        seen_models["implement"] = r.model
+        return r
+
+    def mk_chk():
+        r = RecordingRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+        r.model = routes.get("verify")
+        seen_models["verify"] = r.model
+        return r
+
+    def mk_logic():
+        r = RecordingRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+        r.model = routes.get("logic")
+        seen_models["logic"] = r.model
+        return r
+
+    run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=1,
+        make_implementer=mk_impl, make_verifier=mk_chk, make_logic_checker=mk_logic,
+    )
+    assert seen_models["implement"] == "sonnet"
+    assert seen_models["verify"] == "sonnet"
+    assert seen_models["logic"] == "opus"
+
+
+def test_no_route_reproduces_unrouted(tmp_path):
+    # The empty-routes dict a --no-route cmd_loop would build: every role gets
+    # model=None — byte-identical to the pre-Feature-1 unrouted default.
+    routes = {}
+    seen_models = {}
+
+    def mk(role, output):
+        def factory():
+            r = RecordingRunner([AgentResult(ok=True, output=output)])
+            r.model = routes.get(role)
+            seen_models[role] = r.model
+            return r
+        return factory
+
+    run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=1,
+        make_implementer=mk("implement", "i"),
+        make_verifier=mk("verify", "VERDICT: PASS"),
+        make_logic_checker=mk("logic", "VERDICT: PASS"),
+    )
+    assert seen_models["implement"] is None
+    assert seen_models["verify"] is None
+    assert seen_models["logic"] is None
+
+
+# --------------------------- cycle trajectory steps (efficiency report source) --------------------------- #
+def test_record_cycle_steps_emits_one_per_outcome():
+    from cli.loop import CycleOutcome
+
+    outcomes = [
+        CycleOutcome(task_title="a", implemented=True, verified=True),
+        CycleOutcome(task_title="b", implemented=True, verified=False),
+    ]
+    seen = []
+    record_cycle_steps(outcomes, lambda step: seen.append(step))
+    assert seen == [{"role": "cycle", "ok": True}, {"role": "cycle", "ok": False}]
+
+
+def test_record_cycle_steps_empty_outcomes_no_op():
+    seen = []
+    record_cycle_steps([], lambda step: seen.append(step))
+    assert seen == []
+
+
 # --------------------------- team mode (parallel tasks) --------------------------- #
 def test_run_loop_team_runs_all_tasks(tmp_path):
     outcomes = run_loop(
@@ -558,3 +898,191 @@ def test_run_loop_team_plus_tdd(tmp_path):
     )
     assert len(outcomes) == 2
     assert all(o.test_written and o.verified for o in outcomes)
+
+
+# --------------------------- team + real worktree isolation --------------------------- #
+def test_cycle_outcome_merge_conflict_defaults_to_none(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+    assert out.merge_conflict is None
+
+
+def test_run_loop_team_with_worktrees_creates_and_merges_on_pass(tmp_path):
+    _init_git_repo(tmp_path)
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen_cwds = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen_cwds.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified for o in outcomes)
+    assert all(o.merge_conflict is None for o in outcomes)
+    for recorder in seen_cwds:
+        assert recorder.cwds[0] != tmp_path
+        assert ".worktrees" in str(recorder.cwds[0])
+    worktrees_dir = tmp_path / ".worktrees"
+    assert not worktrees_dir.exists() or list(worktrees_dir.iterdir()) == []
+    log = _subprocess.run(
+        ["git", "log", "--oneline"], cwd=str(tmp_path), capture_output=True, text=True
+    ).stdout
+    assert len(log.splitlines()) >= 1
+
+
+def test_run_loop_team_with_worktrees_removes_on_fail(tmp_path):
+    _init_git_repo(tmp_path)
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(not o.verified for o in outcomes)
+    worktrees_dir = tmp_path / ".worktrees"
+    assert not worktrees_dir.exists() or list(worktrees_dir.iterdir()) == []
+
+
+def test_run_loop_team_worktrees_false_reproduces_shared_workspace(tmp_path):
+    """Regression guard: worktrees=False is byte-identical to team mode before
+    this feature existed — every agent gets agent_cwd=None (i.e. `workspace`)."""
+    _init_git_repo(tmp_path)
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        worktrees=False,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    for recorder in seen:
+        assert recorder.cwds == [tmp_path]
+    assert not (tmp_path / ".worktrees").exists()
+
+
+def test_run_loop_team_no_git_repo_falls_back_gracefully(tmp_path):
+    """No .git at all (existing pre-feature tests use plain tmp_path) — must
+    still work exactly as before, agent_cwd=None for every task."""
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified for o in outcomes)
+
+
+def test_run_loop_team_omitted_project_root_never_touches_cwd(tmp_path, monkeypatch):
+    """Regression lock: omitting project_root must NOT fall back to resolving
+    cwd's repo for worktree isolation (unlike the read-only arch-map lookup).
+    This is a real bug that bit sigma's own repo during development — a
+    --team test that omitted project_root silently created/merged/removed
+    real worktrees against whatever cli.paths.project_root() resolved to
+    (the actual sigma checkout, since pytest's cwd is the repo root). Confirm
+    that calling from inside a REAL git repo (monkeypatched cwd) with no
+    project_root passed still takes the safe shared-workspace path."""
+    monkeypatch.chdir(tmp_path)
+    _init_git_repo(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")  # mark as a project root
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        # project_root intentionally OMITTED — this is the exact scenario that
+        # previously created real worktrees against the resolved cwd's repo.
+    )
+    assert len(outcomes) == 2
+    for recorder in seen:
+        assert recorder.cwds == [tmp_path]  # shared workspace, NOT a worktree
+    assert not (tmp_path / ".worktrees").exists()
+
+
+def test_run_loop_team_merge_conflict_is_surfaced(tmp_path):
+    _init_git_repo(tmp_path)
+    impl_outputs = iter(["edit one", "edit two"])
+
+    def mk_impl():
+        class Editor(ScriptedRunner):
+            def run(self, prompt, cwd=None, role="agent"):
+                if role == "implementer" and cwd is not None:
+                    (cwd / "README.md").write_text(next(impl_outputs) + "\n")
+                    _subprocess.run(
+                        ["git", "add", "README.md"], cwd=str(cwd), check=True, capture_output=True
+                    )
+                    _subprocess.run(
+                        ["git", "commit", "-m", "edit"], cwd=str(cwd), check=True, capture_output=True
+                    )
+                return super().run(prompt, cwd=cwd, role=role)
+        return Editor([AgentResult(ok=True, output="i")])
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    conflicts = [o for o in outcomes if o.merge_conflict is not None]
+    assert len(conflicts) == 1
+    assert conflicts[0].merge_conflict.exists()

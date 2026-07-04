@@ -168,6 +168,87 @@ def append_loop_log(workspace: Path, message: str) -> Path:
     return log
 
 
+def record_cycle_steps(outcomes: List["CycleOutcome"], sink) -> None:
+    """Emit one role="cycle" trajectory step per outcome (ok = outcome.verified).
+
+    This is the real, measured pass/fail signal `trajectory.efficiency_report`
+    reads for cycle pass rate — distinct from a subprocess crash (`ok` on an
+    implementer/verifier step means "exited zero", not "verdict passed"). `sink`
+    is the same best-effort callable `AgentRunner` uses; a broken sink degrades
+    silently (observability must never break a run).
+    """
+    for outcome in outcomes:
+        sink({"role": "cycle", "ok": outcome.verified})
+
+
+def _team_worktrees_available(project_root: Path) -> bool:
+    """True if real per-task worktree isolation can be attempted."""
+    from cli.worktree import is_git_repo
+
+    return is_git_repo(project_root)
+
+
+def _run_team_with_worktrees(batch: List[Task], project_root: Path, run_one) -> List["CycleOutcome"]:
+    """Run `batch` concurrently, each task in its own git worktree.
+
+    Creates one worktree per task BEFORE fan-out (sequential, so worktree
+    creation itself never races). Agent execution is the only concurrent
+    phase — each task's implementer/verifier work happens inside its own
+    worktree directory, genuinely independent. Merging and removing worktrees
+    happens AFTER fan-out, sequentially, in batch order: `git merge`/`git
+    worktree remove` mutate shared repo state (HEAD, the index, refs) in
+    `project_root` itself, so running them concurrently across threads would
+    race on that shared state regardless of each task's own worktree being
+    isolated. PASS → merge (conflict surfaced via `outcome.merge_conflict`,
+    worktree left on disk; clean merge → worktree removed). FAIL → worktree
+    removed directly. A task whose worktree fails to CREATE falls back to
+    `agent_cwd=None` for that one task only (best-effort — one bad worktree
+    never blocks the rest of the batch).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cli.worktree import create_worktree, current_branch, merge_worktree, remove_worktree
+
+    base_branch = current_branch(project_root) or "main"
+    plans = [plan_cycle(task) for task in batch]
+    created: Dict[str, Path] = {}
+    for plan in plans:
+        result = create_worktree(project_root, plan.worktree_name, base_branch)
+        if result.ok:
+            created[plan.worktree_name] = result.path
+
+    # Concurrent phase: only the agent work (each task's own isolated worktree).
+    def run_with_isolation(task: Task) -> "CycleOutcome":
+        plan = plan_cycle(task)
+        return run_one(task, agent_cwd=created.get(plan.worktree_name))
+
+    with ThreadPoolExecutor(max_workers=len(batch) or 1) as pool:
+        outcomes = list(pool.map(run_with_isolation, batch))
+
+    # Sequential phase: merge/remove touch shared repo state in project_root,
+    # so they run one at a time, in batch order, after every agent has finished.
+    for task, outcome in zip(batch, outcomes):
+        plan = plan_cycle(task)
+        agent_cwd = created.get(plan.worktree_name)
+        if agent_cwd is None:
+            continue
+        if outcome.verified:
+            merge = merge_worktree(project_root, plan.worktree_name, base_branch)
+            if merge.ok:
+                remove_worktree(project_root, plan.worktree_name)
+            elif merge.conflict:
+                outcome.merge_conflict = agent_cwd
+                # left on disk for manual resolution — never removed on conflict
+            else:
+                # a non-conflict merge failure (e.g. git error) — remove rather
+                # than leak a worktree for a problem a human can't resolve by
+                # inspecting it; the ratchet/verified outcome already stands.
+                remove_worktree(project_root, plan.worktree_name, force=True)
+        else:
+            remove_worktree(project_root, plan.worktree_name, force=True)
+    return outcomes
+
+
 # --------------------------------------------------------------------------- #
 # Cycle execution (maker → checker → ratchet)
 # --------------------------------------------------------------------------- #
@@ -249,6 +330,28 @@ SIMPLIFY_PROMPT = (
     "Output the refined code (or 'NO CHANGES NEEDED' if already clean)."
 )
 
+# Escalation axis: on a verify/logic FAIL (not every turn — see the "verifier-critic
+# + uncertainty escalation" pattern, distinct from per-turn self-reflection), a
+# DISTINCT, stronger-tier advisor reviews the failure and drafts a correction plan.
+# The implementer retries with that plan prefixed; the cycle re-verifies. Bounded by
+# advisor_rounds with a no-progress stop. Mirrors _run_simplify's distinctness law
+# but on the opposite branch — this axis fires on FAIL, simplify fires on PASS.
+ADVISOR_PROMPT = (
+    "You are the ADVISOR — a distinct agent from the implementer, checker, logic "
+    "evaluator, test writer, and simplifier. The implementation of this task FAILED "
+    "verification. Do NOT rewrite the code yourself. Review the implementation and "
+    "the checker's failure reason, then produce a concrete, minimal CORRECTION PLAN "
+    "the implementer can follow to fix the root cause.\n"
+    "Domain: {domain}\nTask: {title}\n"
+    "Implementation output:\n{impl}\n\nChecker's failure reason: {reason}\n\n"
+    "Output the correction plan as numbered steps, and one line naming the root cause."
+)
+ADVISOR_RETRY_PREFIX = (
+    "A prior attempt FAILED verification. An advisor reviewed it and produced this "
+    "correction plan — follow it to fix the root cause without regressing what "
+    "already worked:\n{plan}\n\n"
+)
+
 
 @dataclass
 class CycleOutcome:
@@ -259,6 +362,9 @@ class CycleOutcome:
     test_written: Optional[bool] = None  # set only in TDD mode
     regression_test: Optional[Path] = None  # TDD: test pinning a verify-fail bug
     simplified: Optional[bool] = None  # set only in --simplify mode: did cleanup stick?
+    advised: Optional[bool] = None  # set only in --advisor mode: did escalation rescue the cycle?
+    advisor_rounds_used: Optional[int] = None  # set only in --advisor mode
+    merge_conflict: Optional[Path] = None  # --team + worktrees: set when a PASSing cycle's merge conflicts
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
@@ -271,6 +377,150 @@ def _verdict_pass(verify_output: str) -> bool:
         if line.startswith("VERDICT:"):
             return "PASS" in line
     return False
+
+
+def _run_verify(
+    plan: CyclePlan,
+    workspace: Path,
+    verifier: AgentRunner,
+    logic_checker: Optional[AgentRunner],
+    recall: str,
+    cwd: Optional[Path] = None,
+) -> tuple:
+    """Run the verify (+ optional logic) axis once. Returns (passed, logic_ok, reason, detail).
+
+    `logic_ok` is None when no logic_checker was given (mirrors `CycleOutcome.logic_ok`'s
+    default). `reason`/`detail` are only meaningful when `passed` is False: `reason` is
+    the short, stable message used for ratchet/log text (unchanged across identical
+    failure *kinds*, e.g. "verifier returned VERDICT: FAIL"); `detail` is the raw
+    checker/logic output text, used by the advisor's no-progress check so two FAILs of
+    the same kind but with genuinely different content aren't mistaken for no-progress.
+    `cwd` is where the verifier/logic subprocess runs; `None` falls back to `workspace`
+    (byte-identical to before this param existed). Writes the same verify/logic
+    artifacts execute_cycle always wrote — callers may invoke this more than once
+    (advisor retries), each call overwriting the prior attempt's artifacts, so only the
+    LAST attempt's verify output persists on disk (the outcome/ratchet bookkeeping
+    still reflects every round via the caller).
+    """
+    cwd = cwd if cwd is not None else workspace
+    title = plan.task.title
+    domain = plan.implementer_domain
+    chk = verifier.run(
+        _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
+        cwd=cwd,
+        role="verifier",
+    )
+    write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
+    quality_passed = chk.ok and _verdict_pass(chk.output)
+
+    logic_ok: Optional[bool] = None
+    logic_passed = True
+    logic_output = ""
+    if logic_checker is not None:
+        logic = logic_checker.run(
+            LOGIC_PROMPT.format(domain=domain, title=title), cwd=cwd, role="logic"
+        )
+        write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
+        logic_passed = logic.ok and _verdict_pass(logic.output)
+        logic_ok = logic_passed
+        logic_output = logic.output
+
+    passed = quality_passed and logic_passed
+    if passed:
+        return True, logic_ok, "", ""
+    if not quality_passed:
+        reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
+    else:
+        reason = "logic evaluator returned VERDICT: FAIL"
+    detail = f"{chk.output}\n{logic_output}".strip()
+    return False, logic_ok, reason, detail
+
+
+def _run_advisor_escalation(
+    plan: CyclePlan,
+    workspace: Path,
+    implementer: AgentRunner,
+    verifier: AgentRunner,
+    logic_checker: Optional[AgentRunner],
+    advisor: AgentRunner,
+    advisor_rounds: int,
+    reason: str,
+    detail: str,
+    recall: str,
+    impl_output: str,
+    outcome: CycleOutcome,
+    cwd: Optional[Path] = None,
+) -> tuple:
+    """Escalate a verify/logic FAIL to a distinct advisor before ratcheting.
+
+    Bounded by `advisor_rounds`: each round, the advisor drafts a correction plan
+    from the current failure reason, the implementer retries with that plan
+    prefixed, and the cycle re-verifies. Stops early (no-progress) when a round's
+    raw checker/logic output (`detail`) is identical to the previous round's — the
+    advisor isn't helping (comparing `reason`, the short stable label, would false-
+    trigger on any two FAILs of the same kind even with genuinely different
+    content). On rescue, returns (True, ""). On exhaustion, REVERTS the workspace's
+    impl/verify artifacts to the pre-escalation implementation (the last retry's
+    edits may be worse than the original failing code — there is no guarantee an
+    unfinished correction is an improvement) and returns (False, <last reason>).
+    An advisor crash stops escalation immediately (best-effort, never fatal).
+    `cwd` is where the advisor/implementer subprocesses run; `None` falls back to
+    `workspace` (byte-identical to before this param existed).
+    """
+    cwd = cwd if cwd is not None else workspace
+    title = plan.task.title
+    domain = plan.implementer_domain
+    original_impl_output = impl_output
+    rounds_used = 0
+
+    for round_i in range(1, advisor_rounds + 1):
+        rounds_used = round_i
+        plan_result = advisor.run(
+            ADVISOR_PROMPT.format(domain=domain, title=title, impl=impl_output, reason=reason),
+            cwd=cwd,
+            role="advisor",
+        )
+        if not plan_result.ok:
+            outcome.notes.append(f"advisor skipped: {plan_result.error}")
+            break
+        write_artifact(
+            workspace / "advisor" / f"{plan.worktree_name}.round{round_i}.md", plan_result.output
+        )
+
+        retry_prompt = ADVISOR_RETRY_PREFIX.format(plan=plan_result.output) + IMPLEMENT_PROMPT.format(
+            domain=domain, title=title
+        )
+        impl = implementer.run(_with_recall(retry_prompt, recall), cwd=cwd, role="implementer")
+        if not impl.ok:
+            outcome.notes.append(f"advisor retry implement failed: {impl.error}")
+            break
+        impl_output = impl.output
+        write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl_output)
+
+        passed, logic_ok, new_reason, new_detail = _run_verify(
+            plan, workspace, verifier, logic_checker, recall, cwd=cwd
+        )
+        if logic_ok is not None:
+            outcome.logic_ok = logic_ok
+        if passed:
+            outcome.advised = True
+            outcome.advisor_rounds_used = rounds_used
+            append_loop_log(workspace, f"{title}: advisor rescued cycle (round {round_i})")
+            return True, ""
+        if new_detail == detail:
+            outcome.notes.append(f"advisor no-progress stop (round {round_i})")
+            append_loop_log(workspace, f"{title}: advisor no-progress stop (round {round_i})")
+            reason = new_reason
+            break
+        reason, detail = new_reason, new_detail
+
+    outcome.advised = False
+    outcome.advisor_rounds_used = rounds_used
+    # Exhausted (or crashed/aborted): revert to the pre-escalation implementation so
+    # a failed correction attempt never leaves the workspace worse than it started.
+    write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", original_impl_output)
+    append_loop_log(workspace, f"{title}: advisor exhausted ({rounds_used} round(s)) — reverted")
+    return False, reason
 
 
 def _with_recall(prompt: str, recall: str) -> str:
@@ -294,6 +544,9 @@ def execute_cycle(
     recall: str = "",
     test_writer: Optional[AgentRunner] = None,
     simplifier: Optional[AgentRunner] = None,
+    advisor: Optional[AgentRunner] = None,
+    advisor_rounds: int = 1,
+    agent_cwd: Optional[Path] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -309,6 +562,18 @@ def execute_cycle(
     test BEFORE the implementer runs; the implementer's prompt is then prefixed
     with that test and told to make it pass without weakening it (one agent codes,
     another tests). The test writer must be distinct from all other agents.
+
+    When `advisor` is provided, a verify/logic FAIL escalates to a distinct advisor
+    (see `_run_advisor_escalation`) before falling through to the ratchet path.
+    `advisor` is None by default, so the escalation branch never runs unless the
+    caller opts in — the rest of the function is byte-identical to before this axis
+    existed.
+
+    `agent_cwd`, when set, is where the implementer/verifier/logic/test-writer/
+    simplifier/advisor subprocesses actually run (`cwd=` on every `.run()` call).
+    `workspace` always stays where artifacts/logs/ratchets are written — the two
+    are the same value (today's behavior) unless a caller splits them. `None`
+    (every caller before --team) falls back to `workspace` — byte-identical.
 
     `recall` is an optional past-lessons block (from cli.skills_recall) prepended
     to the implement + verify prompts so the maker avoids prior mistakes and the
@@ -336,7 +601,18 @@ def execute_cycle(
         raise ValueError(
             "simplifier must be distinct from maker, checker, logic, and test agents"
         )
+    if advisor is not None and (
+        advisor is implementer
+        or advisor is verifier
+        or advisor is logic_checker
+        or advisor is test_writer
+        or advisor is simplifier
+    ):
+        raise ValueError(
+            "advisor must be distinct from maker, checker, logic, test, and simplifier agents"
+        )
 
+    cwd = agent_cwd if agent_cwd is not None else workspace
     title = plan.task.title
     domain = plan.implementer_domain
     outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
@@ -347,7 +623,7 @@ def execute_cycle(
     implement_prompt = IMPLEMENT_PROMPT.format(domain=domain, title=title)
     if test_writer is not None:
         test = test_writer.run(
-            TEST_PROMPT.format(domain=domain, title=title), cwd=workspace, role="test-writer"
+            TEST_PROMPT.format(domain=domain, title=title), cwd=cwd, role="test-writer"
         )
         outcome.test_written = test.ok
         if not test.ok:
@@ -363,7 +639,7 @@ def execute_cycle(
 
     impl = implementer.run(
         _with_recall(implement_prompt, recall),
-        cwd=workspace,
+        cwd=cwd,
         role="implementer",
     )
     outcome.implemented = impl.ok
@@ -378,26 +654,23 @@ def execute_cycle(
 
     write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl.output)
 
-    chk = verifier.run(
-        _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
-        cwd=workspace,
-        role="verifier",
+    passed, logic_ok, reason, detail = _run_verify(
+        plan, workspace, verifier, logic_checker, recall, cwd=cwd
     )
-    write_artifact(workspace / "verify" / f"{plan.worktree_name}.md", chk.output)
-    quality_passed = chk.ok and _verdict_pass(chk.output)
-
-    # Second axis: logic evaluator (optional, independent agent).
-    logic_passed = True
-    if logic_checker is not None:
-        logic = logic_checker.run(
-            LOGIC_PROMPT.format(domain=domain, title=title), cwd=workspace, role="logic"
-        )
-        write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
-        logic_passed = logic.ok and _verdict_pass(logic.output)
-        outcome.logic_ok = logic_passed
-
-    passed = quality_passed and logic_passed
+    if logic_ok is not None:
+        outcome.logic_ok = logic_ok
     outcome.verified = passed
+
+    # Escalation: on a FAIL, a distinct advisor may rescue the cycle before it
+    # falls through to the ratchet path. Runs BEFORE the pass/fail branch below so
+    # a rescue is indistinguishable, downstream, from a first-try pass.
+    if not passed and advisor is not None:
+        passed, reason = _run_advisor_escalation(
+            plan, workspace, implementer, verifier, logic_checker,
+            advisor, advisor_rounds, reason, detail, recall, impl.output, outcome,
+            cwd=cwd,
+        )
+        outcome.verified = passed
 
     if passed:
         append_loop_log(workspace, f"{title}: PASS")
@@ -409,10 +682,6 @@ def execute_cycle(
         if simplifier is not None:
             _run_simplify(plan, workspace, simplifier, verifier, outcome)
     else:
-        if not quality_passed:
-            reason = chk.error if not chk.ok else "verifier returned VERDICT: FAIL"
-        else:
-            reason = "logic evaluator returned VERDICT: FAIL"
         outcome.notes.append(f"verify failed: {reason}")
         outcome.ratcheted_skill = ratchet_to_skills(
             skills_dir, f"verify failed: {title}", reason, domain
@@ -501,8 +770,12 @@ def run_loop(
     gate: Optional[str] = None,
     make_test_writer=None,
     make_simplifier=None,
+    make_advisor=None,
+    advisor_rounds: int = 1,
     team: bool = False,
     max_workers: int = 3,
+    worktrees: bool = True,
+    project_root: Optional[Path] = None,
 ) -> List[CycleOutcome]:
     """Drive cycles until tasks are exhausted or the budget cap is hit.
 
@@ -514,11 +787,34 @@ def run_loop(
     `make_test_writer`, when provided (TDD mode), adds a distinct test-writer agent
     that pens a failing test before each implementer runs.
 
+    `make_advisor`, when provided, adds a distinct advisor agent that escalates a
+    verify/logic FAIL into a bounded correction-retry loop (see `execute_cycle`).
+
     `team`, when True, runs the (capped) batch of tasks CONCURRENTLY — independent
     tasks proceed in parallel, each its own full cycle. The recall snapshot is
     pre-built for every needed domain BEFORE fan-out, so the parallel phase only
     reads it (no races, deterministic). Sequential (default) preserves the original
     one-task-at-a-time behavior.
+
+    `worktrees`, when True (the default) AND `team` is True AND `project_root`
+    is EXPLICITLY PASSED (not the arch-map's cwd-resolved fallback below) AND
+    is a real git repository, gives each concurrent task its OWN git worktree
+    + branch (see cli/worktree.py) instead of a shared working tree — real
+    per-task isolation. Falls back to the pre-existing shared-workspace
+    behavior (agent_cwd=None for every task) when: `team` is False (sequential
+    mode never needs isolation), `worktrees=False` (explicit opt-out, e.g.
+    `sigma.config.yml`'s `loop.worktrees: false`), `project_root` is `None`
+    (isolation never activates against an implicitly-resolved cwd — creating/
+    merging/removing real worktrees is a mutation, unlike the read-only
+    arch-map lookup, so it requires an explicit opt-in from the caller), or
+    `project_root` has no `.git` (fail-safe — isolation requires a real repo
+    to branch from). `cmd_loop` passes `project_root=cli.paths.project_root()`
+    explicitly; a test/caller that omits it gets the safe shared-workspace path.
+    A PASSing cycle's worktree is merged back onto the branch `--team` started
+    from; a merge conflict is surfaced via `CycleOutcome.merge_conflict` and
+    the worktree/branch is LEFT ON DISK for manual resolution — never
+    auto-resolved. A FAILing (or advisor-exhausted) cycle's worktree is
+    removed directly.
 
     `gate`, when set, is a wakeAgent script run once before the batch; if it
     reports nothing to do, the whole run is skipped (zero tokens).
@@ -543,9 +839,10 @@ def run_loop(
     # in-session plugin path gets it via the SessionStart hook; the CLI path does
     # not). Read ONCE from the project root and prepended to every domain's recall
     # block below. Empty when ARCHITECTURE.md is absent → no change (fail-safe).
-    from cli.paths import project_root
+    from cli.paths import project_root as _resolve_project_root
 
-    arch_block = arch_context(project_root())
+    root = project_root if project_root is not None else _resolve_project_root()
+    arch_block = arch_context(root)
     if arch_block:
         append_loop_log(workspace, "injected repo architecture map into agent prompts")
 
@@ -562,7 +859,7 @@ def run_loop(
             if lessons:
                 append_loop_log(workspace, f"recalled past lessons for domain '{domain}'")
 
-    def run_one(task: Task) -> CycleOutcome:
+    def run_one(task: Task, agent_cwd: Optional[Path] = None) -> CycleOutcome:
         plan = plan_cycle(task)
         return execute_cycle(
             plan, workspace, skills_dir,
@@ -571,10 +868,27 @@ def run_loop(
             recall=recall_cache.get(plan.implementer_domain, ""),
             test_writer=make_test_writer() if make_test_writer else None,
             simplifier=make_simplifier() if make_simplifier else None,
+            advisor=make_advisor() if make_advisor else None,
+            advisor_rounds=advisor_rounds,
+            agent_cwd=agent_cwd,
         )
 
     if team:
-        # Independent tasks run concurrently; preserve batch order in results.
+        # Worktree isolation is gated on an EXPLICITLY passed project_root, not
+        # the arch-map's cwd-fallback `root` above — creating/merging/removing
+        # real git worktrees against whatever `cli.paths.project_root()`
+        # resolves to (which walks up from cwd) would mutate a real, unrelated
+        # repo if a caller simply forgot to pass project_root (this bit sigma's
+        # own repo during test development: a --team test omitted project_root
+        # and isolation silently activated against the real sigma checkout).
+        # Reading the arch map from a resolved cwd is harmless (read-only);
+        # creating/removing worktrees is not — so it requires an explicit opt-in.
+        use_worktrees = worktrees and project_root is not None and _team_worktrees_available(project_root)
+        if use_worktrees:
+            return _run_team_with_worktrees(batch, project_root, run_one)
+        # Independent tasks run concurrently in the SHARED workspace (no real
+        # isolation) — either worktrees were disabled/unavailable, or root has
+        # no .git. Preserves the exact pre-feature behavior.
         from concurrent.futures import ThreadPoolExecutor
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

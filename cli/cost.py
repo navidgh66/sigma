@@ -92,7 +92,12 @@ def routing_for(op: str) -> Dict[str, str]:
     if op == "profile":
         return {"walk": TIER_MID}
     if op == "loop":
-        return {"implement": TIER_MID, "verify": TIER_MID, "logic": TIER_STRONG}
+        return {
+            "implement": TIER_MID,
+            "verify": TIER_MID,
+            "logic": TIER_STRONG,
+            "advisor": TIER_STRONG,
+        }
     if op == "research":
         return {"fan-out": TIER_MID}
     if op == "eval":

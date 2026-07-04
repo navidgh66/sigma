@@ -45,7 +45,33 @@ timestamp (deterministic projection — never generated in pure code).
 (which shrinks as calibration kicks in). Use it to decide where routing or RTK pays
 off most.
 
+## Efficiency (in-session, no CLI needed)
+`sigma trajectory --efficiency` (or read `trajectory.jsonl` directly in-session,
+the same way this skill already reads `sigma/costs.jsonl` without shelling out)
+answers a DIFFERENT question than the cost ledger: not "how many tokens did this
+burn" but "is the loop actually working, and is escalation earning its keep."
+
+Read the current spec workspace's `trajectory.jsonl` and report:
+- **Cycle pass rate** — the fraction of `role: "cycle"` steps with `ok: true` (one
+  such step is appended per completed `execute_cycle`, real verified/not-verified
+  data, not a token guess).
+- **Escalation rate** — `(logic + advisor + test-writer + simplifier steps) /
+  implementer steps`. High and climbing → the expensive axes are firing often;
+  worth checking whether `--advisor-rounds` or `--logic` are pulling their weight.
+- **Crash rate** — subprocess exit failures across all roles. **Not the same as a
+  verify-fail**: a verifier returning `VERDICT: FAIL` still exits 0, so this
+  measures agent-CLI crashes, not verification quality.
+
+**Do NOT report a token-per-cycle number here.** `claude -p` never surfaces real
+token usage, so any per-cycle token figure would be `units × static_factor`
+wearing a measured metric's clothes — it never calibrates (see `calibrate()`
+above) and collapses to a restatement of the pass rate. If asked "how many tokens
+per successful cycle," say plainly that sigma has no real per-run token signal
+today and point to the pass-rate/escalation-rate numbers instead, or to `sigma
+cost`'s explicitly-labeled *estimate* if a rough order-of-magnitude is wanted.
+
 ## Fail-safe
 A missing or corrupt ledger falls back to static estimates and **never blocks** the
 op (the inverse of a hard gate). Estimates are advisory — the operator keeps the
-wheel (loop-engineering principle).
+wheel (loop-engineering principle). Empty/missing `trajectory.jsonl` → "no data
+yet", never a crash — same discipline.
