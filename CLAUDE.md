@@ -21,7 +21,7 @@ eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
 actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
 session-context` + a SessionStart hook feed `learn` artifacts back into every new
 session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
-cleanup pass after each verified cycle. 613 pytest tests, ruff clean.
+cleanup pass after each verified cycle. 663 pytest tests, ruff clean.
 
 ## Commands
 
