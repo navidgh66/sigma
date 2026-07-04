@@ -181,6 +181,74 @@ def record_cycle_steps(outcomes: List["CycleOutcome"], sink) -> None:
         sink({"role": "cycle", "ok": outcome.verified})
 
 
+def _team_worktrees_available(project_root: Path) -> bool:
+    """True if real per-task worktree isolation can be attempted."""
+    from cli.worktree import is_git_repo
+
+    return is_git_repo(project_root)
+
+
+def _run_team_with_worktrees(batch: List[Task], project_root: Path, run_one) -> List["CycleOutcome"]:
+    """Run `batch` concurrently, each task in its own git worktree.
+
+    Creates one worktree per task BEFORE fan-out (sequential, so worktree
+    creation itself never races). Agent execution is the only concurrent
+    phase — each task's implementer/verifier work happens inside its own
+    worktree directory, genuinely independent. Merging and removing worktrees
+    happens AFTER fan-out, sequentially, in batch order: `git merge`/`git
+    worktree remove` mutate shared repo state (HEAD, the index, refs) in
+    `project_root` itself, so running them concurrently across threads would
+    race on that shared state regardless of each task's own worktree being
+    isolated. PASS → merge (conflict surfaced via `outcome.merge_conflict`,
+    worktree left on disk; clean merge → worktree removed). FAIL → worktree
+    removed directly. A task whose worktree fails to CREATE falls back to
+    `agent_cwd=None` for that one task only (best-effort — one bad worktree
+    never blocks the rest of the batch).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from cli.worktree import create_worktree, current_branch, merge_worktree, remove_worktree
+
+    base_branch = current_branch(project_root) or "main"
+    plans = [plan_cycle(task) for task in batch]
+    created: Dict[str, Path] = {}
+    for plan in plans:
+        result = create_worktree(project_root, plan.worktree_name, base_branch)
+        if result.ok:
+            created[plan.worktree_name] = result.path
+
+    # Concurrent phase: only the agent work (each task's own isolated worktree).
+    def run_with_isolation(task: Task) -> "CycleOutcome":
+        plan = plan_cycle(task)
+        return run_one(task, agent_cwd=created.get(plan.worktree_name))
+
+    with ThreadPoolExecutor(max_workers=len(batch) or 1) as pool:
+        outcomes = list(pool.map(run_with_isolation, batch))
+
+    # Sequential phase: merge/remove touch shared repo state in project_root,
+    # so they run one at a time, in batch order, after every agent has finished.
+    for task, outcome in zip(batch, outcomes):
+        plan = plan_cycle(task)
+        agent_cwd = created.get(plan.worktree_name)
+        if agent_cwd is None:
+            continue
+        if outcome.verified:
+            merge = merge_worktree(project_root, plan.worktree_name, base_branch)
+            if merge.ok:
+                remove_worktree(project_root, plan.worktree_name)
+            elif merge.conflict:
+                outcome.merge_conflict = agent_cwd
+                # left on disk for manual resolution — never removed on conflict
+            else:
+                # a non-conflict merge failure (e.g. git error) — remove rather
+                # than leak a worktree for a problem a human can't resolve by
+                # inspecting it; the ratchet/verified outcome already stands.
+                remove_worktree(project_root, plan.worktree_name, force=True)
+        else:
+            remove_worktree(project_root, plan.worktree_name, force=True)
+    return outcomes
+
+
 # --------------------------------------------------------------------------- #
 # Cycle execution (maker → checker → ratchet)
 # --------------------------------------------------------------------------- #
@@ -296,6 +364,7 @@ class CycleOutcome:
     simplified: Optional[bool] = None  # set only in --simplify mode: did cleanup stick?
     advised: Optional[bool] = None  # set only in --advisor mode: did escalation rescue the cycle?
     advisor_rounds_used: Optional[int] = None  # set only in --advisor mode
+    merge_conflict: Optional[Path] = None  # --team + worktrees: set when a PASSing cycle's merge conflicts
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
@@ -705,6 +774,8 @@ def run_loop(
     advisor_rounds: int = 1,
     team: bool = False,
     max_workers: int = 3,
+    worktrees: bool = True,
+    project_root: Optional[Path] = None,
 ) -> List[CycleOutcome]:
     """Drive cycles until tasks are exhausted or the budget cap is hit.
 
@@ -724,6 +795,22 @@ def run_loop(
     pre-built for every needed domain BEFORE fan-out, so the parallel phase only
     reads it (no races, deterministic). Sequential (default) preserves the original
     one-task-at-a-time behavior.
+
+    `worktrees`, when True (the default) AND `team` is True AND `project_root`
+    is a real git repository, gives each concurrent task its OWN git worktree
+    + branch (see cli/worktree.py) instead of a shared working tree — real
+    per-task isolation. Falls back to the pre-existing shared-workspace
+    behavior (agent_cwd=None for every task) when: `team` is False (sequential
+    mode never needs isolation), `worktrees=False` (explicit opt-out, e.g.
+    `sigma.config.yml`'s `loop.worktrees: false`), or `project_root` has no
+    `.git` (fail-safe — isolation requires a real repo to branch from).
+    `project_root` defaults to `cli.paths.project_root()` when not passed
+    (mirrors how the architecture-map injection below already resolves it).
+    A PASSing cycle's worktree is merged back onto the branch `--team` started
+    from; a merge conflict is surfaced via `CycleOutcome.merge_conflict` and
+    the worktree/branch is LEFT ON DISK for manual resolution — never
+    auto-resolved. A FAILing (or advisor-exhausted) cycle's worktree is
+    removed directly.
 
     `gate`, when set, is a wakeAgent script run once before the batch; if it
     reports nothing to do, the whole run is skipped (zero tokens).
@@ -748,9 +835,10 @@ def run_loop(
     # in-session plugin path gets it via the SessionStart hook; the CLI path does
     # not). Read ONCE from the project root and prepended to every domain's recall
     # block below. Empty when ARCHITECTURE.md is absent → no change (fail-safe).
-    from cli.paths import project_root
+    from cli.paths import project_root as _resolve_project_root
 
-    arch_block = arch_context(project_root())
+    root = project_root if project_root is not None else _resolve_project_root()
+    arch_block = arch_context(root)
     if arch_block:
         append_loop_log(workspace, "injected repo architecture map into agent prompts")
 
@@ -767,7 +855,7 @@ def run_loop(
             if lessons:
                 append_loop_log(workspace, f"recalled past lessons for domain '{domain}'")
 
-    def run_one(task: Task) -> CycleOutcome:
+    def run_one(task: Task, agent_cwd: Optional[Path] = None) -> CycleOutcome:
         plan = plan_cycle(task)
         return execute_cycle(
             plan, workspace, skills_dir,
@@ -778,10 +866,16 @@ def run_loop(
             simplifier=make_simplifier() if make_simplifier else None,
             advisor=make_advisor() if make_advisor else None,
             advisor_rounds=advisor_rounds,
+            agent_cwd=agent_cwd,
         )
 
     if team:
-        # Independent tasks run concurrently; preserve batch order in results.
+        use_worktrees = worktrees and _team_worktrees_available(root)
+        if use_worktrees:
+            return _run_team_with_worktrees(batch, root, run_one)
+        # Independent tasks run concurrently in the SHARED workspace (no real
+        # isolation) — either worktrees were disabled/unavailable, or root has
+        # no .git. Preserves the exact pre-feature behavior.
         from concurrent.futures import ThreadPoolExecutor
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:

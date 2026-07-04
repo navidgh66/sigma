@@ -1,3 +1,5 @@
+import subprocess as _subprocess
+
 import pytest
 
 from cli.loop import (
@@ -9,6 +11,18 @@ from cli.loop import (
     run_loop,
 )
 from cli.runner import AgentResult, AgentRunner
+
+
+def _init_git_repo(root):
+    """Real minimal git repo with one commit on `main`, for team+worktree tests."""
+    _subprocess.run(["git", "init", "-b", "main"], cwd=str(root), check=True, capture_output=True)
+    _subprocess.run(
+        ["git", "config", "user.email", "t@example.com"], cwd=str(root), check=True, capture_output=True
+    )
+    _subprocess.run(["git", "config", "user.name", "T"], cwd=str(root), check=True, capture_output=True)
+    (root / "README.md").write_text("x\n")
+    _subprocess.run(["git", "add", "README.md"], cwd=str(root), check=True, capture_output=True)
+    _subprocess.run(["git", "commit", "-m", "init"], cwd=str(root), check=True, capture_output=True)
 
 TASKS = """
 - [ ] T1 (nlp): tokenize corpus
@@ -884,3 +898,148 @@ def test_run_loop_team_plus_tdd(tmp_path):
     )
     assert len(outcomes) == 2
     assert all(o.test_written and o.verified for o in outcomes)
+
+
+# --------------------------- team + real worktree isolation --------------------------- #
+def test_cycle_outcome_merge_conflict_defaults_to_none(tmp_path):
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    out = execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+    assert out.merge_conflict is None
+
+
+def test_run_loop_team_with_worktrees_creates_and_merges_on_pass(tmp_path):
+    _init_git_repo(tmp_path)
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen_cwds = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen_cwds.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified for o in outcomes)
+    assert all(o.merge_conflict is None for o in outcomes)
+    for recorder in seen_cwds:
+        assert recorder.cwds[0] != tmp_path
+        assert ".worktrees" in str(recorder.cwds[0])
+    worktrees_dir = tmp_path / ".worktrees"
+    assert not worktrees_dir.exists() or list(worktrees_dir.iterdir()) == []
+    log = _subprocess.run(
+        ["git", "log", "--oneline"], cwd=str(tmp_path), capture_output=True, text=True
+    ).stdout
+    assert len(log.splitlines()) >= 1
+
+
+def test_run_loop_team_with_worktrees_removes_on_fail(tmp_path):
+    _init_git_repo(tmp_path)
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(not o.verified for o in outcomes)
+    worktrees_dir = tmp_path / ".worktrees"
+    assert not worktrees_dir.exists() or list(worktrees_dir.iterdir()) == []
+
+
+def test_run_loop_team_worktrees_false_reproduces_shared_workspace(tmp_path):
+    """Regression guard: worktrees=False is byte-identical to team mode before
+    this feature existed — every agent gets agent_cwd=None (i.e. `workspace`)."""
+    _init_git_repo(tmp_path)
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        worktrees=False,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    for recorder in seen:
+        assert recorder.cwds == [tmp_path]
+    assert not (tmp_path / ".worktrees").exists()
+
+
+def test_run_loop_team_no_git_repo_falls_back_gracefully(tmp_path):
+    """No .git at all (existing pre-feature tests use plain tmp_path) — must
+    still work exactly as before, agent_cwd=None for every task."""
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    assert all(o.verified for o in outcomes)
+
+
+def test_run_loop_team_merge_conflict_is_surfaced(tmp_path):
+    _init_git_repo(tmp_path)
+    impl_outputs = iter(["edit one", "edit two"])
+
+    def mk_impl():
+        class Editor(ScriptedRunner):
+            def run(self, prompt, cwd=None, role="agent"):
+                if role == "implementer" and cwd is not None:
+                    (cwd / "README.md").write_text(next(impl_outputs) + "\n")
+                    _subprocess.run(
+                        ["git", "add", "README.md"], cwd=str(cwd), check=True, capture_output=True
+                    )
+                    _subprocess.run(
+                        ["git", "commit", "-m", "edit"], cwd=str(cwd), check=True, capture_output=True
+                    )
+                return super().run(prompt, cwd=cwd, role=role)
+        return Editor([AgentResult(ok=True, output="i")])
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        project_root=tmp_path,
+    )
+    assert len(outcomes) == 2
+    conflicts = [o for o in outcomes if o.merge_conflict is not None]
+    assert len(conflicts) == 1
+    assert conflicts[0].merge_conflict.exists()
