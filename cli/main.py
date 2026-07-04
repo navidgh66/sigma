@@ -140,6 +140,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
     # Execute: real maker→checker cycles with distinct agents.
     from cli.cost import routing_for
     from cli.keepawake import keep_awake
+    from cli.paths import project_root
     from cli.runner import AgentRunner
     from cli.trajectory import make_sink
 
@@ -150,6 +151,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print("  🧪 TDD mode: a distinct agent writes a failing test before each implementer")
     if args.team:
         _print("  👥 team mode: independent tasks run in parallel")
+        _print(f"  🌳 worktree isolation: {'on' if cfg.loop.worktrees else 'off (sigma.config.yml)'}")
     if args.simplify:
         _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified)")
     if args.advisor:
@@ -201,6 +203,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
             make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
             advisor_rounds=args.advisor_rounds,
             team=args.team,
+            worktrees=cfg.loop.worktrees,
+            project_root=project_root(),
             gate=args.gate,
         )
     if not outcomes and args.gate:
@@ -223,6 +227,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
         if o.advised is not None:
             rounds = o.advisor_rounds_used or 0
             _print(f"    advisor: {'✓ rescued in ' + str(rounds) + ' round(s)' if o.advised else '✗ exhausted (' + str(rounds) + ' round(s)) — reverted'}")
+        if o.merge_conflict:
+            _print(f"    ⚠ merge conflict — branch left at {o.merge_conflict} for manual resolution")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
         if o.contradiction:

@@ -24,6 +24,21 @@ def test_empty_domains_invalid():
     assert any("at least one domain" in e for e in cfg.validate())
 
 
+def test_loop_worktrees_round_trips_false(tmp_path):
+    cfg = SigmaConfig()
+    cfg.loop.worktrees = False
+    write_config(cfg, root=tmp_path)
+    loaded = load_config(root=tmp_path)
+    assert loaded.loop.worktrees is False
+
+
+def test_loop_worktrees_defaults_true(tmp_path):
+    cfg = SigmaConfig()
+    write_config(cfg, root=tmp_path)
+    loaded = load_config(root=tmp_path)
+    assert loaded.loop.worktrees is True
+
+
 def test_bad_max_cycles_invalid():
     cfg = SigmaConfig()
     cfg.loop.max_cycles = 0
