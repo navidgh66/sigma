@@ -115,12 +115,39 @@ def test_parser_board_watch_flag():
     assert args.watch is True
 
 
-def test_parser_loop_route_flag():
+def test_parser_loop_routing_defaults():
+    # --route is a deprecated no-op (kept for backward compat); routing is on by
+    # default now, so the real switch is --no-route.
     a = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--route"])
     assert a.command == "loop"
     assert a.route is True
+    assert a.no_route is False
     b = build_parser().parse_args(["loop", "--topic", "demo"])
     assert b.route is False
+    assert b.no_route is False
+    c = build_parser().parse_args(["loop", "--topic", "demo", "--no-route"])
+    assert c.no_route is True
+
+
+def test_parser_loop_per_role_model_overrides():
+    a = build_parser().parse_args([
+        "loop", "--topic", "demo",
+        "--model-implement", "haiku", "--model-verify", "sonnet",
+        "--model-logic", "opus", "--model-advisor", "fable",
+    ])
+    assert a.model_implement == "haiku"
+    assert a.model_verify == "sonnet"
+    assert a.model_logic == "opus"
+    assert a.model_advisor == "fable"
+
+
+def test_parser_loop_advisor_flags():
+    a = build_parser().parse_args(["loop", "--topic", "demo", "--advisor", "--advisor-rounds", "3"])
+    assert a.advisor is True
+    assert a.advisor_rounds == 3
+    b = build_parser().parse_args(["loop", "--topic", "demo"])
+    assert b.advisor is False
+    assert b.advisor_rounds == 1
 
 
 def test_parser_trajectory():
@@ -128,6 +155,18 @@ def test_parser_trajectory():
     assert a.command == "trajectory"
     assert a.topic == "demo"
     assert a.json is True
+    assert a.efficiency is False
+
+
+def test_parser_trajectory_efficiency_flag():
+    a = build_parser().parse_args(["trajectory", "--topic", "demo", "--efficiency"])
+    assert a.efficiency is True
+
+
+def test_cmd_trajectory_efficiency_no_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = run_cli("trajectory", "--topic", "nonexistent", "--efficiency")
+    assert res.returncode == 1
 
 
 def test_help_lists_trajectory_and_eval():

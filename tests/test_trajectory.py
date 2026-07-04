@@ -6,6 +6,7 @@ from cli.trajectory import (
     TrajectoryStep,
     append_step,
     build_step,
+    efficiency_report,
     make_sink,
     read_steps,
     summarize,
@@ -78,3 +79,61 @@ def test_make_sink_failsafe_on_bad_dir(tmp_path):
     sink = make_sink(blocker / "sub", ts="t")
     # Should swallow the error, not raise.
     sink({"role": "x", "ok": True})
+
+
+# --------------------------- efficiency_report (real data only) --------------------------- #
+def test_efficiency_report_empty():
+    out = efficiency_report([])
+    assert "No trajectory data yet" in out
+
+
+def test_efficiency_report_cycle_pass_rate():
+    steps = [
+        TrajectoryStep(role="cycle", ok=True, ts="t1"),
+        TrajectoryStep(role="cycle", ok=True, ts="t2"),
+        TrajectoryStep(role="cycle", ok=False, ts="t3"),
+    ]
+    out = efficiency_report(steps)
+    assert "Cycle pass rate: 67%" in out
+    assert "2/3 verified cycles" in out
+
+
+def test_efficiency_report_no_cycle_steps():
+    steps = [TrajectoryStep(role="implementer", ok=True, ts="t1")]
+    out = efficiency_report(steps)
+    assert "No completed loop cycles recorded yet" in out
+
+
+def test_efficiency_report_escalation_rate():
+    steps = [
+        TrajectoryStep(role="implementer", ok=True, ts="t1"),
+        TrajectoryStep(role="implementer", ok=True, ts="t2"),
+        TrajectoryStep(role="logic", ok=True, ts="t3"),
+        TrajectoryStep(role="advisor", ok=True, ts="t4"),
+    ]
+    out = efficiency_report(steps)
+    assert "Escalation rate: 100%" in out
+    assert "2 logic/advisor/test-writer/simplifier step(s) per 2 implementer step(s)" in out
+
+
+def test_efficiency_report_no_implementer_steps():
+    steps = [TrajectoryStep(role="cycle", ok=True, ts="t1")]
+    out = efficiency_report(steps)
+    assert "escalation rate not computable" in out
+
+
+def test_efficiency_report_crash_rate_distinct_from_verify_fail():
+    steps = [
+        TrajectoryStep(role="implementer", ok=True, ts="t1"),
+        TrajectoryStep(role="verifier", ok=True, ts="t2"),  # VERDICT: FAIL still exits 0
+        TrajectoryStep(role="verifier", ok=False, ts="t3"),  # a real subprocess crash
+    ]
+    out = efficiency_report(steps)
+    assert "Crash rate: 33%" in out
+    assert "NOT verification failure" in out
+
+
+def test_efficiency_report_never_claims_token_savings():
+    steps = [TrajectoryStep(role="cycle", ok=True, ts="t1")]
+    out = efficiency_report(steps)
+    assert "Token cost is intentionally omitted" in out

@@ -154,3 +154,81 @@ def summarize(steps: List[TrajectoryStep]) -> TrajectorySummary:
         summary.total_duration_s += s.duration_s
     summary.total_duration_s = round(summary.total_duration_s, 3)
     return summary
+
+
+# --------------------------------------------------------------------------- #
+# Efficiency report (real, measured signals only — no token estimate)
+# --------------------------------------------------------------------------- #
+# `claude -p` (and the other agent CLIs sigma shells out to) never surfaces token
+# usage in its stdout, so sigma has no source for a real per-run token count —
+# only a static units×factor guess that never calibrates (see cli/cost.py's
+# calibrate()). Rather than present that guess as an efficiency signal, this
+# report leads with what IS real and measured: the loop's own "cycle" steps (one
+# per completed execute_cycle, role="cycle", ok=verified — appended by cmd_loop
+# after run_loop returns) give a true pass rate; the per-role step counts already
+# in TrajectorySummary give a true escalation rate (how often the expensive axes
+# fire relative to the implementer). A future fast-follow can add a token axis IF
+# a real usage source ever exists (e.g. a CLI flag that surfaces it) — not before.
+CYCLE_ROLE = "cycle"
+ESCALATION_ROLES = ("logic", "advisor", "test-writer", "simplifier")
+
+
+def efficiency_report(steps: List[TrajectoryStep]) -> str:
+    """Render sigma's own cost-efficiency signals from REAL trajectory data.
+
+    Leads with cycle pass rate (from role="cycle" steps, appended once per
+    completed loop cycle — verified/not, distinct from a subprocess crash) and
+    escalation rate (logic/advisor/test-writer/simplifier steps ÷ implementer
+    steps — how often the expensive axes fire). Also reports the crash rate
+    (subprocess exit failures across ALL roles) with an explicit label that it is
+    NOT the same as a verify-fail — a verifier that returns `VERDICT: FAIL` still
+    exits 0 (crash rate and verify-fail rate are genuinely different signals).
+    Never raises: empty input renders a "no data yet" line, and each section is
+    independently guarded against division by zero.
+    """
+    if not steps:
+        return "# sigma efficiency\n\nNo trajectory data yet. Run `sigma loop --execute` first."
+
+    cycle_steps = [s for s in steps if s.role == CYCLE_ROLE]
+    lines = ["# sigma efficiency", ""]
+
+    if cycle_steps:
+        passed = sum(1 for s in cycle_steps if s.ok)
+        rate = passed / len(cycle_steps)
+        lines += [
+            f"**Cycle pass rate: {rate:.0%}** ({passed}/{len(cycle_steps)} verified cycles).",
+            "",
+        ]
+    else:
+        lines += ["No completed loop cycles recorded yet (no `role=\"cycle\"` steps).", ""]
+
+    summary = summarize(steps)
+    implementer_n = summary.by_role.get("implementer", 0)
+    escalation_n = sum(summary.by_role.get(r, 0) for r in ESCALATION_ROLES)
+    if implementer_n > 0:
+        esc_rate = escalation_n / implementer_n
+        lines += [
+            f"**Escalation rate: {esc_rate:.0%}** ({escalation_n} logic/advisor/test-writer/"
+            f"simplifier step(s) per {implementer_n} implementer step(s)).",
+            "",
+        ]
+    else:
+        lines += ["No implementer steps recorded yet — escalation rate not computable.", ""]
+
+    non_cycle = [s for s in steps if s.role != CYCLE_ROLE]
+    if non_cycle:
+        crashes = sum(1 for s in non_cycle if not s.ok)
+        crash_rate = crashes / len(non_cycle)
+        lines += [
+            f"**Crash rate: {crash_rate:.0%}** ({crashes}/{len(non_cycle)} agent step(s) exited "
+            "non-zero). This is subprocess failure, NOT verification failure — a verifier "
+            "that returns `VERDICT: FAIL` still exits 0 and counts as a non-crash here.",
+            "",
+        ]
+
+    lines += [
+        "_Token cost is intentionally omitted: `claude -p` does not surface real usage, "
+        "so a token count here would be a static estimate wearing a measured metric's "
+        "clothes — see `sigma cost` for the honestly-labeled estimate instead._",
+    ]
+    return "\n".join(lines)

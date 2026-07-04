@@ -25,6 +25,7 @@ from cli.loop import (
     incomplete_tasks,
     parse_tasks,
     plan_cycle,
+    record_cycle_steps,
     run_loop,
 )
 from cli.models import available_models
@@ -151,16 +152,37 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print("  👥 team mode: independent tasks run in parallel")
     if args.simplify:
         _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified)")
+    if args.advisor:
+        _print(f"  🛟 advisor mode: on a verify/logic fail, a distinct advisor drafts a fix "
+                f"(max {args.advisor_rounds} round(s); reverts on exhaustion)")
 
     # Trajectory capture: every agent run appends a step to the workspace
     # (best-effort observability, never breaks a run).
     sink = make_sink(ws, ts=_now_iso())
 
-    # Intelligent model routing (opt-in): mechanical roles → cheaper tier,
-    # reasoning role (logic) → strong tier. Off by default = current behavior.
-    routes = routing_for("loop") if args.route else {}
-    if args.route:
+    # Intelligent model routing is ON BY DEFAULT: mechanical roles (implement,
+    # verify) → mid tier, reasoning roles (logic) → strong tier. --no-route
+    # reproduces the old unrouted behavior byte-for-byte (model=None everywhere,
+    # no --model injected into the agent argv). Per-role --model-* flags override
+    # a single role's tier regardless of routing state. test-writer/simplifier
+    # deliberately alias verify's/implement's tier (no dedicated routing key —
+    # they are mechanical roles, same tier as the axis they extend).
+    routes = {} if args.no_route else routing_for("loop")
+    if args.model_implement:
+        routes["implement"] = args.model_implement
+    if args.model_verify:
+        routes["verify"] = args.model_verify
+    if args.model_logic:
+        routes["logic"] = args.model_logic
+    if args.no_route:
+        _print("  🧭 routing: off (--no-route) — CLI default model for every role")
+    else:
         _print(f"  🧭 routing: implement/verify→{routes['implement']}, logic→{routes['logic']}")
+
+    # Advisor's model tier resolves INDEPENDENTLY of the routing dict above —
+    # escalation's whole point is a stronger model, so it must not silently drop
+    # to the base model just because --no-route was passed. Default: opus.
+    advisor_model = args.model_advisor or routes.get("advisor") or "opus"
 
     def _make(role_tier: Optional[str]):
         return AgentRunner(model=role_tier, trajectory_sink=sink)
@@ -176,12 +198,17 @@ def cmd_loop(args: argparse.Namespace) -> int:
             make_logic_checker=(lambda: _make(routes.get("logic"))) if args.logic else None,
             make_test_writer=(lambda: _make(routes.get("verify"))) if args.tdd else None,
             make_simplifier=(lambda: _make(routes.get("implement"))) if args.simplify else None,
+            make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
+            advisor_rounds=args.advisor_rounds,
             team=args.team,
             gate=args.gate,
         )
     if not outcomes and args.gate:
         _print("  gate: nothing to do — skipped (0 tokens)")
         return 0
+    # Record one "cycle" trajectory step per completed outcome — the real,
+    # measured pass/fail signal `sigma trajectory --efficiency` reports on.
+    record_cycle_steps(outcomes, sink)
     passed = sum(1 for o in outcomes if o.verified)
     _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
     for o in outcomes:
@@ -193,6 +220,9 @@ def cmd_loop(args: argparse.Namespace) -> int:
             _print(f"    regression test pinned → {o.regression_test}")
         if o.simplified is not None:
             _print(f"    simplify: {'✓ applied (re-verified)' if o.simplified else '✗ skipped/reverted'}")
+        if o.advised is not None:
+            rounds = o.advisor_rounds_used or 0
+            _print(f"    advisor: {'✓ rescued in ' + str(rounds) + ' round(s)' if o.advised else '✗ exhausted (' + str(rounds) + ' round(s)) — reverted'}")
         if o.ratcheted_skill:
             _print(f"    ratcheted → {o.ratcheted_skill}")
         if o.contradiction:
@@ -686,13 +716,16 @@ def cmd_eval(args: argparse.Namespace) -> int:
 # trajectory (observe what agents actually did in a workspace)
 # --------------------------------------------------------------------------- #
 def cmd_trajectory(args: argparse.Namespace) -> int:
-    from cli.trajectory import read_steps, summarize
+    from cli.trajectory import efficiency_report, read_steps, summarize
 
     ws = spec_workspace(args.topic)
     if not ws.exists():
         _print(f"✗ no spec workspace at {ws}. Run a loop or hermes first.")
         return 1
     steps = read_steps(ws)
+    if args.efficiency:
+        _print(efficiency_report(steps))
+        return 0
     summary = summarize(steps)
     if args.json:
         import json
@@ -779,7 +812,18 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--simplify", action="store_true",
                     help="after each pass, a distinct agent cleans up AI slop (re-verified to preserve behaviour)")
     pl.add_argument("--route", action="store_true",
-                    help="intelligent model routing: mechanical roles→cheaper tier, logic→strong tier")
+                    help="deprecated, no-op: routing is now on by default (see --no-route)")
+    pl.add_argument("--no-route", action="store_true",
+                    help="disable model routing; run every role on the CLI's default model")
+    pl.add_argument("--model-implement", help="override the model alias for the implementer role")
+    pl.add_argument("--model-verify", help="override the model alias for the verifier role")
+    pl.add_argument("--model-logic", help="override the model alias for the logic-evaluator role")
+    pl.add_argument("--model-advisor", help="override the model alias for the advisor role (default: opus)")
+    pl.add_argument("--advisor", action="store_true",
+                    help="on a verify/logic fail, a distinct advisor drafts a correction plan and the "
+                         "implementer retries (re-verified; reverts to the original on exhaustion)")
+    pl.add_argument("--advisor-rounds", type=int, default=1,
+                    help="max advisor→retry→re-verify rounds per cycle before ratcheting (default 1)")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)
@@ -873,6 +917,8 @@ def build_parser() -> argparse.ArgumentParser:
     ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
     ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
     ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
+    ptraj.add_argument("--efficiency", action="store_true",
+                        help="report cycle pass rate + escalation rate (real, measured signals)")
     ptraj.set_defaults(func=cmd_trajectory)
 
     peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")
