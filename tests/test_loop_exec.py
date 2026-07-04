@@ -1014,6 +1014,49 @@ def test_run_loop_team_no_git_repo_falls_back_gracefully(tmp_path):
     assert all(o.verified for o in outcomes)
 
 
+def test_run_loop_team_omitted_project_root_never_touches_cwd(tmp_path, monkeypatch):
+    """Regression lock: omitting project_root must NOT fall back to resolving
+    cwd's repo for worktree isolation (unlike the read-only arch-map lookup).
+    This is a real bug that bit sigma's own repo during development — a
+    --team test that omitted project_root silently created/merged/removed
+    real worktrees against whatever cli.paths.project_root() resolved to
+    (the actual sigma checkout, since pytest's cwd is the repo root). Confirm
+    that calling from inside a REAL git repo (monkeypatched cwd) with no
+    project_root passed still takes the safe shared-workspace path."""
+    monkeypatch.chdir(tmp_path)
+    _init_git_repo(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\n")  # mark as a project root
+
+    class CwdRecorder(ScriptedRunner):
+        def __init__(self, results):
+            super().__init__(results)
+            self.cwds = []
+
+        def run(self, prompt, cwd=None, role="agent"):
+            self.cwds.append(cwd)
+            return super().run(prompt, cwd=cwd, role=role)
+
+    seen = []
+
+    def mk_impl():
+        r = CwdRecorder([AgentResult(ok=True, output="i")])
+        seen.append(r)
+        return r
+
+    outcomes = run_loop(
+        parse_tasks(TASKS), tmp_path, tmp_path / "skills", max_cycles=10,
+        make_implementer=mk_impl,
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        team=True,
+        # project_root intentionally OMITTED — this is the exact scenario that
+        # previously created real worktrees against the resolved cwd's repo.
+    )
+    assert len(outcomes) == 2
+    for recorder in seen:
+        assert recorder.cwds == [tmp_path]  # shared workspace, NOT a worktree
+    assert not (tmp_path / ".worktrees").exists()
+
+
 def test_run_loop_team_merge_conflict_is_surfaced(tmp_path):
     _init_git_repo(tmp_path)
     impl_outputs = iter(["edit one", "edit two"])

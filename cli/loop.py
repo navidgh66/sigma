@@ -797,15 +797,19 @@ def run_loop(
     one-task-at-a-time behavior.
 
     `worktrees`, when True (the default) AND `team` is True AND `project_root`
+    is EXPLICITLY PASSED (not the arch-map's cwd-resolved fallback below) AND
     is a real git repository, gives each concurrent task its OWN git worktree
     + branch (see cli/worktree.py) instead of a shared working tree — real
     per-task isolation. Falls back to the pre-existing shared-workspace
     behavior (agent_cwd=None for every task) when: `team` is False (sequential
     mode never needs isolation), `worktrees=False` (explicit opt-out, e.g.
-    `sigma.config.yml`'s `loop.worktrees: false`), or `project_root` has no
-    `.git` (fail-safe — isolation requires a real repo to branch from).
-    `project_root` defaults to `cli.paths.project_root()` when not passed
-    (mirrors how the architecture-map injection below already resolves it).
+    `sigma.config.yml`'s `loop.worktrees: false`), `project_root` is `None`
+    (isolation never activates against an implicitly-resolved cwd — creating/
+    merging/removing real worktrees is a mutation, unlike the read-only
+    arch-map lookup, so it requires an explicit opt-in from the caller), or
+    `project_root` has no `.git` (fail-safe — isolation requires a real repo
+    to branch from). `cmd_loop` passes `project_root=cli.paths.project_root()`
+    explicitly; a test/caller that omits it gets the safe shared-workspace path.
     A PASSing cycle's worktree is merged back onto the branch `--team` started
     from; a merge conflict is surfaced via `CycleOutcome.merge_conflict` and
     the worktree/branch is LEFT ON DISK for manual resolution — never
@@ -870,9 +874,18 @@ def run_loop(
         )
 
     if team:
-        use_worktrees = worktrees and _team_worktrees_available(root)
+        # Worktree isolation is gated on an EXPLICITLY passed project_root, not
+        # the arch-map's cwd-fallback `root` above — creating/merging/removing
+        # real git worktrees against whatever `cli.paths.project_root()`
+        # resolves to (which walks up from cwd) would mutate a real, unrelated
+        # repo if a caller simply forgot to pass project_root (this bit sigma's
+        # own repo during test development: a --team test omitted project_root
+        # and isolation silently activated against the real sigma checkout).
+        # Reading the arch map from a resolved cwd is harmless (read-only);
+        # creating/removing worktrees is not — so it requires an explicit opt-in.
+        use_worktrees = worktrees and project_root is not None and _team_worktrees_available(project_root)
         if use_worktrees:
-            return _run_team_with_worktrees(batch, root, run_one)
+            return _run_team_with_worktrees(batch, project_root, run_one)
         # Independent tasks run concurrently in the SHARED workspace (no real
         # isolation) — either worktrees were disabled/unavailable, or root has
         # no .git. Preserves the exact pre-feature behavior.
