@@ -52,6 +52,26 @@ def graphify_status(which: Optional[Callable] = None) -> Dict:
     return {"installed": which("graphify") is not None}
 
 
+_HOOK_MARKER = "graphify"
+
+
+def graphify_hook_status(root: Path, which: Optional[Callable] = None) -> Dict:
+    """Report {installed} — whether graphify's post-commit hook is in this repo.
+
+    True when `root/.git/hooks/post-commit` exists and mentions graphify (the hook
+    graphify writes embeds an interpreter path + a `graphify` invocation). Fail-safe:
+    no `.git`, no hook, or an unreadable file → {"installed": False}. Never raises.
+    `which` is accepted for signature symmetry with the other status fns (unused).
+    """
+    hook = root / ".git" / "hooks" / "post-commit"
+    try:
+        if not hook.is_file():
+            return {"installed": False}
+        return {"installed": _HOOK_MARKER in hook.read_text()}
+    except OSError:
+        return {"installed": False}
+
+
 def install_graphify(
     which: Optional[Callable] = None,
     spawn: Optional[Callable] = None,

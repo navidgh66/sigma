@@ -6,8 +6,11 @@ never install anything, spawn a real process, or hit the network.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from cli.graphify import (
     build_extract_argv,
+    graphify_hook_status,
     graphify_status,
     install_graphify,
     report_block,
@@ -146,3 +149,31 @@ def test_report_block_unreadable_dir_is_safe(tmp_path):
     # graphify-out exists as a FILE, not a dir → reading the report path fails → "".
     (tmp_path / "graphify-out").write_text("not a dir")
     assert report_block(tmp_path) == ""
+
+
+# --------------------------- hook status --------------------------- #
+def _make_repo(tmp_path: Path, hook_body: str = None) -> Path:
+    hooks = tmp_path / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    if hook_body is not None:
+        (hooks / "post-commit").write_text(hook_body)
+    return tmp_path
+
+
+def test_hook_status_installed_when_marker_present(tmp_path):
+    root = _make_repo(tmp_path, "#!/bin/sh\nexec /path/to/graphify update .\n")
+    assert graphify_hook_status(root)["installed"] is True
+
+
+def test_hook_status_absent_when_no_hook_file(tmp_path):
+    root = _make_repo(tmp_path, hook_body=None)
+    assert graphify_hook_status(root)["installed"] is False
+
+
+def test_hook_status_absent_when_hook_lacks_marker(tmp_path):
+    root = _make_repo(tmp_path, "#!/bin/sh\necho hello\n")
+    assert graphify_hook_status(root)["installed"] is False
+
+
+def test_hook_status_absent_when_no_git_dir(tmp_path):
+    assert graphify_hook_status(tmp_path)["installed"] is False
