@@ -13,8 +13,10 @@ from cli.graphify import (
     graphify_hook_status,
     graphify_status,
     install_graphify,
+    install_graphify_hook,
     report_block,
     setup_graphify,
+    setup_graphify_hook,
 )
 
 
@@ -177,3 +179,69 @@ def test_hook_status_absent_when_hook_lacks_marker(tmp_path):
 
 def test_hook_status_absent_when_no_git_dir(tmp_path):
     assert graphify_hook_status(tmp_path)["installed"] is False
+
+
+# --------------------------- hook install (confirm-gated, idempotent) --------------------------- #
+def test_install_graphify_hook_spawns_correct_argv(tmp_path):
+    calls = []
+
+    def spawn(argv, cwd=None):
+        calls.append((argv, cwd))
+        return 0
+
+    ok = install_graphify_hook(tmp_path, which=lambda _: "/bin/graphify", spawn=spawn)
+    assert ok is True
+    assert calls == [(["graphify", "hook", "install"], tmp_path)]
+
+
+def test_install_graphify_hook_false_on_nonzero(tmp_path):
+    ok = install_graphify_hook(tmp_path, which=lambda _: "/bin/graphify",
+                               spawn=lambda argv, cwd=None: 1)
+    assert ok is False
+
+
+def test_setup_noop_when_graphify_binary_absent(tmp_path):
+    changed = setup_graphify_hook(
+        status_fn=lambda: {"installed": False},          # graphify binary absent
+        hook_status_fn=lambda: {"installed": False},
+        confirm=lambda _msg: True,
+        root=tmp_path,
+        spawn=lambda *a, **k: 0,
+    )
+    assert changed is False
+
+
+def test_setup_noop_when_hook_already_installed(tmp_path):
+    changed = setup_graphify_hook(
+        status_fn=lambda: {"installed": True},           # graphify present
+        hook_status_fn=lambda: {"installed": True},      # hook already there
+        confirm=lambda _msg: True,
+        root=tmp_path,
+        spawn=lambda *a, **k: 0,
+    )
+    assert changed is False
+
+
+def test_setup_noop_when_confirm_denied(tmp_path):
+    changed = setup_graphify_hook(
+        status_fn=lambda: {"installed": True},
+        hook_status_fn=lambda: {"installed": False},
+        confirm=lambda _msg: False,                      # user declines
+        root=tmp_path,
+        spawn=lambda *a, **k: 0,
+    )
+    assert changed is False
+
+
+def test_setup_installs_when_confirmed(tmp_path):
+    calls = []
+    changed = setup_graphify_hook(
+        status_fn=lambda: {"installed": True},
+        hook_status_fn=lambda: {"installed": False},
+        confirm=lambda _msg: True,
+        root=tmp_path,
+        which=lambda _: "/bin/graphify",
+        spawn=lambda argv, cwd=None: calls.append((argv, cwd)) or 0,
+    )
+    assert changed is True
+    assert calls == [(["graphify", "hook", "install"], tmp_path)]
