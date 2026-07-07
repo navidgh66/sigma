@@ -92,6 +92,25 @@ def synthesize(topic: str, results: List[ModelResult], runner: Callable[[str], s
     return body.strip()
 
 
+def claude_synthesis_runner(prompt: str) -> str:
+    """Default `synthesis_runner`: cross-reference findings via the Claude CLI.
+
+    Adapts `run_model("claude", prompt)` (a `ModelResult`) to the single
+    prompt-in/string-out contract `synthesize()` expects. Runs on Claude
+    specifically since it's already the model running this session/plugin.
+    On failure (CLI missing, non-zero exit, timeout) returns "" — `synthesize()`
+    already treats a falsy runner result as a failure and falls back to the
+    static placeholder, so an unavailable/unauthenticated claude CLI degrades
+    gracefully instead of crashing the research doc.
+
+    NOTE: `cost.routing_for("research")` already names a "synthesis" tier
+    (TIER_STRONG), but no `--route` flag wires it into the research CLI yet —
+    that's a separate, larger scope. This default stays unrouted (plain claude).
+    """
+    result = run_model("claude", prompt)
+    return result.text if result.ok else ""
+
+
 def aggregate(
     topic: str,
     results: List[ModelResult],

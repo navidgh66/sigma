@@ -268,6 +268,29 @@ def test_research_end_to_end_includes_manual_findings(tmp_path):
     assert "manual:extra.md" in body
 
 
+def test_claude_synthesis_runner_returns_text_on_success(monkeypatch):
+    import cli.research as research_mod
+    from cli.research import claude_synthesis_runner
+
+    def fake_run_model(model, prompt):
+        assert model == "claude"
+        return ModelResult(model, True, "synthesized findings")
+
+    monkeypatch.setattr(research_mod, "run_model", fake_run_model)
+    assert claude_synthesis_runner("some prompt") == "synthesized findings"
+
+
+def test_claude_synthesis_runner_returns_empty_on_failure(monkeypatch):
+    import cli.research as research_mod
+    from cli.research import claude_synthesis_runner
+
+    def fake_run_model(model, prompt):
+        return ModelResult(model, False, "", error="CLI not installed", skipped=True)
+
+    monkeypatch.setattr(research_mod, "run_model", fake_run_model)
+    assert claude_synthesis_runner("some prompt") == ""
+
+
 def test_research_unchanged_when_no_tools_or_manual_findings(tmp_path):
     """Regression lock: empty tools + no manual/ dir behaves like the old module,
     except the Synthesis section (which is intentionally now real-or-fallback

@@ -30,7 +30,7 @@ from cli.loop import (
 )
 from cli.models import available_models
 from cli.paths import DOMAINS, sigma_home, spec_workspace
-from cli.research import research
+from cli.research import claude_synthesis_runner, research
 
 
 def _now_iso() -> str:
@@ -105,7 +105,10 @@ def cmd_research(args: argparse.Namespace) -> int:
         _print("  mode: deep (web-grounded — this may take a few minutes)")
     elif web:
         _print("  mode: web (quick web-grounded pass)")
-    out = research(args.topic, models, ws, requested_tools=tools, deep=deep, web=web)
+    out = research(
+        args.topic, models, ws, requested_tools=tools, deep=deep, web=web,
+        synthesis_runner=claude_synthesis_runner,
+    )
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
     return 0
