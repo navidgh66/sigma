@@ -293,6 +293,16 @@ is no meaningful identity to check; this guard is a note for callers that pass
 object-shaped runners, not a hard invariant enforced at the plain-function
 call site.
 
+**Routing:** `cli/cost.py`'s `routing_for("research")` currently returns only
+`{"fan-out": TIER_MID}`. Cross-referencing claims across providers is a
+reasoning task, not mechanical fan-out — same category as `loop`'s
+`logic`/`advisor` roles, which route to `TIER_STRONG`. Add a `"synthesis":
+TIER_STRONG` key so `--route` (once wired into the research CLI command,
+mirroring `loop`/`eval`'s existing `--route` flag) puts the synthesis call on
+the strong tier by default, while the per-provider fan-out itself stays mid
+tier. Unrouted (`--route` absent, or the flag not yet added) → CLI default
+model, unchanged from today.
+
 ### Error handling (fail-safe, matches existing module conventions)
 
 - Missing/invalid Firecrawl key → filtered out by `available_tools`;
