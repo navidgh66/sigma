@@ -158,6 +158,44 @@ Firecrawl's `search_fn` calls the Firecrawl search HTTP endpoint via stdlib
 findings with source URLs — genuinely grounded, unlike the claude/gemini
 prompt-only "deep" mode.
 
+### Plugin surface — MCP search tools (zero new code)
+
+The CLI needs `cli/search_providers.py` because a bare subprocess has no MCP
+layer. The in-session `/research` command doesn't: a Claude Code session may
+already have web-search MCP tools connected (Firecrawl, Exa, Tavily, or others,
+depending on what the user's session has configured) — the agent calls them
+directly, no subprocess, no urllib, no new adapter code.
+
+`commands/research.md`'s Behavior section gains one new dispatch step,
+alongside the existing subagent dispatch:
+
+> If a web-search MCP tool is connected in this session (any tool whose name
+> matches a search/web-search pattern — e.g. `mcp__firecrawl__firecrawl_search`
+> — not hardcoded to one vendor), call it directly as an additional research
+> source, dispatched in parallel with the researcher subagents. Treat its
+> results as grounded findings (real, resolvable source URLs) on the same
+> footing as subagent findings. State which MCP tools ran or were unavailable
+> — no silent caps, same transparency rule already applied to subagent
+> dispatch.
+
+Because the instruction names a pattern ("any connected web-search MCP tool"),
+not a specific vendor, Exa/Tavily/Perplexity/whatever a future session has
+connected all work the same way with zero command-doc edits — this is the
+plugin-side answer to "several different tools," matching the CLI side's
+`SearchAdapter` extensibility without needing a CLI-side adapter for each.
+
+**Scope of the doc-gen drift lock:** this MCP-dispatch step is plugin-specific
+behavior — it doesn't apply to the CLI path (which has its own explicit
+`search_providers.py` mechanism) and isn't derived from `research_brief.py`'s
+shared citation/confidence/freshness rules. `commands/research.md` therefore
+has two kinds of content: a generated shared-rules block (from
+`research_brief.py`, checked by `tests/test_research_docs.py`) and a
+hand-authored plugin-behavior block (subagent + MCP dispatch steps, NOT
+generated, NOT covered by the drift-lock test). The synthesis-pass problem
+(defect 2) doesn't need a plugin-side fix — a live agent already cross-
+references findings organically in-session; only the CLI path's static
+placeholder needed the real `synthesize()` call.
+
 ### Synthesis pass
 
 ```python
