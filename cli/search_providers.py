@@ -24,6 +24,7 @@ from cli.models import ModelResult
 _FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v1/search"
 _FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v1/scrape"
 _TIMEOUT = 30
+_SCRAPE_TEXT_CAP = 6000
 
 
 @dataclass
@@ -94,15 +95,25 @@ def _default_scrape(url: str, api_key: str, timeout: int = _TIMEOUT) -> Optional
         return None
 
 
-def _extract_scraped_text(data: dict) -> str:
-    """Pull markdown body out of a Firecrawl scrape response, defensively."""
+def _extract_scraped_text(data: dict, cap: int = _SCRAPE_TEXT_CAP) -> str:
+    """Pull markdown body out of a Firecrawl scrape response, defensively.
+
+    Truncated to `cap` chars with a notice — an unbounded page body would
+    otherwise inflate research.md and the downstream synthesis prompt cost
+    (mirrors cli/graphify.py's report_block truncation guard).
+    """
     if not isinstance(data, dict):
         return ""
     inner = data.get("data")
     if not isinstance(inner, dict):
         return ""
     text = inner.get("markdown")
-    return text.strip() if isinstance(text, str) else ""
+    if not isinstance(text, str):
+        return ""
+    text = text.strip()
+    if len(text) > cap:
+        text = text[:cap] + "\n…(truncated)"
+    return text
 
 
 def _format_findings(
@@ -147,10 +158,10 @@ def run_search_tool(
     """Run one search tool's HTTP call for `prompt`. Never raises.
 
     When `deep` is True, additionally scrapes the top `scrape_top_n` result
-    URLs for full-page content, folding it into the findings text. A scrape
-    failure for any single URL degrades that item to snippet-only — never
-    aborts the whole call. `deep=False` (default) issues zero scrape calls,
-    byte-identical to pre-deep-crawl behavior.
+    URLs (deduped) for full-page content, folding it into the findings text.
+    A scrape failure for any single URL degrades that item to snippet-only —
+    never aborts the whole call. `deep=False` (default) issues zero scrape
+    calls, byte-identical to pre-deep-crawl behavior.
     """
     adapter = ADAPTERS.get(tool)
     if adapter is None:
@@ -175,7 +186,7 @@ def run_search_tool(
                 for item in items[:scrape_top_n]
                 if isinstance(item, dict) and item.get("url")
             ]
-            for url in top_urls:
+            for url in dict.fromkeys(top_urls):  # dedupe, preserve order
                 scraped_data = scrape(url, api_key, timeout=timeout)
                 if scraped_data is None:
                     continue

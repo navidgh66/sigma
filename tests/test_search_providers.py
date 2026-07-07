@@ -135,6 +135,15 @@ def test_extract_scraped_text_handles_malformed_shapes():
     assert _extract_scraped_text(["not", "a", "dict"]) == ""
 
 
+def test_extract_scraped_text_truncates_oversized_body():
+    from cli.search_providers import _extract_scraped_text
+
+    body = "x" * 100
+    result = _extract_scraped_text({"data": {"markdown": body}}, cap=10)
+    assert result == "x" * 10 + "\n…(truncated)"
+    assert len(result) < len(body)
+
+
 def test_run_search_tool_deep_scrapes_top_results(monkeypatch):
     monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 
@@ -210,3 +219,26 @@ def test_run_search_tool_deep_respects_custom_scrape_top_n(monkeypatch):
 
     run_search_tool("firecrawl", "topic", fetch=fetch, scrape=scrape, deep=True, scrape_top_n=1)
     assert scraped_urls == ["https://a.com"]
+
+
+def test_run_search_tool_deep_dedupes_duplicate_urls_before_scraping(monkeypatch):
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
+
+    def fetch(url, api_key, timeout=None):
+        return {
+            "data": [
+                {"title": "A", "url": "https://dup.com", "markdown": "snippet A"},
+                {"title": "A mirror", "url": "https://dup.com", "markdown": "snippet A mirror"},
+                {"title": "B", "url": "https://b.com", "markdown": "snippet B"},
+            ]
+        }
+
+    scraped_urls = []
+
+    def scrape(url, api_key, timeout=None):
+        scraped_urls.append(url)
+        return {"data": {"markdown": "full"}}
+
+    run_search_tool("firecrawl", "topic", fetch=fetch, scrape=scrape, deep=True)
+    # dup.com appears twice in the top 3 results but is scraped only once.
+    assert scraped_urls == ["https://dup.com", "https://b.com"]
