@@ -78,6 +78,8 @@ def _default_fetch(url: str, api_key: str, timeout: int = _TIMEOUT) -> Optional[
 
 def _format_findings(data: dict) -> str:
     """Render Firecrawl's search response into themed-findings text."""
+    if not isinstance(data, dict):
+        return ""
     items = data.get("data") or []
     if not isinstance(items, list) or not items:
         return ""

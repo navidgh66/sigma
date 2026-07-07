@@ -68,3 +68,14 @@ def test_run_search_tool_forwards_timeout_to_fetch(monkeypatch):
 
     run_search_tool("firecrawl", "topic", fetch=fetch, timeout=5)
     assert seen["timeout"] == 5
+
+
+def test_run_search_tool_handles_non_dict_top_level_json(monkeypatch):
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
+
+    def fetch(url, api_key, timeout=None):
+        return ["unexpected", "list", "shape"]  # not a dict
+
+    result = run_search_tool("firecrawl", "topic", fetch=fetch)
+    assert result.ok is True
+    assert result.text == ""
