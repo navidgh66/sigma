@@ -24,8 +24,8 @@ from typing import Callable, Dict, List, Optional
 
 from cli import review as rv
 from cli.cost import build_record, estimate, ledger_path, read_ledger
-from cli.graph_impact import impact_for, load_graph, render_impact_section
 from cli.domains_index import context_engines_dir
+from cli.graph_impact import impact_for, load_graph, render_impact_section
 from cli.loop import ratchet_to_skills
 from cli.profile_manifest import profile_path, staleness
 from cli.runner import AgentRunner
