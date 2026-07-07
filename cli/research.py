@@ -185,7 +185,7 @@ def _read_manual_findings(workspace: Path) -> List[ModelResult]:
     for path in sorted(manual_dir.glob("*.md")):
         try:
             text = path.read_text().strip()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         if text:
             results.append(ModelResult(model=f"manual:{path.name}", ok=True, text=text))

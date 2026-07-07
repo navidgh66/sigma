@@ -154,6 +154,20 @@ def test_read_manual_findings_reads_files(tmp_path):
     assert "Found Y" in results[0].text
 
 
+def test_read_manual_findings_skips_non_utf8_file(tmp_path):
+    from cli.research import _read_manual_findings
+    ws = tmp_path / "ws"
+    manual = ws / "manual"
+    manual.mkdir(parents=True)
+    # Write invalid UTF-8 bytes directly (not valid text in any UTF-8 decode).
+    (manual / "bad_encoding.md").write_bytes(b"\xff\xfe\x00\x01invalid utf8")
+    (manual / "good.md").write_text("Valid finding.")
+    results = _read_manual_findings(ws)
+    # The bad file is skipped (no crash); the good file still comes through.
+    assert len(results) == 1
+    assert results[0].model == "manual:good.md"
+
+
 # --------------------------- search-tool fan-out --------------------------- #
 def test_run_research_includes_search_tools():
     from cli.research import run_research
