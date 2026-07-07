@@ -220,6 +220,33 @@ def test_onboard_skips_graphify_when_declined(tmp_path, monkeypatch):
     assert spawned == []
 
 
+# --------------------------- graphify post-commit hook --------------------------- #
+def test_onboard_installs_graphify_hook(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
+        # rtk + caveman + statusline + graphify install already satisfied → only the
+        # hook step acts. graphify binary present + no .git hook in tmp_path → install.
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": True},   # step 9 install no-ops
+        spawn=lambda argv, cwd=None: spawned.append(argv) or 0,
+        which=lambda n: "/bin/graphify" if n == "graphify" else None,
+        run_all=lambda **k: [],
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert ["graphify", "hook", "install"] in spawned
+    assert "graphify post-commit hook installed" in capsys.readouterr().out
+
+
 # --------------------------- learn artifacts (step 11) --------------------------- #
 class _LearnRes:
     def __init__(self, ok=True, error=None):
