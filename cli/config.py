@@ -16,6 +16,7 @@ from cli.paths import (
 )
 
 DEFAULT_MODELS = ["claude", "gemini", "gpt"]
+DEFAULT_TOOLS: List[str] = []
 
 DEFAULT_COMMANDS = [
     "/research",
@@ -41,6 +42,7 @@ class SigmaConfig:
     name: str = "my-project"
     harness: str = "claude-code"
     models: List[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
+    tools: List[str] = field(default_factory=lambda: list(DEFAULT_TOOLS))
     domains: List[str] = field(default_factory=lambda: list(DOMAINS))
     commands: List[str] = field(default_factory=lambda: list(DEFAULT_COMMANDS))
     loop: LoopConfig = field(default_factory=LoopConfig)
@@ -60,7 +62,7 @@ class SigmaConfig:
     def to_dict(self) -> dict:
         return {
             "profile": {"name": self.name, "harness": self.harness},
-            "research": {"models": self.models},
+            "research": {"models": self.models, "tools": self.tools},
             "domains": self.domains,
             "commands": self.commands,
             "loop": {
@@ -85,6 +87,7 @@ def _from_dict(data: dict) -> SigmaConfig:
         name=profile.get("name", "my-project"),
         harness=profile.get("harness", "claude-code"),
         models=list(research.get("models", DEFAULT_MODELS)),
+        tools=list(research.get("tools", DEFAULT_TOOLS)),
         domains=list(data.get("domains", list(DOMAINS))),
         commands=list(data.get("commands", DEFAULT_COMMANDS)),
         loop=loop,
