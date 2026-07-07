@@ -106,6 +106,7 @@ def test_secrets_ok_when_present(monkeypatch, tmp_path):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "z")
     c = checks.check_secrets()
     assert c.status == OK
 
