@@ -41,7 +41,7 @@ def run_research(
         model_futures = {
             m: pool.submit(_call_runner, runner, m, prompt, web_search) for m in requested_models
         }
-        tool_futures = {t: pool.submit(search_runner, t, prompt) for t in requested_tools}
+        tool_futures = {t: pool.submit(search_runner, t, topic) for t in requested_tools}
         for m in requested_models:
             results.append(model_futures[m].result())
         for t in requested_tools:

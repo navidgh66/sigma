@@ -185,6 +185,20 @@ def test_run_research_includes_search_tools():
     assert models == {"claude", "firecrawl"}
 
 
+def test_run_research_passes_bare_topic_to_search_tools_not_full_brief():
+    seen = {}
+
+    def model_runner(model, prompt, deep=False):
+        return ModelResult(model, True, "model-findings")
+
+    def search_runner(tool, query):
+        seen["query"] = query
+        return ModelResult(tool, True, "tool-findings")
+
+    run_research("my topic", ["claude"], tools=["firecrawl"], runner=model_runner, search_runner=search_runner)
+    assert seen["query"] == "my topic"
+
+
 # --------------------------- synthesis --------------------------- #
 def test_synthesize_calls_runner_with_all_results():
     from cli.research import synthesize
