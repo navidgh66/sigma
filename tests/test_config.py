@@ -1,6 +1,7 @@
 from cli.config import (
     DEFAULT_COMMANDS,
     SigmaConfig,
+    _from_dict,
     load_config,
     write_config,
 )
@@ -66,3 +67,20 @@ def test_local_override_merges(tmp_path):
     # local override wins for models, base retained for name
     assert loaded.models == ["claude"]
     assert loaded.name == "base"
+
+
+def test_default_config_has_empty_tools():
+    cfg = SigmaConfig()
+    assert cfg.tools == []
+
+
+def test_from_dict_reads_tools():
+    data = {"research": {"models": ["claude"], "tools": ["firecrawl"]}}
+    cfg = _from_dict(data)
+    assert cfg.tools == ["firecrawl"]
+
+
+def test_to_dict_round_trips_tools():
+    cfg = SigmaConfig(tools=["firecrawl"])
+    d = cfg.to_dict()
+    assert d["research"]["tools"] == ["firecrawl"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cli.cost import (
     TIER_CHEAP,
+    TIER_MID,
     TIER_STRONG,
     append_ledger,
     build_record,
@@ -145,8 +146,14 @@ def test_routing_for_other_ops():
     assert routing_for("profile") == {"walk": "sonnet"}
     assert "logic" in routing_for("loop")
     assert routing_for("loop")["advisor"] == "opus"
-    assert routing_for("research") == {"fan-out": "sonnet"}
+    assert routing_for("research") == {"fan-out": "sonnet", "synthesis": "opus"}
     assert routing_for("unknown-op") == {}
+
+
+def test_research_routing_includes_synthesis_at_strong_tier():
+    routes = routing_for("research")
+    assert routes["fan-out"] == TIER_MID
+    assert routes["synthesis"] == TIER_STRONG
 
 
 def test_estimate_render_includes_routing():

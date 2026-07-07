@@ -1,4 +1,6 @@
-"""Model adapters: invoke Claude / Gemini / GPT CLIs as research subprocesses.
+"""Model-provider adapters: invoke Claude / Gemini / GPT CLIs as research
+subprocesses (tier 1 of sigma's two-tier research providers — see
+cli/search_providers.py for tier 2, HTTP search tools).
 
 Each adapter knows how to (a) detect whether its CLI is installed, (b) build an
 argv (prompt passed via argv, never the shell — no injection risk), and (c) clean

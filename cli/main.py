@@ -30,7 +30,7 @@ from cli.loop import (
 )
 from cli.models import available_models
 from cli.paths import DOMAINS, sigma_home, spec_workspace
-from cli.research import research
+from cli.research import claude_synthesis_runner, research
 
 
 def _now_iso() -> str:
@@ -80,12 +80,15 @@ def cmd_init(args: argparse.Namespace) -> int:
 # research
 # --------------------------------------------------------------------------- #
 def cmd_research(args: argparse.Namespace) -> int:
+    from cli.search_providers import available_tools
+
     cfg = load_config()
     models = (
         [m.strip() for m in args.models.split(",") if m.strip()]
         if args.models
         else cfg.models
     )
+    tools = cfg.tools
     ws = spec_workspace(args.topic)
     deep = getattr(args, "deep", False)
     web = getattr(args, "web", False) and not deep  # deep wins if both given
@@ -94,11 +97,18 @@ def cmd_research(args: argparse.Namespace) -> int:
     _print(f"  models requested: {', '.join(models)}")
     avail = available_models(models)
     _print(f"  models available: {', '.join(avail) or '(none)'}")
+    if tools:
+        avail_tools = available_tools(tools)
+        _print(f"  search tools requested: {', '.join(tools)}")
+        _print(f"  search tools available: {', '.join(avail_tools) or '(none — API key not configured)'}")
     if deep:
         _print("  mode: deep (web-grounded — this may take a few minutes)")
     elif web:
         _print("  mode: web (quick web-grounded pass)")
-    out = research(args.topic, models, ws, deep=deep, web=web)
+    out = research(
+        args.topic, models, ws, requested_tools=tools, deep=deep, web=web,
+        synthesis_runner=claude_synthesis_runner,
+    )
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
     return 0
@@ -757,6 +767,27 @@ def cmd_cost(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# usage (thin ccusage wrapper — real Claude Code session token/cache/cost)
+# --------------------------------------------------------------------------- #
+def _usage_spawn(argv: List[str]) -> int:
+    """Run ccusage interactively (inherits stdio); return its exit code."""
+    try:
+        return subprocess.call(argv)
+    except OSError:
+        return 1
+
+
+def cmd_usage(args: argparse.Namespace) -> int:
+    from cli.usage import MISSING_NODE_MESSAGE, build_argv, node_runtime_available
+
+    if not node_runtime_available():
+        _print(MISSING_NODE_MESSAGE)
+        return 0
+    passthrough = list(getattr(args, "usage_args", None) or [])
+    return _usage_spawn(build_argv(passthrough))
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -920,6 +951,20 @@ def build_parser() -> argparse.ArgumentParser:
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
 
+    pu = sub.add_parser(
+        "usage",
+        help="Claude Code token/cache/cost usage (wraps ccusage)",
+    )
+    # NOTE: main() intercepts raw argv for "usage" BEFORE parse_args ever runs
+    # (see main()'s docstring-comment there) — a flag-first passthrough like
+    # `sigma usage --json` would otherwise hit argparse's known REMAINDER
+    # limitation and raise SystemExit(2) instead of reaching ccusage. This
+    # REMAINDER declaration is therefore dead on the real invocation path; it
+    # is kept only so `sigma --help` / `sigma usage --help` (top-level
+    # listing) still shows `usage` with its passthrough-args hint.
+    pu.add_argument("usage_args", nargs=argparse.REMAINDER, help="passthrough args for ccusage")
+    pu.set_defaults(func=cmd_usage)
+
     ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
     ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
     ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
@@ -946,6 +991,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # `usage` is a pure passthrough to ccusage: everything after `usage` is
+    # forwarded verbatim (see cli/usage.py::build_argv). argparse's REMAINDER
+    # (used on the `usage` subparser below, kept only so `sigma --help` still
+    # lists `usage`) has a well-known limitation: if the FIRST passthrough
+    # token looks like an option (`-`/`--` prefix, e.g. `sigma usage --json`),
+    # argparse's own optional-argument matching intercepts it BEFORE
+    # REMAINDER can claim it, raising SystemExit(2) ("unrecognized
+    # arguments") instead of forwarding it. This is not fixable by tweaking
+    # REMAINDER itself, so we bypass argparse entirely for this one
+    # subcommand: take raw argv, and if its first token is "usage", forward
+    # everything after it untouched — no reinterpretation, no flag matching.
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "usage":
+        return cmd_usage(argparse.Namespace(usage_args=raw[1:]))
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):

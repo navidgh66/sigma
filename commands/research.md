@@ -1,6 +1,6 @@
 ---
 command: /research
-description: Multi-model parallel research (Claude + Gemini + GPT) into a single cited research.md; supports web-grounded and deep (exhaustive) depth modes
+description: Multi-model parallel research (real Gemini/GPT CLI dispatch + Claude-side deep-research skill if available), MCP search-tool grounding, and manual findings — synthesized into one cited research.md
 stage: 1
 inputs: ["topic"]
 outputs: ["sigma/specs/{date}-{slug}/research.md"]
@@ -9,38 +9,63 @@ outputs: ["sigma/specs/{date}-{slug}/research.md"]
 # /research
 
 Run **multi-perspective parallel research** on a topic and synthesize one cited
-document. In-session this fans out to **parallel Claude Code subagents** — no
-terminal needed. (The CLI `sigma research` instead fans out to three real model
-CLIs via subprocess; this command is the in-session equivalent.)
+document, using REAL model diversity and REAL search grounding — not personas
+roleplaying as other models.
 
 ## Behavior
 
 1. Take the research `topic`.
-2. **Dispatch researcher subagents in parallel** — send them in a SINGLE message
-   (multiple Task/Agent tool calls in one turn) so they run concurrently, each
-   with the same brief but a distinct lens from `subagents/researchers/`:
-   - **claude-researcher** — deep reasoning, code-aware synthesis, nuanced
-     trade-off analysis.
-   - **gemini-researcher** — broad web recall, freshness, large-context synthesis.
-   - **gpt-researcher** — alternative recall + reasoning, cross-check coverage.
-
-   Give each subagent the persona body from `subagents/researchers/<name>.md` and
-   the topic. Each returns RAW findings (data for aggregation, not prose for the
-   user): themed findings with source URLs, a confidence note per theme, and
-   explicit flags on single-source / unverified claims. Prefer sources from the
-   last 12 months.
-3. **Aggregate** the returned findings: dedupe overlapping claims, cross-reference
-   across researchers (a claim found by only one is `unverified`), prefer recent
-   sources.
-4. Write `research.md` with: executive summary, themed findings with inline
-   citations, per-researcher contribution notes, key takeaways, source list, gaps.
+2. **Claude-side deep research (if available)** — if a `deep-research` skill
+   (or an equivalent multi-source web-research skill) is installed in this
+   session, invoke it directly — it typically uses firecrawl/exa MCP tools for
+   grounded, cited findings, and is a stronger capability than a same-model
+   persona. sigma does not bundle this skill itself; it is only present when
+   an external source (e.g. an ECC plugin) has installed it. If no such skill
+   is available, fall back to the MCP search-tool dispatch in step 4 below
+   plus this model's own reasoning — state explicitly which path was used, no
+   silent substitution. This step (when the skill is available) replaces
+   dispatching a "claude-researcher" persona subagent — that persona ran on
+   the SAME model already running this session, so it added no real
+   capability beyond a self-instruction.
+3. **Real Gemini/GPT dispatch via Bash** — check CLI availability first
+   (`which gemini`, `which codex` via the Bash tool). If found, invoke the
+   REAL CLI as a subprocess:
+   ```
+   gemini -p "<brief>" --output-format json
+   codex exec --sandbox read-only --color never "<brief>"
+   ```
+   using the brief + argv template described in `subagents/researchers/
+   gemini-researcher.md` / `gpt-researcher.md`. Clean the raw output using the
+   same rules those files describe (gemini JSON-envelope extraction, codex
+   event-noise stripping — matching `cli/models.py`'s `clean_output` logic).
+   If a CLI is NOT found locally, fall back to dispatching that persona as a
+   Task subagent instead, but say so explicitly: "gemini CLI not found locally
+   — using Claude-side approximation, not real Gemini." Never silently
+   substitute persona output for real model output.
+4. **MCP search-tool dispatch** — if a web-search MCP tool is connected in
+   this session (any tool whose name matches a search/web-search pattern —
+   e.g. `mcp__firecrawl__firecrawl_search` — not hardcoded to one vendor),
+   call it directly as an additional research source, dispatched in parallel
+   with steps 2-3. Treat its results as grounded findings (real, resolvable
+   source URLs) on the same footing as the other sources.
+5. **Manual findings** — check `sigma/specs/{date}-{slug}/manual/*.md` for
+   any pre-completed findings a human dropped in before or during this run.
+   Fold each file in as an additional source, same rules as everything else.
+6. **Synthesize**: cross-reference ALL returned findings (deep-research skill
+   output, real CLI dispatch output, persona-fallback output if used, MCP
+   search-tool output, manual findings): dedupe overlapping claims, promote
+   claims confirmed by 2+ sources, flag single-source claims as unverified,
+   prefer recent sources.
+7. Write `research.md` with: executive summary, themed findings with inline
+   citations, per-source contribution notes (including which sources ran vs.
+   were unavailable), key takeaways, source list, gaps.
 
 ## Depth modes
 
 Match the CLI's three depths (`sigma research` / `--web` / `--deep`):
 
-- **default** — researchers may answer from knowledge; cite what they assert.
-- **web** (asked for "web" / "current" / "look it up) — each researcher MUST use
+- **default** — sources may answer from knowledge; cite what they assert.
+- **web** (asked for "web" / "current" / "look it up) — each source MUST use
   its web-search / grounding tools and cite real, resolvable URLs it actually
   consulted; do not answer from memory alone. Keep it a quick pass.
 - **deep** (asked for "deep" / "exhaustive" / "thorough research") — same web
@@ -51,13 +76,23 @@ When unsure which depth, ask once; otherwise default.
 
 ## Rules
 
-- Every claim cites a source. No unsourced assertions.
-- Separate fact from inference; label projections / opinions.
-- State which researchers ran (and any that returned nothing — no silent caps).
-- Keep the main context clean — researchers run as subagents; only their
-  aggregated findings return to the main thread.
-- Dispatch the subagents concurrently (one message, multiple Task calls), not
-  one after another.
+<!-- sigma:research-rules:start -->
+Every researcher/tool follows the same rules:
+
+- Themed findings, each with a source URL
+- A confidence note per theme (high/medium/low)
+- Explicitly flag single-source or unverified claims
+- Prefer sources from the last 12 months
+- Separate fact from inference; no unsourced assertions
+<!-- sigma:research-rules:end -->
+
+- State which sources ran (real CLI dispatch vs. persona fallback vs. skipped)
+  — no silent caps, and never present a persona-fallback reply as if it were
+  the real model.
+- Keep the main context clean — dispatched work runs as subagents/Bash calls;
+  only aggregated findings return to the main thread.
+- Dispatch steps 2-4 concurrently where possible (Bash calls + Task subagent
+  calls + MCP tool calls in one message), not one after another.
 
 ## Next
 

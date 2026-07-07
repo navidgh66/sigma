@@ -1,7 +1,8 @@
 from datetime import date
 
 from cli.models import ModelResult
-from cli.research import aggregate, build_prompt, research, run_research
+from cli.research import aggregate, research, run_research
+from cli.research_brief import build_prompt
 
 
 def test_build_prompt_contains_topic():
@@ -11,7 +12,7 @@ def test_build_prompt_contains_topic():
 
 
 def _fake_runner_factory(mapping):
-    def runner(model, prompt):
+    def runner(model, prompt, deep=False):
         return mapping[model]
     return runner
 
@@ -52,7 +53,7 @@ def test_aggregate_all_skipped_warns():
 def test_research_end_to_end_writes_file(tmp_path):
     ws = tmp_path / "specs" / "2026-06-16-topic"
 
-    def runner(model, prompt):
+    def runner(model, prompt, deep=False):
         return ModelResult(model, True, f"{model} says hi")
 
     out = research("topic", ["claude"], ws, runner=runner, today=date(2026, 6, 16))
@@ -90,15 +91,6 @@ def test_run_research_forwards_deep_to_runner():
     assert seen == {"claude": True, "gpt": True}
 
 
-def test_run_research_tolerates_two_arg_runner():
-    # Legacy/fake runners with no `deep` kwarg still work (TypeError fallback).
-    def runner(model, prompt):
-        return ModelResult(model, True, "ok")
-
-    results = run_research("t", ["claude"], runner=runner, deep=True)
-    assert results[0].ok is True
-
-
 # --------------------------- web mode (quick web-grounded) --------------------------- #
 def test_build_prompt_web_demands_search_but_lighter():
     web = build_prompt("t", web=True)
@@ -131,3 +123,188 @@ def test_run_research_web_enables_websearch_flag():
     run_research("t", ["claude", "gpt"], runner=runner, web=True)
     # web mode activates the adapter web-search path (passed as the deep arg).
     assert seen == {"claude": True, "gpt": True}
+
+
+# --------------------------- manual findings --------------------------- #
+def test_read_manual_findings_empty_dir_returns_empty(tmp_path):
+    from cli.research import _read_manual_findings
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    assert _read_manual_findings(ws) == []
+
+
+def test_read_manual_findings_missing_dir_returns_empty(tmp_path):
+    from cli.research import _read_manual_findings
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    # no manual/ subdir created at all
+    assert _read_manual_findings(ws) == []
+
+
+def test_read_manual_findings_reads_files(tmp_path):
+    from cli.research import _read_manual_findings
+    ws = tmp_path / "ws"
+    manual = ws / "manual"
+    manual.mkdir(parents=True)
+    (manual / "notes.md").write_text("Found Y (src: http://example.com)")
+    results = _read_manual_findings(ws)
+    assert len(results) == 1
+    assert results[0].model == "manual:notes.md"
+    assert results[0].ok is True
+    assert "Found Y" in results[0].text
+
+
+def test_read_manual_findings_skips_non_utf8_file(tmp_path):
+    from cli.research import _read_manual_findings
+    ws = tmp_path / "ws"
+    manual = ws / "manual"
+    manual.mkdir(parents=True)
+    # Write invalid UTF-8 bytes directly (not valid text in any UTF-8 decode).
+    (manual / "bad_encoding.md").write_bytes(b"\xff\xfe\x00\x01invalid utf8")
+    (manual / "good.md").write_text("Valid finding.")
+    results = _read_manual_findings(ws)
+    # The bad file is skipped (no crash); the good file still comes through.
+    assert len(results) == 1
+    assert results[0].model == "manual:good.md"
+
+
+# --------------------------- search-tool fan-out --------------------------- #
+def test_run_research_includes_search_tools():
+    from cli.research import run_research
+
+    def model_runner(model, prompt, deep=False):
+        return ModelResult(model, True, f"{model}-findings")
+
+    def search_runner(tool, prompt):
+        return ModelResult(tool, True, f"{tool}-findings")
+
+    results = run_research(
+        "topic", ["claude"], tools=["firecrawl"], runner=model_runner, search_runner=search_runner
+    )
+    models = {r.model for r in results}
+    assert models == {"claude", "firecrawl"}
+
+
+def test_run_research_passes_bare_topic_to_search_tools_not_full_brief():
+    seen = {}
+
+    def model_runner(model, prompt, deep=False):
+        return ModelResult(model, True, "model-findings")
+
+    def search_runner(tool, query):
+        seen["query"] = query
+        return ModelResult(tool, True, "tool-findings")
+
+    run_research("my topic", ["claude"], tools=["firecrawl"], runner=model_runner, search_runner=search_runner)
+    assert seen["query"] == "my topic"
+
+
+# --------------------------- synthesis --------------------------- #
+def test_synthesize_calls_runner_with_all_results():
+    from cli.research import synthesize
+
+    seen = {}
+
+    def fake_runner(prompt):
+        seen["prompt"] = prompt
+        return "Claim X confirmed by 2 sources."
+
+    results = [
+        ModelResult("claude", True, "Claim X (src: a)"),
+        ModelResult("firecrawl", True, "Claim X (src: b)"),
+    ]
+    body = synthesize("topic", results, runner=fake_runner)
+    assert "Claim X confirmed by 2 sources." in body
+    assert "topic" in seen["prompt"]
+    assert "Claim X (src: a)" in seen["prompt"]
+
+
+def test_synthesize_falls_back_on_runner_failure():
+    from cli.research import synthesize
+
+    def failing_runner(prompt):
+        raise RuntimeError("boom")
+
+    results = [ModelResult("claude", True, "finding")]
+    body = synthesize("topic", results, runner=failing_runner)
+    # Falls back to the prior static placeholder text, never raises.
+    assert "cross-reference" in body.lower()
+
+
+def test_aggregate_uses_real_synthesis():
+    from cli.research import aggregate
+
+    def fake_synth_runner(prompt):
+        return "REAL SYNTHESIS OUTPUT"
+
+    results = [ModelResult("claude", True, "x")]
+    doc = aggregate("t", results, today=date(2026, 6, 16), synthesis_runner=fake_synth_runner)
+    assert "REAL SYNTHESIS OUTPUT" in doc
+
+
+def test_aggregate_falls_back_to_placeholder_when_synthesis_runner_missing():
+    from cli.research import aggregate
+
+    results = [ModelResult("claude", True, "x")]
+    doc = aggregate("t", results, today=date(2026, 6, 16))
+    assert "cross-reference" in doc.lower()
+
+
+# --------------------------- end-to-end wiring --------------------------- #
+def test_research_end_to_end_includes_manual_findings(tmp_path):
+    from cli.research import research
+
+    ws = tmp_path / "specs" / "2026-06-16-topic"
+    manual = ws / "manual"
+    manual.mkdir(parents=True)
+    (manual / "extra.md").write_text("Manually added finding.")
+
+    def runner(model, prompt, deep=False):
+        return ModelResult(model, True, f"{model} says hi")
+
+    out = research("topic", ["claude"], ws, runner=runner, today=date(2026, 6, 16))
+    body = out.read_text()
+    assert "Manually added finding" in body
+    assert "manual:extra.md" in body
+
+
+def test_claude_synthesis_runner_returns_text_on_success(monkeypatch):
+    import cli.research as research_mod
+    from cli.research import claude_synthesis_runner
+
+    def fake_run_model(model, prompt):
+        assert model == "claude"
+        return ModelResult(model, True, "synthesized findings")
+
+    monkeypatch.setattr(research_mod, "run_model", fake_run_model)
+    assert claude_synthesis_runner("some prompt") == "synthesized findings"
+
+
+def test_claude_synthesis_runner_returns_empty_on_failure(monkeypatch):
+    import cli.research as research_mod
+    from cli.research import claude_synthesis_runner
+
+    def fake_run_model(model, prompt):
+        return ModelResult(model, False, "", error="CLI not installed", skipped=True)
+
+    monkeypatch.setattr(research_mod, "run_model", fake_run_model)
+    assert claude_synthesis_runner("some prompt") == ""
+
+
+def test_research_unchanged_when_no_tools_or_manual_findings(tmp_path):
+    """Regression lock: empty tools + no manual/ dir behaves like the old module,
+    except the Synthesis section (which is intentionally now real-or-fallback
+    text instead of the old hardcoded string — same fallback text, same spot).
+    """
+    from cli.research import research
+
+    ws = tmp_path / "specs" / "2026-06-16-topic"
+
+    def runner(model, prompt, deep=False):
+        return ModelResult(model, True, f"{model} says hi")
+
+    out = research("topic", ["claude"], ws, runner=runner, today=date(2026, 6, 16))
+    body = out.read_text()
+    assert "claude says hi" in body
+    assert "cross-reference" in body.lower()  # fallback synthesis text, unchanged wording
+    assert "manual:" not in body  # no manual dir → nothing manual rendered

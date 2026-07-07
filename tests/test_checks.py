@@ -7,7 +7,7 @@ runs and nothing on the host is touched.
 from __future__ import annotations
 
 from cli import checks
-from cli.checks import FAIL, OK, WARN
+from cli.checks import FAIL, OK, WARN, check_usage_tool
 
 
 def _which(present):
@@ -106,6 +106,7 @@ def test_secrets_ok_when_present(monkeypatch, tmp_path):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "z")
     c = checks.check_secrets()
     assert c.status == OK
 
@@ -256,6 +257,20 @@ def test_check_graphify_hook_warn_when_hook_missing():
     assert c.fix is not None
 
 
+# --------------------------- usage tool --------------------------- #
+def test_check_usage_tool_ok_when_node_runtime_present():
+    check = check_usage_tool(which=lambda exe: "/usr/bin/npx" if exe == "npx" else None)
+    assert check.status == OK
+    assert check.name == "usage"
+
+
+def test_check_usage_tool_warn_when_node_runtime_absent():
+    check = check_usage_tool(which=lambda exe: None)
+    assert check.status == WARN
+    assert "npx" in check.detail.lower() or "node" in check.detail.lower()
+    assert check.fix is None
+
+
 def test_check_graphify_hook_warn_when_graphify_absent():
     from pathlib import Path
 
@@ -265,3 +280,33 @@ def test_check_graphify_hook_warn_when_graphify_absent():
         root=Path("."),
     )
     assert c.status == WARN
+
+
+# --------------------------- run_all: usage_which injection --------------------------- #
+def test_run_all_threads_usage_which_into_check_usage_tool(tmp_path, monkeypatch):
+    # A dedicated `usage_which` param must reach check_usage_tool through
+    # run_all — before this fix, check_usage_tool() was called with no args
+    # inside run_all, so injection never reached it end-to-end (only via a
+    # direct check_usage_tool() call). A fake reporting "nothing on PATH"
+    # must produce a WARN status entry named "usage".
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    out = checks.run_all(
+        home=tmp_path, root=tmp_path,
+        graphify_status_fn=lambda: {"installed": True},
+        usage_which=lambda exe: None,
+    )
+    usage_check = next(c for c in out if c.name == "usage")
+    assert usage_check.status == WARN
+
+
+def test_run_all_default_usage_which_is_regression_safe(tmp_path, monkeypatch):
+    # No usage_which passed → behaves as before (real shutil.which via
+    # check_usage_tool's own default). Just confirms run_all() still returns a
+    # "usage" check with no args, unchanged from prior behavior.
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    out = checks.run_all(
+        home=tmp_path, root=tmp_path,
+        graphify_status_fn=lambda: {"installed": True},
+    )
+    names = {c.name for c in out}
+    assert "usage" in names

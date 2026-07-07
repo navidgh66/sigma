@@ -379,3 +379,34 @@ def test_parser_research_web_flag():
     assert a.web is True
     b = build_parser().parse_args(["research", "topic", "--deep"])
     assert b.deep is True and b.web is False
+
+
+# --------------------------------------------------------------------------- #
+# cmd_research wiring — real synthesis must actually fire on the CLI path
+# --------------------------------------------------------------------------- #
+def test_cmd_research_passes_a_synthesis_runner(tmp_path, monkeypatch):
+    """The whole point of the real-synthesis feature is dead unless cmd_research
+    actually passes a synthesis_runner into research(). Capture the kwargs
+    cmd_research calls research(...) with and assert it's wired, not None.
+    """
+    import cli.main as main_mod
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\nmodels: [claude]\n")
+
+    captured = {}
+
+    def fake_research(topic, models, ws, **kwargs):
+        captured.update(kwargs)
+        captured["topic"] = topic
+        out = ws / "research.md"
+        ws.mkdir(parents=True, exist_ok=True)
+        out.write_text("# stub\n")
+        return out
+
+    monkeypatch.setattr(main_mod, "research", fake_research)
+
+    ns = argparse.Namespace(topic="wiring check", models=None, deep=False, web=False)
+    rc = main_mod.cmd_research(ns)
+    assert rc == 0
+    assert captured.get("synthesis_runner") is not None

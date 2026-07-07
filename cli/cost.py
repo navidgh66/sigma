@@ -99,7 +99,7 @@ def routing_for(op: str) -> Dict[str, str]:
             "advisor": TIER_STRONG,
         }
     if op == "research":
-        return {"fan-out": TIER_MID}
+        return {"fan-out": TIER_MID, "synthesis": TIER_STRONG}
     if op == "eval":
         # The system-under-test can be any tier; the judge reasons → strong.
         return {"sut": TIER_MID, "judge": TIER_STRONG}
