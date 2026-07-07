@@ -175,7 +175,7 @@ def test_run_research_includes_search_tools():
     def model_runner(model, prompt, deep=False):
         return ModelResult(model, True, f"{model}-findings")
 
-    def search_runner(tool, prompt):
+    def search_runner(tool, prompt, deep=False):
         return ModelResult(tool, True, f"{tool}-findings")
 
     results = run_research(
@@ -191,12 +191,46 @@ def test_run_research_passes_bare_topic_to_search_tools_not_full_brief():
     def model_runner(model, prompt, deep=False):
         return ModelResult(model, True, "model-findings")
 
-    def search_runner(tool, query):
+    def search_runner(tool, query, deep=False):
         seen["query"] = query
         return ModelResult(tool, True, "tool-findings")
 
     run_research("my topic", ["claude"], tools=["firecrawl"], runner=model_runner, search_runner=search_runner)
     assert seen["query"] == "my topic"
+
+
+def test_run_research_deep_true_passes_deep_to_search_tools():
+    seen = {}
+
+    def model_runner(model, prompt, deep=False):
+        return ModelResult(model, True, "model-findings")
+
+    def search_runner(tool, query, deep=False):
+        seen["deep"] = deep
+        return ModelResult(tool, True, "tool-findings")
+
+    run_research(
+        "topic", ["claude"], tools=["firecrawl"], runner=model_runner,
+        search_runner=search_runner, deep=True,
+    )
+    assert seen["deep"] is True
+
+
+def test_run_research_web_only_does_not_set_deep_on_search_tools():
+    seen = {}
+
+    def model_runner(model, prompt, deep=False):
+        return ModelResult(model, True, "model-findings")
+
+    def search_runner(tool, query, deep=False):
+        seen["deep"] = deep
+        return ModelResult(tool, True, "tool-findings")
+
+    run_research(
+        "topic", ["claude"], tools=["firecrawl"], runner=model_runner,
+        search_runner=search_runner, web=True,
+    )
+    assert seen["deep"] is False
 
 
 # --------------------------- synthesis --------------------------- #
