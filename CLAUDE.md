@@ -249,6 +249,12 @@ keeps only what Claude Code cannot do in-session, plus setup.
   runtime — `rich` powers the kanban board only).
 - Markdown templates use YAML frontmatter.
 - Every research claim is cited; separate fact from inference.
+- **Release checklist**: every version bump (`cli/__init__.py` +
+  `.claude-plugin/plugin.json`) MUST land in the SAME change as a README.md
+  update — new commands, new modules under `## 📦 What's inside`/`## ⚙️ The
+  CLI`, and the pytest count if it changed. CLAUDE.md gets the same treatment
+  (Commands section, Layout table, new Gotchas). A version bump with no
+  README/CLAUDE.md diff is a signal something was missed, not a smaller diff.
 
 ## Gotchas
 
