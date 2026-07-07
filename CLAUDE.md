@@ -21,12 +21,16 @@ eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
 actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
 session-context` + a SessionStart hook feed `learn` artifacts back into every new
 session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
-cleanup pass after each verified cycle. 663 pytest tests, ruff clean.
+cleanup pass after each verified cycle. `sigma usage` wraps ccusage for real
+Claude Code token/cache/cost visibility, distinct from `sigma cost`'s own
+op-ledger. Research now fans out to a second HTTP search-tool provider tier
+(Firecrawl) alongside the subscription model CLIs, with a real cross-referencing
+synthesis pass. 744 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 613 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 744 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -87,7 +91,9 @@ sigma review                         # 3-axis review of local diff vs HEAD (code
 sigma review <PR#|url>               # review a PR (gh pr diff) + post a summary comment
 sigma review a..b                    # review a git range
 sigma review --check                 # CI gate: exit 1 on a CRITICAL/HIGH finding or an inconclusive axis
-sigma cost                           # report the token-cost ledger (sigma/costs.jsonl)
+sigma cost                           # report sigma's OWN heavy-op token-cost ledger (sigma/costs.jsonl)
+sigma usage                          # real Claude Code token/cache/cost via ccusage (wraps `npx ccusage@latest`)
+sigma usage claude session --json    # passthrough args forward to ccusage unmodified
 
 # Setup & health
 sigma onboard                        # friendly first-run: domains, API keys, RTK, caveman, ccstatusline
@@ -122,11 +128,15 @@ about what's unresolved. Editor ≠ griller, same law as `execute_cycle`.
 
 ```
 cli/__init__.py     __version__
-cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / scout / prune / profile / review / eval / trajectory / cost / launch (pipeline stages are plugin-only)
-cli/config.py       sigma.config.yml load/write/validate + local override merge
+cli/main.py         argparse CLI: init / research / loop / hermes / board / weave / doctor / onboard / learn / scout / prune / profile / review / eval / trajectory / cost / usage / launch (pipeline stages are plugin-only)
+cli/config.py       sigma.config.yml load/write/validate + local override merge (incl. optional `research.tools`, default empty)
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
-cli/models.py       research adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
-cli/research.py     parallel fan-out + cited aggregation → research.md; --web quick / --deep exhaustive web-grounded brief
+cli/models.py       tier-1 model-CLI adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
+cli/research_brief.py  canonical brief templates (quick/web/deep) + shared citation/confidence rules — single source of truth consumed by cli/research.py + cli/research_docs.py
+cli/search_providers.py  tier-2 HTTP search-tool adapters (Firecrawl first); stdlib urllib, ModelResult-shaped output so aggregate()/synthesize() treat both tiers uniformly; opt-in via FIRECRAWL_API_KEY
+cli/research.py     two-tier parallel fan-out (model CLIs + search tools) + manual-findings reader + REAL cross-referencing synthesis pass (claude_synthesis_runner default) → cited research.md; --web quick / --deep exhaustive web-grounded brief
+cli/research_docs.py  pure render functions: generate the shared-rules marker block for commands/research.md + persona docs from research_brief.py; regenerate via scripts/regen_research_docs.py
+cli/usage.py        thin ccusage wrapper (node-runtime detection + argv builder) — real Claude Code session token/cache/cost via `npx ccusage@latest`, distinct from cli/cost.py's own op-ledger
 cli/learn.py        sigma learn — agent-driven codebase walkthrough → ARCHITECTURE.md + .tours/<slug>.tour; always-on graphify build (--no-graph to skip) injects GRAPH_REPORT.md into the prompt
 cli/graphify.py     pure+injectable: detect/install (uv→pipx→pip)/setup graphify (confirm-gated), build extract argv, read GRAPH_REPORT.md as a capped prompt block — shells out, never imports (sigma stays 3.9)
 cli/scout.py        pure: domain→query map, score_relevance, rank, dedup_against_bundle, parse skillsmp /search payload (sigma scout)
@@ -152,7 +162,7 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify/usage-tool); run_all()'s `usage_which` param is dedicated to check_usage_tool, deliberately NOT reusing the `which` param check_models/check_model_auth already use (different lookup semantics — model CLIs vs. node runtime)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline, graphify, SessionStart hook, + offer to build learn artifacts (step 11, confirm-gated, no-op if they exist; learn_fn injectable so tests never spawn an agent)
 cli/uninstall.py    pure build_plan (launcher/~/.sigma/plugin surfaces) + run_uninstall (confirm-gated, separate .env-secrets confirm, best-effort, injectable I/O); leaves global RTK/caveman/statusline
@@ -242,6 +252,23 @@ keeps only what Claude Code cannot do in-session, plus setup.
 
 ## Gotchas
 
+- `sigma research`'s real synthesis (`cli/research.py`'s `synthesize`) runs on
+  `claude_synthesis_runner` by default — a real `run_model("claude", prompt)`
+  call, unrouted (always the CLI default model, not the `TIER_STRONG` tier
+  `cli/cost.py`'s `routing_for("research")["synthesis"]` already provisions).
+  That routing key exists but is deliberately UNCONSUMED — no `--route` flag
+  on `sigma research` yet. A failed/unavailable claude CLI degrades to the
+  static placeholder text (fail-safe), never crashes the run.
+- The in-session `/research` command's claude lane invokes a `deep-research`
+  skill IF ONE IS AVAILABLE in the session (sigma does not vendor/ship one —
+  it's a conditional capability check, not a guarantee). A clean
+  `/plugin install sigma@sigma` with no external deep-research skill loaded
+  falls back to MCP search-tool dispatch + the model's own reasoning, with an
+  explicit "no such skill available" note — never a silent substitution.
+- Search-tool fan-out (`run_research`'s `tool_futures`) passes the BARE
+  `topic` string to `search_runner`, never the full LLM brief `build_prompt`
+  produces — a search API query is not a chat instruction paragraph. Only the
+  model-CLI fan-out (`model_futures`) gets the full brief.
 - `execute_cycle` raises `ValueError` if the same runner instance is passed as
   both maker and checker — separation is enforced, not advisory. Same for the
   logic checker: it must be distinct from both.
