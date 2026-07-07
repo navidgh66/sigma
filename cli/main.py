@@ -80,12 +80,15 @@ def cmd_init(args: argparse.Namespace) -> int:
 # research
 # --------------------------------------------------------------------------- #
 def cmd_research(args: argparse.Namespace) -> int:
+    from cli.search_providers import available_tools
+
     cfg = load_config()
     models = (
         [m.strip() for m in args.models.split(",") if m.strip()]
         if args.models
         else cfg.models
     )
+    tools = cfg.tools
     ws = spec_workspace(args.topic)
     deep = getattr(args, "deep", False)
     web = getattr(args, "web", False) and not deep  # deep wins if both given
@@ -94,11 +97,15 @@ def cmd_research(args: argparse.Namespace) -> int:
     _print(f"  models requested: {', '.join(models)}")
     avail = available_models(models)
     _print(f"  models available: {', '.join(avail) or '(none)'}")
+    if tools:
+        avail_tools = available_tools(tools)
+        _print(f"  search tools requested: {', '.join(tools)}")
+        _print(f"  search tools available: {', '.join(avail_tools) or '(none — API key not configured)'}")
     if deep:
         _print("  mode: deep (web-grounded — this may take a few minutes)")
     elif web:
         _print("  mode: web (quick web-grounded pass)")
-    out = research(args.topic, models, ws, deep=deep, web=web)
+    out = research(args.topic, models, ws, requested_tools=tools, deep=deep, web=web)
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
     return 0
