@@ -56,7 +56,7 @@ def available_tools(requested: List[str]) -> List[str]:
     return out
 
 
-def _default_fetch(url: str, api_key: str) -> Optional[dict]:
+def _default_fetch(url: str, api_key: str, timeout: int = _TIMEOUT) -> Optional[dict]:
     """POST a Firecrawl search request; return parsed JSON or None on failure."""
     body = json.dumps({"query": url}).encode("utf-8")
     req = urllib.request.Request(
@@ -69,7 +69,7 @@ def _default_fetch(url: str, api_key: str) -> Optional[dict]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 (https only)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (https only)
             raw = resp.read().decode("utf-8", "replace")
         return json.loads(raw)
     except (urllib.error.URLError, ValueError, OSError):
@@ -95,7 +95,7 @@ def _format_findings(data: dict) -> str:
 def run_search_tool(
     tool: str,
     prompt: str,
-    fetch: Callable[[str, str], Optional[dict]] = _default_fetch,
+    fetch: Callable[..., Optional[dict]] = _default_fetch,
     timeout: int = _TIMEOUT,
 ) -> ModelResult:
     """Run one search tool's HTTP call for `prompt`. Never raises."""
@@ -109,7 +109,7 @@ def run_search_tool(
             model=tool, ok=False, text="", error="API key not configured", skipped=True
         )
 
-    data = fetch(prompt, api_key)
+    data = fetch(prompt, api_key, timeout=timeout)
     if data is None:
         return ModelResult(model=tool, ok=False, text="", error="search request failed")
 
