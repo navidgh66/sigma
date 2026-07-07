@@ -334,8 +334,17 @@ def run_all(
     caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
     graphify_status_fn: Optional[Callable] = None,
+    usage_which: Optional[Callable] = None,
 ) -> List[Check]:
-    """Run every probe and return the results in display order."""
+    """Run every probe and return the results in display order.
+
+    `usage_which` is a DEDICATED injection point for `check_usage_tool`'s node-
+    runtime probe (npx/bunx) — deliberately NOT the same `which` used above for
+    `check_models`/`check_model_auth` (model CLI detection: claude/gemini/codex).
+    Conflating the two would let a test's fake `which` for one silently affect
+    the other. Defaults to None (real `shutil.which`), so existing callers are
+    unaffected.
+    """
     return [
         check_python(),
         check_deps(),
@@ -351,7 +360,7 @@ def run_all(
         check_statusline(status_fn=statusline_status_fn),
         check_graphify(status_fn=graphify_status_fn),
         check_graphify_hook(root=root),
-        check_usage_tool(),
+        check_usage_tool(which=usage_which),
     ]
 
 
