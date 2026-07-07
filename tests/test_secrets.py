@@ -67,6 +67,10 @@ def test_known_keys_defined():
     assert "OPENAI_API_KEY" in secrets.KNOWN_KEYS
 
 
+def test_firecrawl_key_is_known():
+    assert "FIRECRAWL_API_KEY" in secrets.KNOWN_KEYS
+
+
 def test_missing_keys_reports_absent(tmp_path, monkeypatch):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)

@@ -17,7 +17,7 @@ from typing import Dict, List
 from cli.paths import sigma_home
 
 # The model API keys sigma knows how to use.
-KNOWN_KEYS: List[str] = ["GEMINI_API_KEY", "OPENAI_API_KEY"]
+KNOWN_KEYS: List[str] = ["GEMINI_API_KEY", "OPENAI_API_KEY", "FIRECRAWL_API_KEY"]
 
 ENV_FILENAME = ".env"
 _OWNER_RW = 0o600
