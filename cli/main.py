@@ -764,6 +764,29 @@ def cmd_cost(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# usage (thin ccusage wrapper — real Claude Code session token/cache/cost)
+# --------------------------------------------------------------------------- #
+def _usage_spawn(argv: list) -> int:
+    """Run ccusage interactively (inherits stdio); return its exit code."""
+    import subprocess
+
+    try:
+        return subprocess.call(argv)
+    except OSError:
+        return 1
+
+
+def cmd_usage(args: argparse.Namespace) -> int:
+    from cli.usage import MISSING_NODE_MESSAGE, build_argv, node_runtime_available
+
+    if not node_runtime_available():
+        _print(MISSING_NODE_MESSAGE)
+        return 0
+    passthrough = list(getattr(args, "usage_args", None) or [])
+    return _usage_spawn(build_argv(passthrough))
+
+
+# --------------------------------------------------------------------------- #
 # launch (default: open Claude Code with sigma context)
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -926,6 +949,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
+
+    pu = sub.add_parser(
+        "usage",
+        help="Claude Code token/cache/cost usage (wraps ccusage)",
+    )
+    pu.add_argument("usage_args", nargs=argparse.REMAINDER, help="passthrough args for ccusage")
+    pu.set_defaults(func=cmd_usage)
 
     ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
     ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
