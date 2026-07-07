@@ -1,6 +1,6 @@
 ---
 command: /research
-description: Multi-model parallel research (real Gemini/GPT CLI dispatch + Claude-side deep-research skill), MCP search-tool grounding, and manual findings — synthesized into one cited research.md
+description: Multi-model parallel research (real Gemini/GPT CLI dispatch + Claude-side deep-research skill if available), MCP search-tool grounding, and manual findings — synthesized into one cited research.md
 stage: 1
 inputs: ["topic"]
 outputs: ["sigma/specs/{date}-{slug}/research.md"]
@@ -15,11 +15,18 @@ roleplaying as other models.
 ## Behavior
 
 1. Take the research `topic`.
-2. **Claude-side deep research** — invoke the `deep-research` skill directly
-   (it already uses firecrawl/exa MCP tools for grounded, cited findings).
-   This replaces dispatching a "claude-researcher" persona subagent — that
-   persona ran on the SAME model already running this session, so it added no
-   real capability beyond a self-instruction. `deep-research` does real work.
+2. **Claude-side deep research (if available)** — if a `deep-research` skill
+   (or an equivalent multi-source web-research skill) is installed in this
+   session, invoke it directly — it typically uses firecrawl/exa MCP tools for
+   grounded, cited findings, and is a stronger capability than a same-model
+   persona. sigma does not bundle this skill itself; it is only present when
+   an external source (e.g. an ECC plugin) has installed it. If no such skill
+   is available, fall back to the MCP search-tool dispatch in step 4 below
+   plus this model's own reasoning — state explicitly which path was used, no
+   silent substitution. This step (when the skill is available) replaces
+   dispatching a "claude-researcher" persona subagent — that persona ran on
+   the SAME model already running this session, so it added no real
+   capability beyond a self-instruction.
 3. **Real Gemini/GPT dispatch via Bash** — check CLI availability first
    (`which gemini`, `which codex` via the Bash tool). If found, invoke the
    REAL CLI as a subprocess:
