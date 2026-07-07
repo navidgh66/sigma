@@ -25,12 +25,13 @@ cleanup pass after each verified cycle. `sigma usage` wraps ccusage for real
 Claude Code token/cache/cost visibility, distinct from `sigma cost`'s own
 op-ledger. Research now fans out to a second HTTP search-tool provider tier
 (Firecrawl) alongside the subscription model CLIs, with a real cross-referencing
-synthesis pass. 744 pytest tests, ruff clean.
+synthesis pass; on `--deep` the Firecrawl tier also scrapes the top-3 result
+pages for full content, not just search snippets. 756 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 744 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 756 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -133,7 +134,7 @@ cli/config.py       sigma.config.yml load/write/validate + local override merge 
 cli/paths.py        DOMAINS (9), project root, spec workspace, slugify
 cli/models.py       tier-1 model-CLI adapters (claude -p / gemini -p --json / gpt via codex exec); clean_output; deep_args
 cli/research_brief.py  canonical brief templates (quick/web/deep) + shared citation/confidence rules — single source of truth consumed by cli/research.py + cli/research_docs.py
-cli/search_providers.py  tier-2 HTTP search-tool adapters (Firecrawl first); stdlib urllib, ModelResult-shaped output so aggregate()/synthesize() treat both tiers uniformly; opt-in via FIRECRAWL_API_KEY
+cli/search_providers.py  tier-2 HTTP search-tool adapters (Firecrawl first); stdlib urllib, ModelResult-shaped output so aggregate()/synthesize() treat both tiers uniformly; opt-in via FIRECRAWL_API_KEY; on deep=True scrapes top-3 deduped result URLs (/v1/scrape) for full-page content, capped + truncated (_SCRAPE_TEXT_CAP), folded into the same findings text — snippet-only when deep=False, byte-identical to pre-deep-crawl output
 cli/research.py     two-tier parallel fan-out (model CLIs + search tools) + manual-findings reader + REAL cross-referencing synthesis pass (claude_synthesis_runner default) → cited research.md; --web quick / --deep exhaustive web-grounded brief
 cli/research_docs.py  pure render functions: generate the shared-rules marker block for commands/research.md + persona docs from research_brief.py; regenerate via scripts/regen_research_docs.py
 cli/usage.py        thin ccusage wrapper (node-runtime detection + argv builder) — real Claude Code session token/cache/cost via `npx ccusage@latest`, distinct from cli/cost.py's own op-ledger
@@ -275,6 +276,19 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `topic` string to `search_runner`, never the full LLM brief `build_prompt`
   produces — a search API query is not a chat instruction paragraph. Only the
   model-CLI fan-out (`model_futures`) gets the full brief.
+- Firecrawl deep-crawl (`run_search_tool`'s `deep` param) fires ONLY when
+  `run_research`'s own `deep` flag is set — `web=True` alone does NOT trigger
+  scraping on the search-tool tier (unlike the model-CLI tier, where
+  `web_search = deep or web`). Scraping is a real extra HTTP call per URL, so
+  it's gated to the exhaustive `--deep` path only. Top-3 result URLs are
+  deduped (`dict.fromkeys`) before scraping — a duplicate URL in the top N
+  (e.g. canonical + mirror) is scraped once, not twice. Scraped markdown is
+  capped at `_SCRAPE_TEXT_CAP` chars with a truncation notice (mirrors
+  `cli/graphify.py`'s `report_block` cap) — unbounded page content would
+  otherwise bloat `research.md` and the downstream synthesis prompt. A
+  per-URL scrape failure degrades that item to snippet-only; never aborts the
+  call. `deep=False` issues zero scrape calls — byte-identical to pre-deep-crawl
+  output (regression-locked by test).
 - `execute_cycle` raises `ValueError` if the same runner instance is passed as
   both maker and checker — separation is enforced, not advisory. Same for the
   logic checker: it must be distinct from both.
