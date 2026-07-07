@@ -196,6 +196,81 @@ generated, NOT covered by the drift-lock test). The synthesis-pass problem
 references findings organically in-session; only the CLI path's static
 placeholder needed the real `synthesize()` call.
 
+### Plugin surface — the claude researcher lane is roleplay, drop it
+
+`subagents/researchers/claude-researcher.md` is dispatched as a Claude Code
+Task subagent — which runs on the SAME model already running the session.
+There is no separate "claude CLI" being invoked in-session (that only happens
+on the CLI path, via `claude -p` subprocess). So today's in-session claude lane
+is a subagent told to lean into "deep reasoning, code-aware synthesis" — a
+persona wrapped around the same model, not a distinct capability.
+
+For genuine Claude-side deep research, sigma already has a real tool:
+`skills/deep-research` (per its description: multi-source research using
+firecrawl + exa MCPs, synthesized cited reports). `commands/research.md`'s
+claude lane changes from "dispatch claude-researcher subagent" to "invoke the
+`deep-research` skill directly" — real firecrawl/exa-backed grounding instead
+of a persona instructing itself to behave a certain way.
+
+`subagents/researchers/claude-researcher.md` is removed;
+`skills/sigma-domains`-style skill invocation replaces it in
+`commands/research.md`'s Behavior section.
+
+### Plugin surface — real Gemini/GPT dispatch via Bash, not roleplay
+
+The same roleplay problem applies to `gemini-researcher.md` and
+`gpt-researcher.md`: dispatched as Task subagents, they also run on Claude's
+model — "lean into broad web recall" is an instruction, not a mechanism. A user
+with real Gemini/ChatGPT subscriptions gets zero actual model diversity from
+this path today; every researcher is Claude in a different costume.
+
+Fix: `/research`'s Behavior section adds an explicit Bash-tool dispatch step
+for these two lanes, reusing the exact argv `cli/models.py`'s `ADAPTERS`
+already define — the in-session agent runs the real CLI as a subprocess via
+the Bash tool, the same way `sigma research` does via Python's
+`subprocess.run`, just invoked from the agent side instead:
+
+```
+gemini -p "<brief>" --output-format json
+codex exec --sandbox read-only --color never "<brief>"
+```
+
+This requires the CLIs to be installed and authenticated locally (same
+precondition `cli/models.py.available()` checks) — `/research` first checks
+availability (`which gemini`, `which codex` via Bash) and, if absent, falls
+back to the persona-subagent dispatch with an explicit note ("gemini CLI not
+found locally — using Claude-side approximation, not real Gemini") so the
+degradation is visible, never silent.
+
+`gemini-researcher.md` / `gpt-researcher.md` are repurposed: instead of chat
+personas to roleplay, their body becomes the argv template + brief-injection
+instructions the agent follows to build the real Bash command. Output (raw CLI
+stdout) gets cleaned using the same rules as `cli/models.py`'s `clean_output`
+(gemini JSON-envelope extraction, codex event-noise stripping) — described in
+prose in the persona doc since the in-session agent has no direct import of
+`cli/models.py`, but referencing it as the canonical cleaning logic so the two
+surfaces don't silently diverge on how they parse the same CLI output.
+
+### Manual research input lane
+
+New: a human (or an earlier, unrelated session) can drop raw findings as
+markdown into `sigma/specs/{date}-{slug}/manual/*.md` before or during a
+research run. `/research`'s Behavior section adds a step: check that directory
+for files; treat each one as a pre-completed source — `ModelResult(model=
+f"manual:{filename}", ok=True, text=<file content>)` — folded into the same
+combine/cross-reference step as CLI-dispatched, MCP-search, and real-model
+findings. No new format required beyond "themed findings with source URLs,
+same rules as everything else" (from `research_brief.py`) — unstructured prose
+is still accepted (folded in as unstructured context) but won't get the same
+"confirmed by 2+ sources" promotion in synthesis unless it cites URLs like the
+other lanes.
+
+On the CLI path, `cli/research.py`'s `research()` gains an equivalent read
+step: `_read_manual_findings(workspace)` globs `workspace/manual/*.md`, wraps
+each into a `ModelResult`, and includes them in the list passed to `aggregate`
++ `synthesize` — same mechanism, no MCP/agent dependency, so the manual lane
+works identically on both surfaces.
+
 ### Synthesis pass
 
 ```python
@@ -251,9 +326,19 @@ call site.
   placeholder, no crash); regression lock — `tools=[]` config produces output
   identical to pre-change shape aside from the now-real synthesis section.
 - `tests/test_research_docs.py` (new): renders `commands/research.md` and each
-  `subagents/researchers/<name>.md` body from `research_brief.py` /
+  remaining `subagents/researchers/<name>.md` body from `research_brief.py` /
   `research_docs.py` and asserts it matches the checked-in file content — the
   drift lock for defect 1.
+- `tests/test_research.py` (extended further): `_read_manual_findings` reads
+  `workspace/manual/*.md` into `ModelResult`s (fixture dir with 0/1/N files);
+  manual results flow into `aggregate`/`synthesize` alongside CLI results;
+  missing `manual/` dir → empty list, never an error (fail-safe, matches every
+  other optional-input convention in this module).
+- No automated test for the in-session Bash-dispatch or `deep-research`-skill
+  behavior changes to `commands/research.md` — those are prose instructions to
+  an agent, not Python; verified by manual dry-run (`sigma research --deep`
+  equivalent invoked in-session) during rollout, per the "Manual verification"
+  rollout step below.
 
 ## Rollout
 
@@ -261,9 +346,18 @@ call site.
    land first; regenerate `commands/research.md` + persona docs from them
    (content-preserving — same rules, now generated).
 2. `cli/search_providers.py` + Firecrawl adapter + config `tools:` key.
-3. `cli/research.py` synthesis pass + fan-out extension.
-4. Cleanup of defects 4 & 5.
-5. Full test suite green, ruff clean.
+3. `cli/research.py` synthesis pass + fan-out extension + `_read_manual_findings`.
+4. `commands/research.md` + persona docs updated: claude lane → `deep-research`
+   skill invocation; gemini/gpt lanes → real Bash-tool CLI dispatch (with
+   availability check + visible fallback); MCP search-tool dispatch step;
+   manual-findings-directory check step. `claude-researcher.md` removed.
+5. Cleanup of defects 4 & 5.
+6. Full test suite green, ruff clean.
+7. Manual verification: run `/research` in-session on a real topic, confirm
+   gemini/codex CLIs actually get invoked (visible in Bash tool calls, not
+   just described), confirm manual findings in `manual/*.md` get folded in,
+   confirm the claude lane produces a `deep-research`-skill-shaped report
+   rather than a subagent persona reply.
 
 ## Open questions / risks
 
@@ -274,3 +368,14 @@ call site.
   no plugin framework) — `cli/search_providers.py`'s `SearchAdapter` dataclass
   shape is intentionally simple enough that adding one later is a small, not
   architectural, change, but that's a future decision, not scope creep now.
+- Gateway adapters (OpenRouter/LiteLLM — one HTTP adapter, many models via one
+  paid API key) were considered and explicitly deferred: the user has real
+  Gemini/GPT subscriptions already, so real CLI dispatch (this spec) gets
+  genuine model diversity without introducing a pay-per-token dependency that
+  would break sigma's "subscription-backed, no API credit" principle for the
+  model lanes. Revisit only if subscription CLI dispatch proves insufficient.
+- The Bash-tool dispatch step for gemini/gpt depends on those CLIs being
+  installed + authenticated in whatever environment the in-session agent runs
+  in — if a session runs somewhere without local CLI access (e.g. a sandboxed
+  remote agent), the visible fallback-to-persona note is the safety valve, not
+  a silent degrade.
