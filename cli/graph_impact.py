@@ -125,3 +125,25 @@ def impact_for(graph: dict, changed_files: Sequence[str]) -> List[FileImpact]:
             dependents=sorted(dependents)[:_PER_FILE_CAP],
         ))
     return results
+
+
+def render_impact_section(impacts: List[FileImpact]) -> str:
+    """Render the informational Impact markdown block (never affects the gate)."""
+    header = "## Impact (knowledge graph)"
+    preamble = (
+        "_Derived from graphify's `graph.json`; informational only — does not affect "
+        "the review verdict._"
+    )
+    has_any = any(fi.nodes or fi.dependents for fi in impacts)
+    if not has_any:
+        return f"{header}\n\n{preamble}\n\n_No graph nodes matched the changed files._\n"
+
+    lines = [header, "", preamble, ""]
+    for fi in impacts:
+        if not (fi.nodes or fi.dependents):
+            continue
+        nodes = ", ".join(fi.nodes) if fi.nodes else "—"
+        deps = ", ".join(fi.dependents) if fi.dependents else "none"
+        lines.append(f"- **{fi.file}** → nodes: {nodes} · dependents: {deps}")
+    lines.append("")
+    return "\n".join(lines)

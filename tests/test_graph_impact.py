@@ -3,7 +3,12 @@
 import json
 from pathlib import Path
 
-from cli.graph_impact import FileImpact, impact_for, load_graph
+from cli.graph_impact import (
+    FileImpact,
+    impact_for,
+    load_graph,
+    render_impact_section,
+)
 
 
 def _write_graph(root: Path, obj) -> None:
@@ -87,3 +92,22 @@ def test_impact_caps_and_dedup():
     out = impact_for({"nodes": nodes, "edges": []}, ["cli/foo.py"])
     assert len(out[0].nodes) == 20  # _PER_FILE_CAP
     assert out[0].nodes == sorted(set(n["name"] for n in nodes))[:20]
+
+
+def test_render_non_empty():
+    out = render_impact_section([FileImpact("cli/foo.py", ["Foo"], ["Bar"])])
+    assert out.startswith("## Impact (knowledge graph)")
+    assert "cli/foo.py" in out
+    assert "Foo" in out and "Bar" in out
+    assert "informational" in out.lower()
+
+
+def test_render_all_empty_says_no_match():
+    out = render_impact_section([FileImpact("cli/foo.py", [], [])])
+    assert "## Impact (knowledge graph)" in out
+    assert "No graph nodes matched" in out
+
+
+def test_render_is_deterministic():
+    impacts = [FileImpact("a.py", ["N"], ["D"])]
+    assert render_impact_section(impacts) == render_impact_section(impacts)
