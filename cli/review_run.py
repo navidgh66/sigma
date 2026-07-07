@@ -24,6 +24,7 @@ from typing import Callable, Dict, List, Optional
 
 from cli import review as rv
 from cli.cost import build_record, estimate, ledger_path, read_ledger
+from cli.graph_impact import impact_for, load_graph, render_impact_section
 from cli.domains_index import context_engines_dir
 from cli.loop import ratchet_to_skills
 from cli.profile_manifest import profile_path, staleness
@@ -172,6 +173,17 @@ def run_review(
     results = _fan_out(runners, prompts, root, max_workers)
     decision = rv.gate(results)
     report = rv.render_report(change, results, decision, domains)
+
+    # Graph-aware diff impact (informational; never affects the gate). If graphify's
+    # graph.json is present, append a per-file node/dependent Impact section. Any
+    # failure here is swallowed — a completed review must never break on the extra.
+    try:
+        graph = load_graph(root)
+        if graph is not None:
+            section = render_impact_section(impact_for(graph, change.files))
+            report = report + "\n" + section
+    except Exception:  # noqa: BLE001 — impact is best-effort, never fatal
+        pass
 
     # Writing the report / ratcheting touch disk — degrade gracefully on OSError
     # (read-only fs, disk full) rather than crashing a completed review.
