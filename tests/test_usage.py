@@ -1,6 +1,6 @@
 import argparse
 
-from cli.main import cmd_usage
+from cli.main import cmd_usage, main
 from cli.usage import MISSING_NODE_MESSAGE, build_argv, node_runtime_available
 
 
@@ -80,3 +80,49 @@ def test_cmd_usage_passes_through_exit_code(monkeypatch):
     rc = cmd_usage(args)
 
     assert rc == 7
+
+
+# --------------------------------------------------------------------------- #
+# Regression: argparse REMAINDER swallows a leading flag (Finding 1).
+#
+# `sigma usage --json` used to hit a well-known argparse limitation: when the
+# FIRST passthrough token starts with `-`/`--`, argparse's own optional-arg
+# matching intercepts it before REMAINDER can capture it, raising
+# SystemExit(2) instead of forwarding to ccusage. main() now intercepts raw
+# argv for "usage" before parse_args runs, so this must reach _usage_spawn
+# with the flag intact.
+# --------------------------------------------------------------------------- #
+def test_main_usage_forwards_leading_flag_verbatim(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr("cli.usage.shutil.which", lambda exe: "/usr/bin/npx" if exe == "npx" else None)
+    monkeypatch.setattr("cli.main._usage_spawn", lambda argv: calls.append(argv) or 0)
+
+    rc = main(["usage", "--json"])
+
+    assert rc == 0
+    assert calls == [["npx", "-y", "ccusage@latest", "--json"]]
+
+
+def test_main_usage_forwards_leading_flag_with_value_verbatim(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr("cli.usage.shutil.which", lambda exe: "/usr/bin/npx" if exe == "npx" else None)
+    monkeypatch.setattr("cli.main._usage_spawn", lambda argv: calls.append(argv) or 0)
+
+    rc = main(["usage", "--since", "7daysAgo"])
+
+    assert rc == 0
+    assert calls == [["npx", "-y", "ccusage@latest", "--since", "7daysAgo"]]
+
+
+def test_main_usage_still_forwards_plain_positional_first_token(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr("cli.usage.shutil.which", lambda exe: "/usr/bin/npx" if exe == "npx" else None)
+    monkeypatch.setattr("cli.main._usage_spawn", lambda argv: calls.append(argv) or 0)
+
+    rc = main(["usage", "claude", "session"])
+
+    assert rc == 0
+    assert calls == [["npx", "-y", "ccusage@latest", "claude", "session"]]

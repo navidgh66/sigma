@@ -766,10 +766,8 @@ def cmd_cost(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # usage (thin ccusage wrapper — real Claude Code session token/cache/cost)
 # --------------------------------------------------------------------------- #
-def _usage_spawn(argv: list) -> int:
+def _usage_spawn(argv: List[str]) -> int:
     """Run ccusage interactively (inherits stdio); return its exit code."""
-    import subprocess
-
     try:
         return subprocess.call(argv)
     except OSError:
@@ -954,6 +952,13 @@ def build_parser() -> argparse.ArgumentParser:
         "usage",
         help="Claude Code token/cache/cost usage (wraps ccusage)",
     )
+    # NOTE: main() intercepts raw argv for "usage" BEFORE parse_args ever runs
+    # (see main()'s docstring-comment there) — a flag-first passthrough like
+    # `sigma usage --json` would otherwise hit argparse's known REMAINDER
+    # limitation and raise SystemExit(2) instead of reaching ccusage. This
+    # REMAINDER declaration is therefore dead on the real invocation path; it
+    # is kept only so `sigma --help` / `sigma usage --help` (top-level
+    # listing) still shows `usage` with its passthrough-args hint.
     pu.add_argument("usage_args", nargs=argparse.REMAINDER, help="passthrough args for ccusage")
     pu.set_defaults(func=cmd_usage)
 
@@ -983,6 +988,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # `usage` is a pure passthrough to ccusage: everything after `usage` is
+    # forwarded verbatim (see cli/usage.py::build_argv). argparse's REMAINDER
+    # (used on the `usage` subparser below, kept only so `sigma --help` still
+    # lists `usage`) has a well-known limitation: if the FIRST passthrough
+    # token looks like an option (`-`/`--` prefix, e.g. `sigma usage --json`),
+    # argparse's own optional-argument matching intercepts it BEFORE
+    # REMAINDER can claim it, raising SystemExit(2) ("unrecognized
+    # arguments") instead of forwarding it. This is not fixable by tweaking
+    # REMAINDER itself, so we bypass argparse entirely for this one
+    # subcommand: take raw argv, and if its first token is "usage", forward
+    # everything after it untouched — no reinterpretation, no flag matching.
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "usage":
+        return cmd_usage(argparse.Namespace(usage_args=raw[1:]))
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
