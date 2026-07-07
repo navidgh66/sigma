@@ -230,3 +230,38 @@ def test_run_all_returns_checks(tmp_path, monkeypatch):
     names = {c.name for c in out}
     assert "python" in names and "rtk" in names and "secrets" in names
     assert "graphify" in names
+
+
+# --------------------------- graphify hook --------------------------- #
+def test_check_graphify_hook_ok_when_installed():
+    from pathlib import Path
+
+    c = checks.check_graphify_hook(
+        status_fn=lambda: {"installed": True},
+        hook_status_fn=lambda: {"installed": True},
+        root=Path("."),
+    )
+    assert c.status == OK
+
+
+def test_check_graphify_hook_warn_when_hook_missing():
+    from pathlib import Path
+
+    c = checks.check_graphify_hook(
+        status_fn=lambda: {"installed": True},
+        hook_status_fn=lambda: {"installed": False},
+        root=Path("."),
+    )
+    assert c.status == WARN
+    assert c.fix is not None
+
+
+def test_check_graphify_hook_warn_when_graphify_absent():
+    from pathlib import Path
+
+    c = checks.check_graphify_hook(
+        status_fn=lambda: {"installed": False},
+        hook_status_fn=lambda: {"installed": False},
+        root=Path("."),
+    )
+    assert c.status == WARN

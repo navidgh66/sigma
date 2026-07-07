@@ -249,6 +249,44 @@ def check_graphify(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("graphify", OK, "graphify installed (sigma learn builds a knowledge graph)")
 
 
+def check_graphify_hook(
+    status_fn: Optional[Callable[[], Dict]] = None,
+    hook_status_fn: Optional[Callable[[], Dict]] = None,
+    root: Optional[Path] = None,
+) -> Check:
+    """graphify post-commit hook: installed (auto-refreshes the graph on commit)?"""
+    root = root or Path(".")
+    if status_fn is None:
+        from cli.graphify import graphify_status
+
+        status_fn = graphify_status
+    if hook_status_fn is None:
+        from cli.graphify import graphify_hook_status
+
+        hook_status_fn = lambda: graphify_hook_status(root)  # noqa: E731
+
+    def _fix() -> bool:
+        from cli.graphify import setup_graphify_hook
+
+        return setup_graphify_hook(
+            status_fn=status_fn, hook_status_fn=hook_status_fn,
+            confirm=lambda _msg: True, root=root,
+        )
+
+    if not status_fn().get("installed"):
+        return Check(
+            "graphify-hook", WARN,
+            "graphify not installed — install it first to enable the auto-refresh hook",
+        )
+    if not hook_status_fn().get("installed"):
+        return Check(
+            "graphify-hook", WARN,
+            "graphify post-commit hook not installed (optional — refreshes the graph on commit)",
+            fix=("install the graphify post-commit hook", _fix),
+        )
+    return Check("graphify-hook", OK, "graphify post-commit hook installed (graph auto-refreshes)")
+
+
 def check_statusline(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     """ccstatusline: a node runtime present? statusLine configured in settings.json?"""
     if status_fn is None:
@@ -299,6 +337,7 @@ def run_all(
         check_caveman(status_fn=caveman_status_fn),
         check_statusline(status_fn=statusline_status_fn),
         check_graphify(status_fn=graphify_status_fn),
+        check_graphify_hook(root=root),
     ]
 
 
