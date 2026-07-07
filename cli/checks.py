@@ -249,6 +249,19 @@ def check_graphify(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("graphify", OK, "graphify installed (sigma learn builds a knowledge graph)")
 
 
+def check_usage_tool(which: Optional[Callable] = None) -> Check:
+    """Node runtime (npx/bunx) for `sigma usage` (wraps ccusage): available?"""
+    from cli.usage import node_runtime_available
+
+    if not node_runtime_available(which=which):
+        return Check(
+            "usage", WARN,
+            "npx/bunx not found (optional — 'sigma usage' wraps ccusage for "
+            "Claude Code token/cost visibility)",
+        )
+    return Check("usage", OK, "npx/bunx available (sigma usage can run ccusage)")
+
+
 def check_graphify_hook(
     status_fn: Optional[Callable[[], Dict]] = None,
     hook_status_fn: Optional[Callable[[], Dict]] = None,
@@ -338,6 +351,7 @@ def run_all(
         check_statusline(status_fn=statusline_status_fn),
         check_graphify(status_fn=graphify_status_fn),
         check_graphify_hook(root=root),
+        check_usage_tool(),
     ]
 
 

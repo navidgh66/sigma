@@ -7,7 +7,7 @@ runs and nothing on the host is touched.
 from __future__ import annotations
 
 from cli import checks
-from cli.checks import FAIL, OK, WARN
+from cli.checks import FAIL, OK, WARN, check_usage_tool
 
 
 def _which(present):
@@ -255,6 +255,20 @@ def test_check_graphify_hook_warn_when_hook_missing():
     )
     assert c.status == WARN
     assert c.fix is not None
+
+
+# --------------------------- usage tool --------------------------- #
+def test_check_usage_tool_ok_when_node_runtime_present():
+    check = check_usage_tool(which=lambda exe: "/usr/bin/npx" if exe == "npx" else None)
+    assert check.status == OK
+    assert check.name == "usage"
+
+
+def test_check_usage_tool_warn_when_node_runtime_absent():
+    check = check_usage_tool(which=lambda exe: None)
+    assert check.status == WARN
+    assert "npx" in check.detail.lower() or "node" in check.detail.lower()
+    assert check.fix is None
 
 
 def test_check_graphify_hook_warn_when_graphify_absent():
