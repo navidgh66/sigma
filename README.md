@@ -211,7 +211,7 @@ sigma loop --topic <t> --execute --team --tdd --logic --advisor   # autonomous, 
 sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
 sigma board --topic <t> --watch                         # live kanban over agent progress
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
-sigma review <PR#|url>                                  # 3-axis team-change review
+sigma review <PR#|url>                                  # 3-axis team-change review (+ graph-impact section when a graphify graph exists)
 sigma profile                                           # codebase logic invariants → profile
 sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
 sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
@@ -247,7 +247,10 @@ installer), `learn` first builds a real dependency graph — god-nodes, communit
 call/import edges — and feeds graphify's report into the agent so the map reflects
 *extracted* structure. graphify runs in its own isolated environment and sigma just
 shells out to it, so the CLI stays Python 3.9 and dependency-light. No graphify? It
-degrades to a plain agent read — never an error.
+degrades to a plain agent read — never an error. `sigma onboard` / `sigma doctor` can
+also install graphify's **post-commit hook** (its own `graphify hook install`) so the
+graph auto-refreshes on each commit — AST-only, no API cost, with a `graph.json` merge
+driver for parallel commits.
 
 ### `sigma scout` — keep your skill bundle fresh from skillsmp.com
 
