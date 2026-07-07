@@ -8,105 +8,88 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from cli.models import ModelResult, available_models, run_model
-
-RESEARCH_BRIEF = """You are a research subagent for the 'sigma' toolkit.
-
-Investigate this topic and return raw findings (data for aggregation, not a
-human-facing reply):
-
-TOPIC: {topic}
-
-Return:
-- Themed findings, each with a source URL
-- A confidence note per theme (high/medium/low)
-- Explicitly flag single-source or unverified claims
-- Prefer sources from the last 12 months
-- Separate fact from inference; no unsourced assertions
-"""
-
-DEEP_RESEARCH_BRIEF = """You are a research subagent for the 'sigma' toolkit.
-
-Use your web-search / grounding tools to investigate this topic against LIVE
-sources, then return raw findings (data for aggregation, not a human-facing reply):
-
-TOPIC: {topic}
-
-Requirements:
-- Actively search the web; do NOT answer from memory alone
-- Themed findings, each with a real, resolvable source URL you actually consulted
-- A confidence note per theme (high/medium/low)
-- Explicitly flag single-source or unverified claims
-- Strongly prefer sources from the last 12 months
-- Separate fact from inference; no unsourced assertions
-"""
-
-WEB_RESEARCH_BRIEF = """You are a research subagent for the 'sigma' toolkit.
-
-Do a QUICK web-grounded check on this topic — search the web for current facts,
-but keep it concise (this is the light web pass, not an exhaustive deep dive):
-
-TOPIC: {topic}
-
-Requirements:
-- Search the web for recent facts; do not answer from memory alone
-- A short list of themed findings, each with a real source URL you consulted
-- Prefer sources from the last 12 months
-- Flag anything single-source or uncertain
-- Separate fact from inference
-"""
-
-
-def build_prompt(topic: str, deep: bool = False, web: bool = False) -> str:
-    """Pick the brief by mode. `deep` = exhaustive web research; `web` = quick
-    web-grounded pass; neither = from-memory quick pass. `deep` wins if both set.
-    """
-    if deep:
-        brief = DEEP_RESEARCH_BRIEF
-    elif web:
-        brief = WEB_RESEARCH_BRIEF
-    else:
-        brief = RESEARCH_BRIEF
-    return brief.format(topic=topic)
+from cli.research_brief import build_prompt
+from cli.search_providers import available_tools, run_search_tool
 
 
 def run_research(
     topic: str,
     models: List[str],
+    tools: Optional[List[str]] = None,
     runner: Callable = run_model,
+    search_runner: Callable = run_search_tool,
     max_workers: int = 4,
     deep: bool = False,
     web: bool = False,
 ) -> List[ModelResult]:
-    """Fan out the research brief to each model in parallel.
+    """Fan out the research brief to each model CLI and each search tool in
+    parallel.
 
-    `runner` is injectable (defaults to models.run_model) for testing. `deep`
-    selects the exhaustive web-grounded brief; `web` selects a lighter quick
-    web-grounded brief. Either one activates the adapters' web-search path (so the
-    runner is called with web search enabled). `deep` takes precedence if both set.
+    `runner`/`search_runner` are injectable for testing. `tools` defaults to
+    none requested (regression-safe: today's exact behavior when omitted).
+    `deep` selects the exhaustive web-grounded brief; `web` selects a lighter
+    quick web-grounded brief; either enables the model adapters' web-search
+    path. Search tools are always grounded regardless of deep/web.
     """
     prompt = build_prompt(topic, deep=deep, web=web)
-    requested = list(models)
-    # Both deep and web need the adapter's web-search args turned on.
+    requested_models = list(models)
+    requested_tools = list(tools or [])
     web_search = deep or web
     results: List[ModelResult] = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {m: pool.submit(_call_runner, runner, m, prompt, web_search) for m in requested}
-        for m in requested:
-            results.append(futures[m].result())
+        model_futures = {
+            m: pool.submit(_call_runner, runner, m, prompt, web_search) for m in requested_models
+        }
+        tool_futures = {t: pool.submit(search_runner, t, prompt) for t in requested_tools}
+        for m in requested_models:
+            results.append(model_futures[m].result())
+        for t in requested_tools:
+            results.append(tool_futures[t].result())
     return results
 
 
 def _call_runner(runner: Callable, model: str, prompt: str, deep: bool) -> ModelResult:
-    """Invoke `runner`, passing `deep` when its signature accepts it.
+    """Invoke `runner` with the standard (model, prompt, deep=) signature."""
+    return runner(model, prompt, deep=deep)
 
-    Test fakes use a 2-arg (model, prompt) signature; the real run_model accepts
-    a `deep` kwarg. Try the richer call first, fall back to the simple one.
+
+_SYNTHESIS_PROMPT = """You are cross-referencing raw research findings for the
+topic below. Promote any claim confirmed by 2 or more sources; explicitly flag
+single-source claims as unverified. Return the synthesis as plain prose.
+
+TOPIC: {topic}
+
+FINDINGS:
+{findings}
+"""
+
+_SYNTHESIS_FALLBACK = (
+    "> Cross-reference the per-model findings above. Promote claims "
+    "confirmed by 2+ models; flag single-source claims as unverified."
+)
+
+
+def synthesize(topic: str, results: List[ModelResult], runner: Callable[[str], str]) -> str:
+    """One distinct LLM call over all raw findings, cross-referencing claims.
+
+    `runner` takes a single prompt string and returns the synthesis text — a
+    simpler signature than the model/search runners since this is one call,
+    not a fan-out. On any failure (raises, times out, returns falsy), falls
+    back to the static placeholder — degrade, never crash the whole doc.
     """
+    ran = [r for r in results if r.ok]
+    if not ran:
+        return _SYNTHESIS_FALLBACK
+    findings_block = "\n\n".join(f"### {r.model}\n{r.text.strip()}" for r in ran)
+    prompt = _SYNTHESIS_PROMPT.format(topic=topic, findings=findings_block)
     try:
-        return runner(model, prompt, deep=deep)
-    except TypeError:
-        return runner(model, prompt)
+        body = runner(prompt)
+    except Exception:  # noqa: BLE001 — synthesis failure must never break the doc
+        return _SYNTHESIS_FALLBACK
+    if not body or not body.strip():
+        return _SYNTHESIS_FALLBACK
+    return body.strip()
 
 
 def aggregate(
@@ -115,6 +98,7 @@ def aggregate(
     today: Optional[date] = None,
     deep: bool = False,
     web: bool = False,
+    synthesis_runner: Optional[Callable[[str], str]] = None,
 ) -> str:
     """Combine model results into a single cited research.md document."""
     day = (today or date.today()).isoformat()
@@ -167,8 +151,10 @@ def aggregate(
 
     lines.append("## Synthesis")
     lines.append("")
-    lines.append("> Cross-reference the per-model findings above. Promote claims "
-                 "confirmed by 2+ models; flag single-source claims as unverified.")
+    if synthesis_runner is not None:
+        lines.append(synthesize(topic, results, runner=synthesis_runner))
+    else:
+        lines.append(_SYNTHESIS_FALLBACK)
     lines.append("")
     lines.append("## Next")
     lines.append("")
@@ -185,19 +171,46 @@ def write_research(workspace: Path, content: str) -> Path:
     return out
 
 
+def _read_manual_findings(workspace: Path) -> List[ModelResult]:
+    """Read pre-completed findings dropped as markdown into workspace/manual/.
+
+    Each *.md file becomes one ModelResult (model="manual:<filename>", ok=True).
+    Missing manual/ dir → empty list (fail-safe, matches every other optional
+    input in this module).
+    """
+    manual_dir = workspace / "manual"
+    if not manual_dir.is_dir():
+        return []
+    results: List[ModelResult] = []
+    for path in sorted(manual_dir.glob("*.md")):
+        try:
+            text = path.read_text().strip()
+        except OSError:
+            continue
+        if text:
+            results.append(ModelResult(model=f"manual:{path.name}", ok=True, text=text))
+    return results
+
+
 def research(
     topic: str,
     requested_models: List[str],
     workspace: Path,
     runner: Callable = run_model,
+    requested_tools: Optional[List[str]] = None,
     today: Optional[date] = None,
     deep: bool = False,
     web: bool = False,
+    synthesis_runner: Optional[Callable[[str], str]] = None,
 ) -> Path:
-    """End-to-end: resolve available models, fan out, aggregate, write file."""
-    models = available_models(requested_models)
-    # Still run requested-but-missing through runner so they record as skipped.
-    to_run = requested_models if requested_models else models
-    results = run_research(topic, to_run, runner=runner, deep=deep, web=web)
-    content = aggregate(topic, results, today=today, deep=deep, web=web)
+    """End-to-end: resolve available models/tools, fan out, read manual
+    findings, aggregate + synthesize, write file.
+    """
+    to_run = requested_models if requested_models else available_models(requested_models)
+    to_run_tools = available_tools(requested_tools or [])
+    results = run_research(topic, to_run, tools=to_run_tools, runner=runner, deep=deep, web=web)
+    results += _read_manual_findings(workspace)
+    content = aggregate(
+        topic, results, today=today, deep=deep, web=web, synthesis_runner=synthesis_runner
+    )
     return write_research(workspace, content)
