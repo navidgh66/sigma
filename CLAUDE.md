@@ -166,7 +166,8 @@ cli/gate.py         wakeAgent gate — cheap pluggable pre-check, skip work (0 t
 cli/skills_index.py topic-key + contradiction detection across ratcheted skills
 cli/skills_recall.py  pure: recall_lessons(skills_dir, domain) + render_recall_block — read side that closes the learning loop
 cli/review.py       pure: change-set parse, domain infer, 3-axis prompt build, finding parse/aggregate/dedup, gate (fail on CRIT/HIGH or inconclusive axis), distinct-axis guard
-cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3-axis fan-out, write report, PR comment, ratchet CRIT/HIGH → skills/, record cost
+cli/review_run.py   thin: resolve change set (git diff / gh pr diff), parallel 3-axis fan-out, write report, PR comment, ratchet CRIT/HIGH → skills/, record cost; appends the graph-impact section when graph.json present
+cli/graph_impact.py pure: read graphify graph.json (stdlib, never import) → per-changed-file touched nodes + reverse-edge dependents; powers sigma review's informational Impact section
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
@@ -516,3 +517,20 @@ keeps only what Claude Code cannot do in-session, plus setup.
   recorded in `result.errors`, never raised — one stuck surface never blocks the
   rest). `spawn`/`rmtree`/`unlink` injectable (tests delete nothing). `--yes` skips
   prompts. Plugin ops skipped when `claude` CLI absent.
+- `sigma review` appends an informational **Impact** section from graphify's
+  `graph.json` when present (`cli/graph_impact.py` → `review_run`): per changed file,
+  the nodes it defines + reverse-edge dependents. Purely additive — the gate and axis
+  prompts are UNTOUCHED, and no graph → report byte-identical to before (regression-
+  locked by `test_review_report_byte_identical_without_graph`). Schema-tolerant parsing
+  (tries nodes/edges|links, source/target|from/to endpoints, file|path|source|source_file
+  node paths, name|label|id names; ends-with match handles abs-vs-relative paths),
+  fail-safe to empty; the append is wrapped in try/except so it never breaks a completed
+  review. sigma NEVER imports graphify (reads the file directly, stays 3.9).
+- `setup_graphify_hook` (`cli/graphify.py`) wires graphify's OWN `graphify hook install`
+  (post-commit graph refresh, AST-only 0-cost, + a graph.json git merge driver) — sigma
+  does NOT author its own hook. Confirm-gated + idempotent (setup_graphify shape): no
+  graphify binary → no-op; hook already present → no-op. `graphify_hook_status` greps
+  `.git/hooks/post-commit` for a `graphify` marker (fail-safe: no .git/unreadable →
+  not-installed). Onboard step 9b + `check_graphify_hook` (WARN-never-FAIL, gated on the
+  graphify binary). `_default_spawn` gained an optional `cwd` so the install runs in the
+  repo (existing one-arg callers unaffected).

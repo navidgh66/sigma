@@ -38,10 +38,10 @@ _REPORT_NAME = "GRAPH_REPORT.md"
 _DEFAULT_REPORT_CAP = 6000
 
 
-def _default_spawn(argv: List[str]) -> int:
+def _default_spawn(argv: List[str], cwd: Optional[Path] = None) -> int:
     """Run a command interactively (inherits stdio); return its exit code."""
     try:
-        return subprocess.call(argv)
+        return subprocess.call(argv, cwd=str(cwd) if cwd else None)
     except OSError:
         return 1
 
@@ -50,6 +50,76 @@ def graphify_status(which: Optional[Callable] = None) -> Dict:
     """Report {installed} — whether a `graphify` binary is on PATH."""
     which = which or shutil.which
     return {"installed": which("graphify") is not None}
+
+
+_HOOK_MARKER = "graphify"
+
+
+def graphify_hook_status(root: Path, which: Optional[Callable] = None) -> Dict:
+    """Report {installed} — whether graphify's post-commit hook is in this repo.
+
+    True when `root/.git/hooks/post-commit` exists and mentions graphify (the hook
+    graphify writes embeds an interpreter path + a `graphify` invocation). Fail-safe:
+    no `.git`, no hook, or an unreadable file → {"installed": False}. Never raises.
+    `which` is accepted for signature symmetry with the other status fns (unused).
+    """
+    hook = root / ".git" / "hooks" / "post-commit"
+    try:
+        if not hook.is_file():
+            return {"installed": False}
+        return {"installed": _HOOK_MARKER in hook.read_text()}
+    except OSError:
+        return {"installed": False}
+
+
+def install_graphify_hook(
+    root: Path,
+    which: Optional[Callable] = None,
+    spawn: Optional[Callable] = None,
+) -> bool:
+    """Run `graphify hook install` in `root`. Returns True on exit 0.
+
+    graphify owns the hook body + the graph.json merge driver; sigma only invokes
+    it. `spawn` is the module's injectable runner (OSError-guarded), so this never
+    raises. Caller ensures the graphify binary is present.
+    """
+    which = which or shutil.which
+    spawn = spawn or _default_spawn
+    return spawn(["graphify", "hook", "install"], root) == 0
+
+
+def setup_graphify_hook(
+    status_fn: Optional[Callable[[], Dict]] = None,
+    hook_status_fn: Optional[Callable[[], Dict]] = None,
+    confirm: Optional[Callable[[str], bool]] = None,
+    which: Optional[Callable] = None,
+    spawn: Optional[Callable] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    """Confirm-gated, idempotent install of graphify's post-commit hook.
+
+    - graphify binary absent → no-op (nothing to hook; install graphify first).
+    - hook already installed → no-op.
+    - else → confirm, then `graphify hook install`.
+    Mirrors setup_graphify / setup_rtk. Returns True only when state changed.
+    """
+    root = root or Path(".")
+    status_fn = status_fn or (lambda: graphify_status(which=which))
+    hook_status_fn = hook_status_fn or (lambda: graphify_hook_status(root, which=which))
+    confirm = confirm or (lambda msg: False)
+
+    if not status_fn().get("installed"):
+        return False  # no graphify binary → nothing to hook
+    if hook_status_fn().get("installed"):
+        return False  # already hooked
+
+    if not confirm(
+        "Install graphify's post-commit hook so the knowledge graph refreshes "
+        "on each commit (AST-only, no API cost)?"
+    ):
+        return False
+
+    return install_graphify_hook(root, which=which, spawn=spawn)
 
 
 def install_graphify(

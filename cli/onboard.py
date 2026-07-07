@@ -120,6 +120,18 @@ def run_onboard(
     if graph_changed:
         print("  ✓ graphify installed — `sigma learn` will build a knowledge graph")
 
+    # 9b. graphify post-commit hook — confirm-gated. Refreshes the knowledge graph
+    #     on each commit (AST-only, no API cost). No-op if graphify isn't installed
+    #     or the hook is already present. graphify owns the hook + graph.json merge
+    #     driver; sigma only invokes `graphify hook install`.
+    from cli.paths import project_root
+
+    graph_hook_changed = graphify_mod.setup_graphify_hook(
+        confirm=confirm, which=which, spawn=spawn, root=project_root()
+    )
+    if graph_hook_changed:
+        print("  ✓ graphify post-commit hook installed — graph refreshes on each commit")
+
     # 10. SessionStart hook — confirm-gated. Surfaces this repo's learn artifacts
     #     (ARCHITECTURE.md / tour) at the start of every Claude Code session.
     hook_changed = session_hook_mod.setup_session_hook(confirm=confirm)
