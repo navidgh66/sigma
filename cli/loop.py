@@ -967,6 +967,8 @@ def run_loop(
     make_simplifier=None,
     make_advisor=None,
     advisor_rounds: int = 1,
+    make_e2e_runner=None,
+    spec_scenarios: Optional[List["Scenario"]] = None,
     team: bool = False,
     max_workers: int = 3,
     worktrees: bool = True,
@@ -984,6 +986,12 @@ def run_loop(
 
     `make_advisor`, when provided, adds a distinct advisor agent that escalates a
     verify/logic FAIL into a bounded correction-retry loop (see `execute_cycle`).
+
+    `make_e2e_runner`, when provided, adds a distinct agent that drives each
+    task's mapped BDD scenario live (see `execute_cycle`'s e2e axis).
+    `spec_scenarios` is the parsed list of Scenario blocks from spec.md (read
+    once by the caller, e.g. `cmd_loop`) — a task with no mapped scenario, or
+    one whose scenario name isn't in this list, skips the e2e axis entirely.
 
     `team`, when True, runs the (capped) batch of tasks CONCURRENTLY — independent
     tasks proceed in parallel, each its own full cycle. The recall snapshot is
@@ -1066,6 +1074,8 @@ def run_loop(
             advisor=make_advisor() if make_advisor else None,
             advisor_rounds=advisor_rounds,
             agent_cwd=agent_cwd,
+            e2e_runner=make_e2e_runner() if make_e2e_runner else None,
+            spec_scenarios=spec_scenarios,
         )
 
     if team:
