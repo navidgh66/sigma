@@ -145,9 +145,12 @@ def test_parser_loop_advisor_flags():
     a = build_parser().parse_args(["loop", "--topic", "demo", "--advisor", "--advisor-rounds", "3"])
     assert a.advisor is True
     assert a.advisor_rounds == 3
+    # advisor defaults ON; --no-advisor opts out.
     b = build_parser().parse_args(["loop", "--topic", "demo"])
-    assert b.advisor is False
+    assert b.advisor is True
     assert b.advisor_rounds == 1
+    c = build_parser().parse_args(["loop", "--topic", "demo", "--no-advisor"])
+    assert c.advisor is False
 
 
 def test_parser_trajectory():
@@ -342,8 +345,20 @@ def test_cmd_session_context_points_to_artifacts(tmp_path):
 def test_parser_loop_tdd_team_logic_flags():
     a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--tdd", "--team", "--logic"])
     assert a.tdd is True and a.team is True and a.logic is True
+    # tdd/team stay opt-in; logic defaults ON (--no-logic opts out).
     b = build_parser().parse_args(["loop", "--topic", "d"])
-    assert b.tdd is False and b.team is False and b.logic is False
+    assert b.tdd is False and b.team is False and b.logic is True
+    c = build_parser().parse_args(["loop", "--topic", "d", "--no-logic"])
+    assert c.logic is False
+
+
+def test_parser_loop_all_flag():
+    a = build_parser().parse_args(["loop", "--topic", "d", "--all"])
+    assert a.all is True
+    # --all itself doesn't force tdd/team True at parse time (cmd_loop applies
+    # the flip); the parser default for tdd/team stays False until cmd_loop runs.
+    b = build_parser().parse_args(["loop", "--topic", "d"])
+    assert b.all is False
 
 
 def test_parser_learn_force_flag():
@@ -370,8 +385,56 @@ def test_parser_uninstall_flag():
 def test_parser_loop_simplify_flag():
     a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--simplify"])
     assert a.simplify is True
+    # simplify defaults ON; --no-simplify opts out.
     b = build_parser().parse_args(["loop", "--topic", "d"])
-    assert b.simplify is False
+    assert b.simplify is True
+    c = build_parser().parse_args(["loop", "--topic", "d", "--no-simplify"])
+    assert c.simplify is False
+
+
+def test_parser_loop_e2e_flag_defaults_on():
+    a = build_parser().parse_args(["loop", "--topic", "d"])
+    assert a.e2e is True
+    b = build_parser().parse_args(["loop", "--topic", "d", "--no-e2e"])
+    assert b.e2e is False
+
+
+def test_cmd_loop_all_flag_applies_flip(tmp_path, monkeypatch, capsys):
+    """--all is applied inside cmd_loop (tdd/team default False at parse time,
+    but must flip True once cmd_loop runs) — an in-process check with run_loop
+    monkeypatched so no real agent is ever invoked (cmd_loop has no direct
+    unit test elsewhere; this stays in-process instead of a subprocess so a
+    `claude` CLI present on the test machine can never make it hang)."""
+    from datetime import date
+
+    import cli.main as main_mod
+    from cli.paths import slugify
+
+    (tmp_path / ".git").mkdir()  # project_root() walks up looking for .git
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
+    ws.mkdir(parents=True)
+    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
+
+    captured = {}
+
+    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
+
+    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--all"])
+    main_mod.cmd_loop(args)
+
+    out = capsys.readouterr().out
+    assert "every axis on" in out
+    assert captured["make_test_writer"] is not None  # tdd
+    assert captured["team"] is True
+    assert captured["make_logic_checker"] is not None
+    assert captured["make_simplifier"] is not None
+    assert captured["make_advisor"] is not None
+    assert captured["make_e2e_runner"] is not None
 
 
 def test_parser_research_web_flag():

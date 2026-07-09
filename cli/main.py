@@ -155,6 +155,17 @@ def cmd_loop(args: argparse.Namespace) -> int:
     from cli.trajectory import make_sink
 
     skills_dir = sigma_home() / "skills"
+    # --all is shorthand for turning on every axis, including the two that stay
+    # opt-in otherwise (tdd, team change the execution MODEL, not just add a
+    # check — bigger behavior shift than the default-on correctness axes below).
+    if args.all:
+        args.tdd = True
+        args.team = True
+        args.logic = True
+        args.simplify = True
+        args.advisor = True
+        args.e2e = True
+        _print("  🎛️  --all: every axis on (tdd, team, logic, simplify, advisor, e2e)")
     if args.keep_awake:
         _print("  ☕ keep-awake on (caffeinate)")
     if args.tdd:
@@ -162,14 +173,17 @@ def cmd_loop(args: argparse.Namespace) -> int:
     if args.team:
         _print("  👥 team mode: independent tasks run in parallel")
         _print(f"  🌳 worktree isolation: {'on' if cfg.loop.worktrees else 'off (sigma.config.yml)'}")
+    if args.logic:
+        _print("  🧠 logic mode: a distinct logic-evaluator axis gates the cycle (--no-logic to disable)")
     if args.simplify:
-        _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified)")
+        _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified) "
+                "(--no-simplify to disable)")
     if args.e2e:
         _print("  🌐 e2e mode: a distinct agent drives each task's mapped BDD scenario live "
-                "(FAIL blocks, ERROR doesn't)")
+                "(FAIL blocks, ERROR doesn't) (--no-e2e to disable)")
     if args.advisor:
-        _print(f"  🛟 advisor mode: on a verify/logic fail, a distinct advisor drafts a fix "
-                f"(max {args.advisor_rounds} round(s); reverts on exhaustion)")
+        _print(f"  🛟 advisor mode: on a verify/logic/e2e fail, a distinct advisor drafts a fix "
+                f"(max {args.advisor_rounds} round(s); reverts on exhaustion) (--no-advisor to disable)")
 
     # Trajectory capture: every agent run appends a step to the workspace
     # (best-effort observability, never breaks a run).
@@ -861,14 +875,24 @@ def build_parser() -> argparse.ArgumentParser:
     pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
     pl.add_argument("--topic", required=True)
     pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
+    pl.add_argument("--all", action="store_true",
+                    help="turn on every axis: tdd, team, logic, simplify, advisor, e2e")
     pl.add_argument("--tdd", action="store_true",
-                    help="TDD: a distinct agent writes a failing test before the implementer")
+                    help="TDD: a distinct agent writes a failing test before the implementer "
+                         "(opt-in; also turned on by --all)")
     pl.add_argument("--team", action="store_true",
-                    help="run independent tasks in parallel (each its own cycle)")
-    pl.add_argument("--logic", action="store_true",
-                    help="add the logic-evaluator axis (cycle passes only if logic also passes)")
-    pl.add_argument("--simplify", action="store_true",
-                    help="after each pass, a distinct agent cleans up AI slop (re-verified to preserve behaviour)")
+                    help="run independent tasks in parallel (each its own cycle) "
+                         "(opt-in; also turned on by --all)")
+    pl.add_argument("--logic", dest="logic", action="store_true", default=True,
+                    help="the logic-evaluator axis: cycle passes only if logic also passes "
+                         "(default ON; see --no-logic)")
+    pl.add_argument("--no-logic", dest="logic", action="store_false",
+                    help="disable the logic-evaluator axis")
+    pl.add_argument("--simplify", dest="simplify", action="store_true", default=True,
+                    help="after each pass, a distinct agent cleans up AI slop (re-verified to "
+                         "preserve behaviour) (default ON; see --no-simplify)")
+    pl.add_argument("--no-simplify", dest="simplify", action="store_false",
+                    help="disable the post-pass simplify cleanup")
     pl.add_argument("--route", action="store_true",
                     help="deprecated, no-op: routing is now on by default (see --no-route)")
     pl.add_argument("--no-route", action="store_true",
@@ -877,15 +901,20 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--model-verify", help="override the model alias for the verifier role")
     pl.add_argument("--model-logic", help="override the model alias for the logic-evaluator role")
     pl.add_argument("--model-advisor", help="override the model alias for the advisor role (default: opus)")
-    pl.add_argument("--advisor", action="store_true",
-                    help="on a verify/logic fail, a distinct advisor drafts a correction plan and the "
-                         "implementer retries (re-verified; reverts to the original on exhaustion)")
+    pl.add_argument("--advisor", dest="advisor", action="store_true", default=True,
+                    help="on a verify/logic/e2e fail, a distinct advisor drafts a correction plan and "
+                         "the implementer retries (re-verified; reverts to the original on exhaustion) "
+                         "(default ON; see --no-advisor)")
+    pl.add_argument("--no-advisor", dest="advisor", action="store_false",
+                    help="disable the advisor escalation")
     pl.add_argument("--advisor-rounds", type=int, default=1,
                     help="max advisor→retry→re-verify rounds per cycle before ratcheting (default 1)")
-    pl.add_argument("--e2e", action="store_true",
+    pl.add_argument("--e2e", dest="e2e", action="store_true", default=True,
                     help="drive each task's mapped BDD scenario live (Given/When/Then) after "
                          "verify+logic pass; a real behavioral FAIL blocks the cycle, an ERROR "
-                         "(app unreachable) does not")
+                         "(app unreachable) does not (default ON; see --no-e2e)")
+    pl.add_argument("--no-e2e", dest="e2e", action="store_false",
+                    help="disable the live e2e scenario gate")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)
