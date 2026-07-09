@@ -17,10 +17,14 @@ from cli.runner import AgentRunner, write_artifact
 # A task line in tasks.md, e.g.:
 #   - [ ] T1 (nlp): tokenize corpus
 #   - [x] T2 (mlops): register model
+#   - [ ] T3 (nlp) [scenario: null input rejected]: validate input
+#   - [ ] T4 (mlops) [scenarios: a flow, b flow]: register model
 TASK_RE = re.compile(
     r"^\s*-\s*\[(?P<done>[ xX])\]\s*"
     r"(?P<id>[A-Za-z]+\d+)?\s*"
-    r"(?:\((?P<domain>[a-z-]+)\))?\s*:?\s*"
+    r"(?:\((?P<domain>[a-z-]+)\))?\s*"
+    r"(?:\[\s*scenarios?\s*:\s*(?P<scenarios>[^\]]+)\]\s*)?"
+    r":?\s*"
     r"(?P<title>.+?)\s*$"
 )
 
@@ -32,6 +36,7 @@ class Task:
     done: bool
     id: Optional[str] = None
     domain: Optional[str] = None
+    scenarios: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -56,6 +61,12 @@ def parse_tasks(markdown: str) -> List[Task]:
         m = TASK_RE.match(line)
         if not m:
             continue
+        raw_scenarios = m.group("scenarios")
+        scenarios = (
+            [s.strip() for s in raw_scenarios.split(",") if s.strip()]
+            if raw_scenarios
+            else []
+        )
         tasks.append(
             Task(
                 raw=line.rstrip(),
@@ -63,6 +74,7 @@ def parse_tasks(markdown: str) -> List[Task]:
                 done=m.group("done").lower() == "x",
                 id=m.group("id"),
                 domain=m.group("domain"),
+                scenarios=scenarios,
             )
         )
     return tasks

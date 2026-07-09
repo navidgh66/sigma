@@ -81,3 +81,24 @@ def test_append_loop_log(tmp_path):
     assert "cycle 1 done" in text
     assert "cycle 2 done" in text
     assert text.count("- ") == 2
+
+
+def test_parse_tasks_extracts_scenario_tag():
+    md = "- [ ] T3 (nlp) [scenario: null input rejected]: validate input"
+    tasks = parse_tasks(md)
+    assert tasks[0].scenarios == ["null input rejected"]
+    assert tasks[0].title == "validate input"
+    assert tasks[0].domain == "nlp"
+
+
+def test_parse_tasks_extracts_multiple_scenarios():
+    md = "- [ ] T4 (mlops) [scenarios: a flow, b flow]: register model"
+    tasks = parse_tasks(md)
+    assert tasks[0].scenarios == ["a flow", "b flow"]
+
+
+def test_parse_tasks_no_scenario_tag_defaults_empty():
+    md = "- [ ] T1 (nlp): tokenize corpus"
+    tasks = parse_tasks(md)
+    assert tasks[0].scenarios == []
+    assert tasks[0].title == "tokenize corpus"
