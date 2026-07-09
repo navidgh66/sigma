@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-756%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-776%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -66,7 +66,9 @@ autonomous hands-off runs, a live kanban board, and setup.
   runs independent tasks in parallel, each in its own **real git worktree**
   (merged back on pass, conflicts surfaced — never auto-resolved); `--logic` adds
   a reasoning axis; `--advisor` escalates a verify failure to a distinct opus-tier
-  agent for a correction plan before giving up. `hermes --auto` chains whole
+  agent for a correction plan before giving up; `--e2e` drives each task's mapped
+  BDD scenario **live** against the running app (a real behavioral FAIL blocks
+  the cycle, an unreachable-app ERROR doesn't). `hermes --auto` chains whole
   stages until a human gate.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
@@ -165,12 +167,19 @@ plugin), confirm-gated and with a separate warning before deleting your API keys
       ↓
 /tasks           domain-routed task breakdown (waves + dependencies)
       ↓
-/implement-task  build one task with its domain context loaded (reuse-first)
+/implement-task  build one task with its domain context loaded (reuse-first);
+                 runs the task's mapped BDD scenario live if tasks.md tags one
       ↓
 /verify          domain checks + BDD scenario coverage (separate checker agent)
       ↓
 /loop            autonomous: discover → implement → verify → ratchet failures
+                 (--e2e adds a live scenario gate per task)
 ```
+
+`/e2e` runs every BDD scenario in `spec.md` live against the running app —
+PASS/FAIL/ERROR per scenario, ratcheting only real FAILs. Callable any time
+after `/spec`, and wired into `/implement-task` (per-task) and `sigma loop
+--e2e` (per-task gate) so a scenario "covered" by code is also proven to work.
 
 `/grill` is a gate, not a numbered stage — skeptical, maker ≠ griller, **BLOCKs on
 a CRITICAL/HIGH logic flaw** (human may override). In the autonomous `hermes
@@ -207,7 +216,7 @@ in-session, plus setup:
 
 ```bash
 sigma research "topic" --deep   # exhaustive web-grounded multi-model brief + real synthesis + optional Firecrawl search tier (scrapes top-3 result pages for full content, not just snippets)
-sigma loop --topic <t> --execute --team --tdd --logic --advisor   # autonomous, parallel, test-first, self-correcting
+sigma loop --topic <t> --execute --team --tdd --logic --advisor --e2e   # autonomous, parallel, test-first, self-correcting, live-scenario-gated
 sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
 sigma board --topic <t> --watch                         # live kanban over agent progress
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
@@ -320,11 +329,11 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **756 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
-  projection, cost, graph/scout/prune, git worktrees) is separated from subprocess
-  execution and fully tested with fakes (worktree/merge logic is tested against
-  real temp git repos). No real agent, network, or settings file is touched in
-  the CLI-behavior test suite.
+- **776 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+  projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
+  separated from subprocess execution and fully tested with fakes (worktree/merge
+  logic is tested against real temp git repos). No real agent, network, or
+  settings file is touched in the CLI-behavior test suite.
 - **Plugin-first** — `commands/*.md` are native slash commands; `skills/*` are
   native skills; `.claude-plugin/` makes it a one-command marketplace install.
 - **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime.

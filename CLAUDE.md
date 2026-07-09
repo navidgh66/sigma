@@ -26,12 +26,17 @@ Claude Code token/cache/cost visibility, distinct from `sigma cost`'s own
 op-ledger. Research now fans out to a second HTTP search-tool provider tier
 (Firecrawl) alongside the subscription model CLIs, with a real cross-referencing
 synthesis pass; on `--deep` the Firecrawl tier also scrapes the top-3 result
-pages for full content, not just search snippets. 756 pytest tests, ruff clean.
+pages for full content, not just search snippets. `/e2e` makes spec.md's BDD
+`Scenario/Given/When/Then` blocks executable — an agent drives them live
+against the running app (PASS/FAIL/ERROR, ratcheting only real FAILs); `sigma
+loop --e2e` gates each task's cycle on its mapped scenario the same way
+`--logic` gates on the logic-evaluator axis, and `/implement-task` runs the
+same per-task check. 776 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 756 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 776 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -61,6 +66,7 @@ sigma loop --topic <t> --execute --team   # independent tasks run in parallel
 sigma loop --topic <t> --execute --logic  # add logic-evaluator axis (combine: --team --tdd --logic)
 sigma loop --topic <t> --execute --simplify  # distinct anti-slop cleanup after each PASS (re-verified to preserve behaviour)
 sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
+sigma loop --topic <t> --execute --e2e    # gate each task's cycle on its mapped BDD scenario running live (FAIL blocks, ERROR doesn't)
 
 # Eval — run an eval set, LM-judge each case, gate at a pass-rate threshold (set the bar at the eval, not the demo)
 sigma eval --set <name>              # prompt mode: run each case input through a SUT, grade with a DISTINCT judge
@@ -156,7 +162,8 @@ cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chai
 cli/weave.py        sigma weave — agent-driven: stage artifacts → chain.html (manifest written first, agent-independent)
 cli/weave_manifest.py  pure: build_manifest → chain.json contract + validate_chain_html guard
 cli/domains_index.py  pure: resolve each domain → implementer/verifier/logic-evaluator files; powers skills/sigma-domains
-cli/loop.py         parse tasks, execute_cycle (maker→checker + logic + optional TDD test-writer + optional post-pass --simplify cleanup w/ re-verify guard), run_loop (sequential or --team parallel)
+cli/loop.py         parse tasks, execute_cycle (maker→checker + logic + optional TDD test-writer + optional post-pass --simplify cleanup w/ re-verify guard + optional --e2e live-scenario gate), run_loop (sequential or --team parallel)
+cli/scenarios.py    pure: parse_scenarios(spec_md) → Scenario(name,given,when,then) list + find_scenario lookup — the BDD Given/When/Then blocks /spec already writes, read back so /e2e + --e2e + /implement-task can drive them live
 cli/hermes.py       conductor: route → inject skill → execute_stage → emit event
 cli/intent.py       hybrid routing: state-scan default + intent-override classify
 cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
@@ -182,7 +189,7 @@ cli/graph_impact.py pure: read graphify graph.json (stdlib, never import) → pe
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
-commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /eval + /sigma-learn-lesson), YAML frontmatter
+commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /eval + /e2e + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
@@ -553,6 +560,38 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `_TOP_LEVEL` since it lives at `vendor/<slug>/`, not under `superpowers/`). The
   simplifier is NOT given recall (it grades form, not domain patterns — same reason
   logic is excluded). `--simplify` routes to the `implement` tier under `--route`.
+- `loop --e2e` adds a DISTINCT E2E RUNNER agent that drives a task's mapped BDD
+  scenario LIVE (Given/When against a running instance of the app, then checks
+  Then). Scenarios come from `cli/scenarios.py`'s `parse_scenarios(spec.md)` —
+  `cmd_loop` parses spec.md ONCE up front and passes the list to every cycle
+  (`execute_cycle` never re-reads the file). A task maps to a scenario via a
+  `[scenario: <name>]` tag on its `tasks.md` line (`Task.scenarios`, parsed by
+  the SAME `TASK_RE` that reads id/domain); no tag → the axis is SKIPPED
+  entirely (`CycleOutcome.e2e_ok` stays `None`), not scored. Three-way verdict —
+  `_e2e_verdict` returns PASS/FAIL/ERROR, defaulting to ERROR (not FAIL) when no
+  `VERDICT:` line is found, because a crashed/timed-out e2e run produced no real
+  verdict at all — that is categorically different from a clean run whose
+  assertion was false. This is the INVERSE of `_verdict_pass`'s skeptical
+  default-FAIL: here, absent evidence must never masquerade as a scored failure
+  (same law `sigma prune` follows for unused-tool evidence). GATE semantics: a
+  `FAIL` blocks the cycle and ratchets (`ratchet_to_skills` with prefix
+  `"e2e failed:"`, distinct from `"verify failed:"` so the two failure modes
+  never share a `topic_key` and falsely flag each other as contradictions); an
+  `ERROR` never flips a passing cycle to FAIL and is never ratcheted — logged to
+  `outcome.notes` only. Enforced distinct from
+  implementer/verifier/logic/test-writer/simplifier/advisor via the same
+  `is`-identity `ValueError` chain. Runs AFTER verify(+logic) pass but BEFORE the
+  advisor-escalation decision, so an e2e FAIL on an otherwise-passing verify
+  still gets a chance at advisor rescue — `_run_advisor_escalation` re-runs BOTH
+  verify and (when `e2e_runner` is given) the e2e check each retry round,
+  resetting `outcome.e2e_ok` to `None` at the top of each round so a round whose
+  failure is a verify/logic regression doesn't carry a stale e2e verdict from a
+  prior round. `--e2e` routes to the `TIER_STRONG` tier under `--route` (same as
+  `logic` — judging a live Then assertion needs full reasoning, not the
+  mechanical tier). `/e2e` (plugin-only slash command, no Python backing) runs
+  every scenario in spec.md on demand; `/implement-task` runs the per-task
+  check inline after its TDD step. All three surfaces share the same
+  spec.md-is-the-source-of-truth scenario format — no separate scenario file.
 - `sigma uninstall` (`cli/uninstall.py`) reverses the installer's CORE surfaces
   only: the launcher (`~/.local/bin/sigma`), the clone (`~/.sigma`, which holds the
   `.env` API keys), and the Claude plugin + marketplace. It deliberately LEAVES the
