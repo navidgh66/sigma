@@ -164,6 +164,9 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print(f"  🌳 worktree isolation: {'on' if cfg.loop.worktrees else 'off (sigma.config.yml)'}")
     if args.simplify:
         _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified)")
+    if args.e2e:
+        _print("  🌐 e2e mode: a distinct agent drives each task's mapped BDD scenario live "
+                "(FAIL blocks, ERROR doesn't)")
     if args.advisor:
         _print(f"  🛟 advisor mode: on a verify/logic fail, a distinct advisor drafts a fix "
                 f"(max {args.advisor_rounds} round(s); reverts on exhaustion)")
@@ -196,6 +199,20 @@ def cmd_loop(args: argparse.Namespace) -> int:
     # to the base model just because --no-route was passed. Default: opus.
     advisor_model = args.model_advisor or routes.get("advisor") or "opus"
 
+    # e2e axis: parse spec.md's BDD scenarios ONCE up front (spec_scenarios is
+    # a plain list passed to every cycle — execute_cycle never re-reads the
+    # file). Missing spec.md → empty list (fail-safe: every task's e2e step
+    # simply skips, same as having no mapped scenario).
+    spec_scenarios = []
+    if args.e2e:
+        from cli.scenarios import parse_scenarios
+
+        spec_file = ws / "spec.md"
+        if spec_file.exists():
+            spec_scenarios = parse_scenarios(spec_file.read_text())
+        else:
+            _print(f"  ⚠ --e2e given but no spec.md at {spec_file} — every task's e2e step will skip")
+
     def _make(role_tier: Optional[str]):
         return AgentRunner(model=role_tier, trajectory_sink=sink)
 
@@ -212,6 +229,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
             make_simplifier=(lambda: _make(routes.get("implement"))) if args.simplify else None,
             make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
             advisor_rounds=args.advisor_rounds,
+            make_e2e_runner=(lambda: _make(routes.get("e2e"))) if args.e2e else None,
+            spec_scenarios=spec_scenarios if args.e2e else None,
             team=args.team,
             worktrees=cfg.loop.worktrees,
             project_root=project_root(),
@@ -234,6 +253,8 @@ def cmd_loop(args: argparse.Namespace) -> int:
             _print(f"    regression test pinned → {o.regression_test}")
         if o.simplified is not None:
             _print(f"    simplify: {'✓ applied (re-verified)' if o.simplified else '✗ skipped/reverted'}")
+        if o.e2e_ok is not None:
+            _print(f"    e2e: {'✓ passed' if o.e2e_ok else '✗ failed (blocked)'}")
         if o.advised is not None:
             rounds = o.advisor_rounds_used or 0
             _print(f"    advisor: {'✓ rescued in ' + str(rounds) + ' round(s)' if o.advised else '✗ exhausted (' + str(rounds) + ' round(s)) — reverted'}")
@@ -861,6 +882,10 @@ def build_parser() -> argparse.ArgumentParser:
                          "implementer retries (re-verified; reverts to the original on exhaustion)")
     pl.add_argument("--advisor-rounds", type=int, default=1,
                     help="max advisor→retry→re-verify rounds per cycle before ratcheting (default 1)")
+    pl.add_argument("--e2e", action="store_true",
+                    help="drive each task's mapped BDD scenario live (Given/When/Then) after "
+                         "verify+logic pass; a real behavioral FAIL blocks the cycle, an ERROR "
+                         "(app unreachable) does not")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
     pl.set_defaults(func=cmd_loop)
