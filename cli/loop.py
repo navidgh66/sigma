@@ -364,6 +364,54 @@ ADVISOR_RETRY_PREFIX = (
     "already worked:\n{plan}\n\n"
 )
 
+# E2E axis: a DISTINCT agent drives the task's mapped BDD scenario(s) live
+# (Given/When) and checks the Then assertion against a running instance of the
+# target app, instead of just reasoning about the code. Three-way verdict —
+# PASS/FAIL/ERROR — because "could not reach the app" is categorically
+# different from "ran cleanly and the assertion was false": an ERROR must
+# never gate a cycle the same way a real behavioral FAIL does (see
+# `_e2e_verdict`'s ERROR-by-default parsing below).
+E2E_PROMPT = (
+    "You are the E2E RUNNER — a distinct agent from the implementer, checker, "
+    "logic evaluator, test writer, simplifier, and advisor. Drive this BDD "
+    "scenario LIVE against a running instance of the app (launch it via the "
+    "`run` skill if it is not already up) using whatever tool fits — browser "
+    "automation for a web UI, HTTP calls for an API, subprocess invocation for "
+    "a CLI. Do NOT fabricate a result: if you cannot complete Given/When (app "
+    "unreachable, tool crash, timeout), that is an ERROR, not a PASS or FAIL.\n"
+    "Domain: {domain}\nTask: {title}\n\n"
+    "Scenario: {scenario_name}\n"
+    "Given {given}\n"
+    "When {when}\n"
+    "Then {then}\n\n"
+    "Perform Given and When for real, then check whether Then actually holds. "
+    "Reply with a final line exactly one of:\n"
+    "VERDICT: PASS   (ran to completion, Then held)\n"
+    "VERDICT: FAIL   (ran to completion, Then's assertion was false)\n"
+    "VERDICT: ERROR  (could not complete Given/When — inconclusive)"
+)
+
+
+def _e2e_verdict(output: str) -> str:
+    """Parse the e2e runner's 3-way verdict line.
+
+    Unlike `_verdict_pass` (2-way, defaults to FAIL — skeptical on a real
+    assertion), this defaults to ERROR when no VERDICT line is found: a
+    crashed/timed-out/garbled run produced no real verdict at all, which must
+    never be scored as a behavioral FAIL (that would ratchet a lesson from
+    absent evidence — the same law `sigma prune` follows for unused-tool
+    evidence).
+    """
+    for line in reversed(output.splitlines()):
+        s = line.strip().upper()
+        if s.startswith("VERDICT:"):
+            if "PASS" in s:
+                return "PASS"
+            if "FAIL" in s:
+                return "FAIL"
+            return "ERROR"
+    return "ERROR"
+
 
 @dataclass
 class CycleOutcome:

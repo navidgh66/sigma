@@ -3,6 +3,7 @@ import subprocess as _subprocess
 import pytest
 
 from cli.loop import (
+    _e2e_verdict,
     _verdict_pass,
     execute_cycle,
     parse_tasks,
@@ -50,6 +51,25 @@ def test_verdict_pass_parsing():
     assert _verdict_pass("stuff\nVERDICT: PASS") is True
     assert _verdict_pass("VERDICT: FAIL") is False
     assert _verdict_pass("no verdict here") is False  # skeptical default
+
+
+def test_e2e_verdict_pass():
+    assert _e2e_verdict("ran the flow\nVERDICT: PASS") == "PASS"
+
+
+def test_e2e_verdict_fail():
+    assert _e2e_verdict("assertion did not hold\nVERDICT: FAIL") == "FAIL"
+
+
+def test_e2e_verdict_error_explicit():
+    assert _e2e_verdict("could not reach app\nVERDICT: ERROR") == "ERROR"
+
+
+def test_e2e_verdict_defaults_to_error_when_missing():
+    # Inconclusive-by-default: an agent that crashed/timed out produced no real
+    # verdict at all — categorically different from a clean run that FAILed.
+    assert _e2e_verdict("garbled output, no verdict line") == "ERROR"
+    assert _e2e_verdict("") == "ERROR"
 
 
 def test_execute_cycle_pass(tmp_path):
