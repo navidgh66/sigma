@@ -31,12 +31,12 @@ pages for full content, not just search snippets. `/e2e` makes spec.md's BDD
 against the running app (PASS/FAIL/ERROR, ratcheting only real FAILs); `sigma
 loop --e2e` gates each task's cycle on its mapped scenario the same way
 `--logic` gates on the logic-evaluator axis, and `/implement-task` runs the
-same per-task check. 776 pytest tests, ruff clean.
+same per-task check. 779 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 776 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 779 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -60,13 +60,12 @@ sigma prune --check                  # read-only; exit 1 if prunable bloat exist
 # amnesiac `claude -p` subprocess is strictly weaker. See "Two ways to run".
 
 sigma loop --topic <t>               # plan cycles (safe default; autonomous escape hatch)
-sigma loop --topic <t> --execute     # run maker→checker cycles
-sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN)
-sigma loop --topic <t> --execute --team   # independent tasks run in parallel
-sigma loop --topic <t> --execute --logic  # add logic-evaluator axis (combine: --team --tdd --logic)
-sigma loop --topic <t> --execute --simplify  # distinct anti-slop cleanup after each PASS (re-verified to preserve behaviour)
+sigma loop --topic <t> --execute     # run maker→checker cycles — logic/simplify/advisor/e2e ON by default
+sigma loop --topic <t> --execute --no-logic --no-simplify --no-advisor --no-e2e  # bare maker→checker only
+sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN) — opt-in
+sigma loop --topic <t> --execute --team   # independent tasks run in parallel — opt-in
+sigma loop --topic <t> --execute --all    # every axis on, incl. --tdd --team
 sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
-sigma loop --topic <t> --execute --e2e    # gate each task's cycle on its mapped BDD scenario running live (FAIL blocks, ERROR doesn't)
 
 # Eval — run an eval set, LM-judge each case, gate at a pass-rate threshold (set the bar at the eval, not the demo)
 sigma eval --set <name>              # prompt mode: run each case input through a SUT, grade with a DISTINCT judge
@@ -592,6 +591,20 @@ keeps only what Claude Code cannot do in-session, plus setup.
   every scenario in spec.md on demand; `/implement-task` runs the per-task
   check inline after its TDD step. All three surfaces share the same
   spec.md-is-the-source-of-truth scenario format — no separate scenario file.
+- **CLI-default vs library-default are DIFFERENT layers.** `execute_cycle`'s
+  `logic_checker`/`simplifier`/`advisor`/`e2e_runner` params still default to
+  `None` at the pure-logic layer (unchanged — a bare `execute_cycle()` call is
+  still byte-identical to before any axis existed). What changed is `cmd_loop`'s
+  CLI wiring: `--logic`/`--simplify`/`--advisor`/`--e2e` now default to `True`
+  in argparse (`--no-logic`/`--no-simplify`/`--no-advisor`/`--no-e2e` opt out),
+  so a bare `sigma loop --execute` runs all four correctness/cleanup axes.
+  `--tdd`/`--team` stayed opt-in (default `False`) — they change the execution
+  MODEL (test-first workflow, worktree parallelism), not just add a check, so
+  flipping them by default would be a bigger surprise than adding a check.
+  `--all` is CLI-only sugar that flips ALL SIX (including tdd/team) to `True`
+  inside `cmd_loop`'s body, applied AFTER parsing (`args.all` is read once, then
+  the six attrs are overwritten) — it is not itself a `run_loop`/`execute_cycle`
+  parameter.
 - `sigma uninstall` (`cli/uninstall.py`) reverses the installer's CORE surfaces
   only: the launcher (`~/.local/bin/sigma`), the clone (`~/.sigma`, which holds the
   `.env` API keys), and the Claude plugin + marketplace. It deliberately LEAVES the

@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-776%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-779%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -61,15 +61,18 @@ autonomous hands-off runs, a live kanban board, and setup.
   logic-evaluator are always *distinct* agents. Separation is a `ValueError`, not
   a guideline.
 - **🤖 Autonomous when you want it** — `sigma loop --execute` runs maker→checker
-  cycles, **routed by model tier by default** (mechanical roles → sonnet, logic →
-  opus; `--no-route` opts out); `--tdd` writes the failing test first; `--team`
-  runs independent tasks in parallel, each in its own **real git worktree**
-  (merged back on pass, conflicts surfaced — never auto-resolved); `--logic` adds
-  a reasoning axis; `--advisor` escalates a verify failure to a distinct opus-tier
-  agent for a correction plan before giving up; `--e2e` drives each task's mapped
-  BDD scenario **live** against the running app (a real behavioral FAIL blocks
-  the cycle, an unreachable-app ERROR doesn't). `hermes --auto` chains whole
-  stages until a human gate.
+  cycles with the **correctness axes ON by default**: a logic-evaluator axis
+  (`--no-logic` opts out), a post-pass simplify cleanup (`--no-simplify`), an
+  advisor that escalates a fail to a distinct opus-tier agent for a correction
+  plan (`--no-advisor`), and a live-scenario gate that drives each task's mapped
+  BDD scenario against the running app — a real behavioral FAIL blocks the
+  cycle, an unreachable-app ERROR doesn't (`--no-e2e`). Also **routed by model
+  tier by default** (mechanical roles → sonnet, logic → opus; `--no-route` opts
+  out). `--tdd` (writes the failing test first) and `--team` (independent tasks
+  in parallel, each in its own **real git worktree**, merged back on pass,
+  conflicts surfaced — never auto-resolved) stay opt-in — they change the
+  execution model, not just add a check. `--all` turns on every axis including
+  those two. `hermes --auto` chains whole stages until a human gate.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
   MCP servers + plugins that tax every turn.
@@ -216,7 +219,7 @@ in-session, plus setup:
 
 ```bash
 sigma research "topic" --deep   # exhaustive web-grounded multi-model brief + real synthesis + optional Firecrawl search tier (scrapes top-3 result pages for full content, not just snippets)
-sigma loop --topic <t> --execute --team --tdd --logic --advisor --e2e   # autonomous, parallel, test-first, self-correcting, live-scenario-gated
+sigma loop --topic <t> --execute --all   # autonomous, parallel, test-first, self-correcting, live-scenario-gated (logic/simplify/advisor/e2e are ON by default even without --all)
 sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
 sigma board --topic <t> --watch                         # live kanban over agent progress
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
@@ -329,7 +332,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **776 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **779 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or
