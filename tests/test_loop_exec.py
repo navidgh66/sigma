@@ -12,6 +12,7 @@ from cli.loop import (
     run_loop,
 )
 from cli.runner import AgentResult, AgentRunner
+from cli.scenarios import Scenario
 
 
 def _init_git_repo(root):
@@ -518,6 +519,165 @@ def test_run_loop_with_advisor(tmp_path):
     assert len(outcomes) == 2
     assert all(o.advised and o.verified for o in outcomes)
     assert all(o.advisor_rounds_used == 1 for o in outcomes)
+
+
+# --------------------------- e2e (live BDD scenario gate) --------------------------- #
+E2E_TASKS = """
+- [ ] T1 (nlp) [scenario: happy path]: build the flow
+"""
+
+
+def test_e2e_runner_must_be_distinct(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="i")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    with pytest.raises(ValueError):
+        execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, e2e_runner=impl)
+
+
+def test_e2e_pass_keeps_cycle_passing(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="drove it\nVERDICT: PASS")])
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=scenarios,
+    )
+    assert out.verified is True
+    assert out.e2e_ok is True
+    assert out.ratcheted_skill is None
+
+
+def test_e2e_fail_blocks_and_ratchets(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="assertion false\nVERDICT: FAIL")])
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=scenarios,
+    )
+    assert out.verified is False
+    assert out.e2e_ok is False
+    assert out.ratcheted_skill is not None
+    assert out.ratcheted_skill.exists()
+    assert "e2e failed" in out.ratcheted_skill.read_text().lower()
+
+
+def test_e2e_error_does_not_block_or_ratchet(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="app unreachable\nVERDICT: ERROR")])
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=scenarios,
+    )
+    assert out.verified is True          # ERROR never flips a pass to fail
+    assert out.e2e_ok is None            # inconclusive, not a scored False
+    assert out.ratcheted_skill is None   # no lesson from absent evidence
+    assert any("e2e error" in n.lower() for n in out.notes)
+
+
+def test_e2e_skipped_when_no_mapped_scenario(tmp_path):
+    # Task has NO [scenario: ...] tag — e2e_runner is given but must not run.
+    tasks = parse_tasks(TASKS)  # the plain fixture from the top of this file
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="should not run")])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=[],
+    )
+    assert out.verified is True
+    assert out.e2e_ok is None
+    assert e2e.prompts == []  # never called
+
+
+def test_e2e_skipped_when_scenario_name_not_found_in_spec(tmp_path):
+    # Task references a scenario name that isn't in the (parsed) spec — treat
+    # as skipped, same as no mapping (fail-safe: a typo'd/renamed scenario
+    # name never silently gates a cycle on nothing).
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="should not run")])
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=[],  # "happy path" not present
+    )
+    assert out.e2e_ok is None
+    assert e2e.prompts == []
+
+
+def test_e2e_not_called_on_verify_fail(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: FAIL")])
+    e2e = ScriptedRunner([AgentResult(ok=True, output="should not run")])
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=scenarios,
+    )
+    assert out.verified is False
+    assert out.e2e_ok is None
+    assert e2e.prompts == []
+
+
+def test_advisor_escalates_on_e2e_fail(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([
+        AgentResult(ok=True, output="implemented v1"),
+        AgentResult(ok=True, output="implemented v2 (advisor retry)"),
+    ])
+    chk = ScriptedRunner([
+        AgentResult(ok=True, output="VERDICT: PASS"),   # initial verify passes
+        AgentResult(ok=True, output="VERDICT: PASS"),   # re-verify after retry passes
+    ])
+    e2e = ScriptedRunner([
+        AgentResult(ok=True, output="assertion false\nVERDICT: FAIL"),  # first e2e fails
+        AgentResult(ok=True, output="drove it\nVERDICT: PASS"),         # e2e after retry passes
+    ])
+    advisor = ScriptedRunner([AgentResult(ok=True, output="1. fix X\nRoot cause: X")])
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk,
+        e2e_runner=e2e, spec_scenarios=scenarios,
+        advisor=advisor, advisor_rounds=1,
+    )
+    assert out.verified is True
+    assert out.advised is True
+
+
+def test_run_loop_with_e2e_runner(tmp_path):
+    tasks = parse_tasks(E2E_TASKS)
+    scenarios = [Scenario(name="happy path", given="g", when="w", then="t")]
+    outcomes = run_loop(
+        tasks,
+        tmp_path,
+        tmp_path / "skills",
+        max_cycles=10,
+        make_implementer=lambda: ScriptedRunner([AgentResult(ok=True, output="i")]),
+        make_verifier=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        make_e2e_runner=lambda: ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")]),
+        spec_scenarios=scenarios,
+    )
+    assert len(outcomes) == 1
+    assert outcomes[0].verified is True
+    assert outcomes[0].e2e_ok is True
 
 
 # --------------------------- contradiction flagging --------------------------- #

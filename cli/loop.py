@@ -10,9 +10,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from cli.runner import AgentRunner, write_artifact
+
+if TYPE_CHECKING:
+    from cli.scenarios import Scenario
 
 # A task line in tasks.md, e.g.:
 #   - [ ] T1 (nlp): tokenize corpus
@@ -427,6 +430,10 @@ class CycleOutcome:
     merge_conflict: Optional[Path] = None  # --team + worktrees: set when a PASSing cycle's merge conflicts
     ratcheted_skill: Optional[Path] = None
     contradiction: Optional[Path] = None
+    # set only when the task has a mapped scenario found in spec_scenarios and
+    # e2e_runner was given: True=PASS, False=FAIL (blocks+ratchets), None=no
+    # mapped scenario OR e2e ERROR (inconclusive, never blocks/ratchets).
+    e2e_ok: Optional[bool] = None
     notes: List[str] = field(default_factory=list)
 
 
@@ -496,6 +503,62 @@ def _run_verify(
     return False, logic_ok, reason, detail
 
 
+def _run_e2e(
+    plan: CyclePlan,
+    workspace: Path,
+    e2e_runner: Optional[AgentRunner],
+    spec_scenarios: Optional[List["Scenario"]],
+    recall: str,
+    cwd: Optional[Path] = None,
+) -> tuple:
+    """Run the mapped scenario(s) live. Returns (status, reason, detail).
+
+    `status` is one of "skipped" (no e2e_runner, no mapped scenario name, or
+    the name isn't found in `spec_scenarios`), "pass", "fail", "error". Only
+    the FIRST mapped scenario name on the task is run (today's scope: one
+    scenario per task keeps this a per-task gate, not a full-suite re-run —
+    `/e2e` itself covers running every scenario in spec.md). `reason`/`detail`
+    mirror `_run_verify`'s shape so `_run_advisor_escalation` composes with
+    this axis unmodified.
+    """
+    from cli.scenarios import find_scenario
+
+    if e2e_runner is None or not plan.task.scenarios or not spec_scenarios:
+        return "skipped", "", ""
+    scenario = find_scenario(spec_scenarios, plan.task.scenarios[0])
+    if scenario is None:
+        return "skipped", "", ""
+
+    cwd = cwd if cwd is not None else workspace
+    title = plan.task.title
+    domain = plan.implementer_domain
+    result = e2e_runner.run(
+        _with_recall(
+            E2E_PROMPT.format(
+                domain=domain,
+                title=title,
+                scenario_name=scenario.name,
+                given=scenario.given,
+                when=scenario.when,
+                then=scenario.then,
+            ),
+            recall,
+        ),
+        cwd=cwd,
+        role="e2e",
+    )
+    write_artifact(workspace / "e2e" / f"{plan.worktree_name}.md", result.output)
+    if not result.ok:
+        return "error", result.error or "e2e runner crashed", result.output
+
+    verdict = _e2e_verdict(result.output)
+    if verdict == "PASS":
+        return "pass", "", ""
+    if verdict == "FAIL":
+        return "fail", f"e2e scenario '{scenario.name}' failed", result.output
+    return "error", f"e2e scenario '{scenario.name}' inconclusive", result.output
+
+
 def _run_advisor_escalation(
     plan: CyclePlan,
     workspace: Path,
@@ -510,22 +573,33 @@ def _run_advisor_escalation(
     impl_output: str,
     outcome: CycleOutcome,
     cwd: Optional[Path] = None,
+    e2e_runner: Optional[AgentRunner] = None,
+    spec_scenarios: Optional[List["Scenario"]] = None,
 ) -> tuple:
-    """Escalate a verify/logic FAIL to a distinct advisor before ratcheting.
+    """Escalate a verify/logic/e2e FAIL to a distinct advisor before ratcheting.
 
     Bounded by `advisor_rounds`: each round, the advisor drafts a correction plan
     from the current failure reason, the implementer retries with that plan
-    prefixed, and the cycle re-verifies. Stops early (no-progress) when a round's
-    raw checker/logic output (`detail`) is identical to the previous round's — the
-    advisor isn't helping (comparing `reason`, the short stable label, would false-
-    trigger on any two FAILs of the same kind even with genuinely different
-    content). On rescue, returns (True, ""). On exhaustion, REVERTS the workspace's
-    impl/verify artifacts to the pre-escalation implementation (the last retry's
-    edits may be worse than the original failing code — there is no guarantee an
-    unfinished correction is an improvement) and returns (False, <last reason>).
-    An advisor crash stops escalation immediately (best-effort, never fatal).
-    `cwd` is where the advisor/implementer subprocesses run; `None` falls back to
-    `workspace` (byte-identical to before this param existed).
+    prefixed, and the cycle re-verifies (+ re-checks e2e, when `e2e_runner` is
+    given and the task has a mapped scenario). Stops early (no-progress) when a
+    round's raw checker/logic/e2e output (`detail`) is identical to the previous
+    round's — the advisor isn't helping (comparing `reason`, the short stable
+    label, would false-trigger on any two FAILs of the same kind even with
+    genuinely different content). On rescue, returns (True, ""). On exhaustion,
+    REVERTS the workspace's impl/verify artifacts to the pre-escalation
+    implementation (the last retry's edits may be worse than the original failing
+    code — there is no guarantee an unfinished correction is an improvement) and
+    returns (False, <last reason>). An advisor crash stops escalation immediately
+    (best-effort, never fatal). `cwd` is where the advisor/implementer
+    subprocesses run; `None` falls back to `workspace` (byte-identical to before
+    this param existed).
+
+    `outcome.e2e_ok` is reset to `None` at the top of each round (when
+    `e2e_runner` is given) BEFORE re-verifying, so a round whose failure is a
+    verify/logic regression (e2e never even runs that round) doesn't carry a
+    stale e2e_ok value from a prior round — the ratchet title in `execute_cycle`
+    reads `outcome.e2e_ok is False` to decide "e2e failed" vs "verify failed"
+    provenance, and that must reflect THIS round's actual failure, not a stale one.
     """
     cwd = cwd if cwd is not None else workspace
     title = plan.task.title
@@ -562,6 +636,22 @@ def _run_advisor_escalation(
         )
         if logic_ok is not None:
             outcome.logic_ok = logic_ok
+
+        if e2e_runner is not None:
+            outcome.e2e_ok = None  # reset — only set below if e2e actually runs this round
+        if passed and e2e_runner is not None:
+            e2e_status, e2e_reason, e2e_detail = _run_e2e(
+                plan, workspace, e2e_runner, spec_scenarios, recall, cwd=cwd
+            )
+            if e2e_status == "pass":
+                outcome.e2e_ok = True
+            elif e2e_status == "error":
+                outcome.notes.append(f"e2e error: {e2e_reason}")
+            elif e2e_status == "fail":
+                outcome.e2e_ok = False
+                passed = False
+                new_reason, new_detail = e2e_reason, e2e_detail
+
         if passed:
             outcome.advised = True
             outcome.advisor_rounds_used = rounds_used
@@ -607,6 +697,8 @@ def execute_cycle(
     advisor: Optional[AgentRunner] = None,
     advisor_rounds: int = 1,
     agent_cwd: Optional[Path] = None,
+    e2e_runner: Optional[AgentRunner] = None,
+    spec_scenarios: Optional[List["Scenario"]] = None,
 ) -> CycleOutcome:
     """Run one maker→checker cycle. On failure, ratchet a lesson into skills/.
 
@@ -639,6 +731,13 @@ def execute_cycle(
     to the implement + verify prompts so the maker avoids prior mistakes and the
     checker checks against them. It is NOT added to the logic prompt (that grades
     reasoning, not domain patterns). Empty `recall` → prompts unchanged.
+
+    When `e2e_runner` is provided AND the task has a mapped scenario found in
+    `spec_scenarios`, a distinct agent drives that scenario live AFTER verify
+    (+logic) pass, gating the cycle: FAIL blocks + ratchets (same law as a
+    verify/logic FAIL); ERROR (couldn't complete Given/When — inconclusive)
+    does NOT flip an otherwise-passing cycle to FAIL and is never ratcheted.
+    No mapped scenario → skipped entirely, `CycleOutcome.e2e_ok` stays None.
     """
     if implementer is verifier:
         raise ValueError("maker and checker must be distinct agents")
@@ -670,6 +769,18 @@ def execute_cycle(
     ):
         raise ValueError(
             "advisor must be distinct from maker, checker, logic, test, and simplifier agents"
+        )
+    if e2e_runner is not None and (
+        e2e_runner is implementer
+        or e2e_runner is verifier
+        or e2e_runner is logic_checker
+        or e2e_runner is test_writer
+        or e2e_runner is simplifier
+        or e2e_runner is advisor
+    ):
+        raise ValueError(
+            "e2e runner must be distinct from maker, checker, logic, test, "
+            "simplifier, and advisor agents"
         )
 
     cwd = agent_cwd if agent_cwd is not None else workspace
@@ -719,16 +830,38 @@ def execute_cycle(
     )
     if logic_ok is not None:
         outcome.logic_ok = logic_ok
+
+    # E2E gate (first attempt): only reachable when verify(+logic) already
+    # passed — an e2e check on code that already failed verify is wasted work.
+    # FAIL blocks + ratchets (same law as verify/logic); ERROR never flips a
+    # pass to fail and is never ratcheted; "skipped" (no mapped scenario)
+    # leaves e2e_ok at its default None and changes nothing else. Runs BEFORE
+    # the escalation decision below so an e2e FAIL on an otherwise-passing
+    # verify still gets a chance at advisor rescue, same as a verify FAIL does.
+    if passed:
+        e2e_status, e2e_reason, e2e_detail = _run_e2e(
+            plan, workspace, e2e_runner, spec_scenarios, recall, cwd=cwd
+        )
+        if e2e_status == "pass":
+            outcome.e2e_ok = True
+        elif e2e_status == "error":
+            outcome.notes.append(f"e2e error: {e2e_reason}")
+            append_loop_log(workspace, f"{title}: e2e ERROR ({e2e_reason}) — cycle stands")
+        elif e2e_status == "fail":
+            outcome.e2e_ok = False
+            passed = False
+            reason, detail = e2e_reason, e2e_detail
     outcome.verified = passed
 
-    # Escalation: on a FAIL, a distinct advisor may rescue the cycle before it
-    # falls through to the ratchet path. Runs BEFORE the pass/fail branch below so
-    # a rescue is indistinguishable, downstream, from a first-try pass.
+    # Escalation: on a FAIL (verify, logic, OR e2e), a distinct advisor may
+    # rescue the cycle before it falls through to the ratchet path. Runs BEFORE
+    # the pass/fail branch below so a rescue is indistinguishable, downstream,
+    # from a first-try pass.
     if not passed and advisor is not None:
         passed, reason = _run_advisor_escalation(
             plan, workspace, implementer, verifier, logic_checker,
             advisor, advisor_rounds, reason, detail, recall, impl.output, outcome,
-            cwd=cwd,
+            cwd=cwd, e2e_runner=e2e_runner, spec_scenarios=spec_scenarios,
         )
         outcome.verified = passed
 
@@ -742,12 +875,14 @@ def execute_cycle(
         if simplifier is not None:
             _run_simplify(plan, workspace, simplifier, verifier, outcome)
     else:
-        outcome.notes.append(f"verify failed: {reason}")
+        failed_axis = "e2e" if outcome.e2e_ok is False else "verify"
+        outcome.notes.append(f"{failed_axis} failed: {reason}")
+        ratchet_title = f"e2e failed: {title}" if outcome.e2e_ok is False else f"verify failed: {title}"
         outcome.ratcheted_skill = ratchet_to_skills(
-            skills_dir, f"verify failed: {title}", reason, domain
+            skills_dir, ratchet_title, reason, domain
         )
         outcome.contradiction = _contradiction_flag(skills_dir, outcome.ratcheted_skill)
-        append_loop_log(workspace, f"{title}: verify FAILED ({reason})")
+        append_loop_log(workspace, f"{title}: {failed_axis.upper()} FAILED ({reason})")
         # TDD: pin the bug with a regression test so the loop can never silently
         # regress on it. Best-effort — a failed write is logged, never fatal.
         if test_writer is not None:
