@@ -97,6 +97,7 @@ def routing_for(op: str) -> Dict[str, str]:
             "verify": TIER_MID,
             "logic": TIER_STRONG,
             "advisor": TIER_STRONG,
+            "e2e": TIER_STRONG,
         }
     if op == "research":
         return {"fan-out": TIER_MID, "synthesis": TIER_STRONG}

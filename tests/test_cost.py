@@ -41,6 +41,11 @@ def test_routing_review_axes():
     assert routes["ml-logic"] == TIER_STRONG
 
 
+def test_loop_routing_includes_e2e_at_strong_tier():
+    routes = routing_for("loop")
+    assert routes["e2e"] == TIER_STRONG
+
+
 def test_calibrate_from_ledger():
     rows = [
         {"op": "review", "units": 2, "tokens": 1000},
