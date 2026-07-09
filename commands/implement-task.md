@@ -22,6 +22,23 @@ Implement a single task with **only the relevant domain context** loaded.
 5. Write a short `impl/{task_id}.md` note: what changed, why, which scenarios
    it satisfies, how to verify.
 
+## E2E scenario check — if this task has a mapped Scenario
+
+If `tasks.md` tags this task with `[scenario: <name>]` (or `scenarios:`),
+run that scenario end-to-end the same way `/e2e` does: launch the app via the
+`run` skill if it isn't already live, drive Given/When for real, check Then,
+and record the verdict in `impl/{task_id}.md`.
+
+- `PASS` — proceed to `/verify`.
+- `FAIL` — the task is **not actually done**. Do not consider it complete
+  until the scenario passes. Fix the implementation and re-run this check.
+- `ERROR` — an environment issue (app unreachable, tool crash), not a
+  behavior bug. Note it and retry before moving to `/verify`; do not block
+  completion on an ERROR the way a FAIL blocks it.
+
+This runs the mapped scenario ONCE for this task — not the full spec suite
+(that's what `/e2e` is for).
+
 ## TDD mode — when asked to "do it test-first" / "TDD"
 
 Mirror `sigma loop --tdd`: write the test FIRST with a **distinct agent** from the
