@@ -249,6 +249,33 @@ def check_graphify(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("graphify", OK, "graphify installed (sigma learn builds a knowledge graph)")
 
 
+def check_codex_login(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
+    """Codex CLI: installed? signed in (ChatGPT subscription, no API key)?"""
+    if status_fn is None:
+        from cli.codex_login import codex_login_status
+
+        status_fn = codex_login_status
+    st = status_fn()
+
+    def _fix() -> bool:
+        from cli.codex_login import setup_codex_login
+
+        return setup_codex_login(status_fn=status_fn, confirm=lambda _msg: True)
+
+    if not st.get("installed"):
+        return Check(
+            "codex-login", WARN,
+            "codex CLI not found (optional — needed for research's gpt lane and "
+            "loop --codex-verify/--codex-tdd)",
+        )
+    if not st.get("logged_in"):
+        return Check(
+            "codex-login", WARN, "codex CLI installed but not signed in",
+            fix=("sign in to Codex (codex login)", _fix),
+        )
+    return Check("codex-login", OK, "codex CLI signed in")
+
+
 def check_usage_tool(which: Optional[Callable] = None) -> Check:
     """Node runtime (npx/bunx) for `sigma usage` (wraps ccusage): available?"""
     from cli.usage import node_runtime_available
@@ -335,6 +362,7 @@ def run_all(
     statusline_status_fn: Optional[Callable] = None,
     graphify_status_fn: Optional[Callable] = None,
     usage_which: Optional[Callable] = None,
+    codex_login_status_fn: Optional[Callable] = None,
 ) -> List[Check]:
     """Run every probe and return the results in display order.
 
@@ -361,6 +389,7 @@ def run_all(
         check_graphify(status_fn=graphify_status_fn),
         check_graphify_hook(root=root),
         check_usage_tool(which=usage_which),
+        check_codex_login(status_fn=codex_login_status_fn),
     ]
 
 

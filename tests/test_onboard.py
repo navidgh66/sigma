@@ -174,6 +174,77 @@ def test_onboard_skips_rtk_when_declined(tmp_path, monkeypatch):
     assert spawned == []
 
 
+# --------------------------- codex login --------------------------- #
+def test_onboard_signs_in_to_codex_on_confirm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,                     # yes to everything
+        learn_fn=lambda root: None,                   # don't spawn a real learn agent
+        # rtk + caveman + graphify already satisfied → only codex-login acts.
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": True},
+        codex_login_status_fn=lambda: {"installed": True, "logged_in": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert ["codex", "login"] in spawned
+
+
+def test_onboard_skips_codex_login_when_declined(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: False,
+        rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
+        codex_login_status_fn=lambda: {"installed": True, "logged_in": False},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert spawned == []
+
+
+def test_onboard_codex_login_noop_when_already_logged_in(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
+    spawned = []
+    onboard.run_onboard(
+        name="p",
+        domain_input=lambda: "",
+        secret_input=lambda key: "",
+        confirm=lambda msg: True,
+        learn_fn=lambda root: None,
+        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
+        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
+        graphify_status_fn=lambda: {"installed": True},
+        codex_login_status_fn=lambda: {"installed": True, "logged_in": True},
+        spawn=lambda argv: spawned.append(argv) or 0,
+        run_all=lambda **k: [],
+        which=lambda n: None,
+        use_rich=False,
+        domains=["nlp"],
+    )
+    assert ["codex", "login"] not in spawned
+
+
 # --------------------------- graphify --------------------------- #
 def test_onboard_installs_graphify_on_confirm(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

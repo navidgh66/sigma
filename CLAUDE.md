@@ -31,12 +31,15 @@ pages for full content, not just search snippets. `/e2e` makes spec.md's BDD
 against the running app (PASS/FAIL/ERROR, ratcheting only real FAILs); `sigma
 loop --e2e` gates each task's cycle on its mapped scenario the same way
 `--logic` gates on the logic-evaluator axis, and `/implement-task` runs the
-same per-task check. 779 pytest tests, ruff clean.
+same per-task check. `sigma onboard` offers to sign in to Codex
+(`codex login`, ChatGPT subscription, no API key) for research's gpt lane and
+`loop --codex-verify`/`--codex-tdd`; `sigma doctor` surfaces + can fix a missing
+sign-in the same way it does RTK/caveman. 807 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 779 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 807 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -171,9 +174,10 @@ cli/skill_map.py    stage → bundled skill mapping; inject_skill into prompts
 cli/events.py       append/read events.jsonl — append-only board state spine
 cli/board.py        kanban projection (pure build_columns) + rich static/live render
 cli/keepawake.py    --keep-awake: caffeinate wrapper, prevents Mac sleep on long runs
-cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify/usage-tool); run_all()'s `usage_which` param is dedicated to check_usage_tool, deliberately NOT reusing the `which` param check_models/check_model_auth already use (different lookup semantics — model CLIs vs. node runtime)
+cli/checks.py       pure diagnostic probes (python/deps/models/secrets/skills/plugin/config/workspaces/rtk/caveman/statusline/graphify/usage-tool/codex-login); run_all()'s `usage_which` param is dedicated to check_usage_tool, deliberately NOT reusing the `which` param check_models/check_model_auth already use (different lookup semantics — model CLIs vs. node runtime)
 cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--yes/--update (dual-surface: CLI git pull + plugin update)
-cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, RTK, caveman, ccstatusline, graphify, SessionStart hook, + offer to build learn artifacts (step 11, confirm-gated, no-op if they exist; learn_fn injectable so tests never spawn an agent)
+cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, codex login, RTK, caveman, ccstatusline, graphify, SessionStart hook, + offer to build learn artifacts (step 11, confirm-gated, no-op if they exist; learn_fn injectable so tests never spawn an agent)
+cli/codex_login.py  detect/prompt ChatGPT sign-in for the codex CLI (`codex login`, confirm-gated, RTK-shaped) — powers research's gpt lane + `loop --codex-verify`/`--codex-tdd`; distinct from the OPENAI_API_KEY secret (codex exec doesn't use it)
 cli/uninstall.py    pure build_plan (launcher/~/.sigma/plugin surfaces) + run_uninstall (confirm-gated, separate .env-secrets confirm, best-effort, injectable I/O); leaves global RTK/caveman/statusline
 cli/setup_repo.py   one-shot per-repo bootstrap: composes config + session_hook + claude_local + learn (config-if-missing → hook idempotent → CLAUDE.local → map unless --no-learn / artifacts exist); learn_fn injectable (tests never spawn an agent)
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
@@ -656,3 +660,17 @@ keeps only what Claude Code cannot do in-session, plus setup.
   contract like claude's, so `codex_argv_builder` ignores the `model` arg it's
   passed (ModelAdapter reuse via `cli/models.py`'s `ADAPTERS["gpt"].build_argv`,
   not a separate codex adapter).
+- `cli/codex_login.py` (mirrors `cli/rtk.py`'s shape exactly: `codex_login_status`
+  + confirm-gated `setup_codex_login`) turns the passive login HINT above into an
+  ACTIVE offer — `sigma onboard` (step 5b, right after the model-auth hint) and
+  `sigma doctor`'s `check_codex_login` fix both spawn the real interactive
+  `codex login` (opens a browser) when the user confirms. `logged_in` requires
+  BOTH exit code 0 AND `"logged in"` in `codex login status`'s stdout (lowercased
+  match) — an unrecognized future CLI message defaults to not-logged-in, the
+  conservative read (same direction as gate-defaults-WAKE is NOT: here absence of
+  positive evidence means "prompt again", not "assume done"). Not installed →
+  no-op, no prompt (nothing to log into) — same idempotent shape as RTK/caveman.
+  Distinct from the `OPENAI_API_KEY` secret onboard's step 4 already captures —
+  `codex exec` is ChatGPT-subscription-backed and never reads that key; the two
+  coexist in onboard for unrelated reasons (OPENAI_API_KEY predates codex and may
+  serve other future openai use, not consumed by any current sigma code path).

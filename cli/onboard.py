@@ -15,6 +15,7 @@ from typing import Callable, List, Optional
 
 from cli import caveman as caveman_mod
 from cli import checks as checks_mod
+from cli import codex_login as codex_login_mod
 from cli import graphify as graphify_mod
 from cli import render, rtk, secrets
 from cli import session_hook as session_hook_mod
@@ -49,6 +50,7 @@ def run_onboard(
     caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
     graphify_status_fn: Optional[Callable] = None,
+    codex_login_status_fn: Optional[Callable] = None,
     spawn: Optional[Callable] = None,
     which: Optional[Callable] = None,
     run_all: Optional[Callable] = None,
@@ -90,6 +92,18 @@ def run_onboard(
     auth = checks_mod.check_model_auth(which=which) if which is not None else checks_mod.check_model_auth()
     if auth.detail:
         print(f"  ℹ {auth.detail}")
+
+    # 5b. Codex sign-in — confirm-gated, offers to actually RUN `codex login`
+    #     (interactive OAuth, opens a browser; ChatGPT subscription, no API key).
+    #     Distinct from the OPENAI_API_KEY secret captured in step 4 above — codex
+    #     exec doesn't use that key. No-ops when codex isn't installed or is
+    #     already logged in. Needed for `sigma research`'s gpt lane and
+    #     `sigma loop --codex-verify`/`--codex-tdd`.
+    codex_changed = codex_login_mod.setup_codex_login(
+        status_fn=codex_login_status_fn, confirm=confirm, which=which, spawn=spawn
+    )
+    if codex_changed:
+        print("  ✓ signed in to Codex")
 
     # 6. RTK — confirm-gated install + activate (touches global settings.json).
     changed = rtk.setup_rtk(

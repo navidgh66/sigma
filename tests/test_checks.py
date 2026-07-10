@@ -230,7 +230,7 @@ def test_run_all_returns_checks(tmp_path, monkeypatch):
     assert all(isinstance(c, checks.Check) for c in out)
     names = {c.name for c in out}
     assert "python" in names and "rtk" in names and "secrets" in names
-    assert "graphify" in names
+    assert "graphify" in names and "codex-login" in names
 
 
 # --------------------------- graphify hook --------------------------- #
@@ -255,6 +255,24 @@ def test_check_graphify_hook_warn_when_hook_missing():
     )
     assert c.status == WARN
     assert c.fix is not None
+
+
+# --------------------------- codex login --------------------------- #
+def test_check_codex_login_warn_when_not_installed():
+    c = checks.check_codex_login(status_fn=lambda: {"installed": False, "logged_in": False})
+    assert c.status == WARN
+    assert c.fix is None
+
+
+def test_check_codex_login_warn_when_not_logged_in():
+    c = checks.check_codex_login(status_fn=lambda: {"installed": True, "logged_in": False})
+    assert c.status == WARN
+    assert c.fix is not None
+
+
+def test_check_codex_login_ok_when_logged_in():
+    c = checks.check_codex_login(status_fn=lambda: {"installed": True, "logged_in": True})
+    assert c.status == OK
 
 
 # --------------------------- usage tool --------------------------- #

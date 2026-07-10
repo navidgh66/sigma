@@ -132,8 +132,8 @@ sigma onboard
 sigma setup-repo            # add --no-learn to skip the agent-built map
 ```
 
-`sigma onboard` is the once-per-machine setup (keys, RTK, caveman, status line,
-graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
+`sigma onboard` is the once-per-machine setup (keys, codex sign-in, RTK, caveman,
+status line, graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
 give it the four local artifacts (`sigma.config.yml`, the SessionStart hook,
 `CLAUDE.local.md`, and the `ARCHITECTURE.md` + CodeTour map) so Claude reads that
 repo's architecture every session instead of re-exploring. It's idempotent and
@@ -335,7 +335,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **779 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **807 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or
