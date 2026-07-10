@@ -95,6 +95,65 @@ def test_runner_model_injects_flag(monkeypatch):
     assert captured["argv"] == ["claude", "-p", "--model", "haiku", "hello"]
 
 
+def test_runner_argv_builder_bypasses_default_argv(monkeypatch):
+    """A set argv_builder fully replaces the built-in [-p, --model] argv shape."""
+    import cli.runner as r
+
+    monkeypatch.setattr(r.shutil, "which", lambda exe: "/bin/codex")
+    captured = {}
+
+    def spy(argv, *a, **k):
+        captured["argv"] = argv
+        return _fake_proc(0, "ok")
+
+    def builder(prompt, model):
+        return ["codex", "exec", "--sandbox", "read-only", "--color", "never", prompt]
+
+    AgentRunner(executable="codex", runner=spy, argv_builder=builder, model="ignored").run("hello")
+    assert captured["argv"] == ["codex", "exec", "--sandbox", "read-only", "--color", "never", "hello"]
+
+
+def test_runner_no_argv_builder_uses_default(monkeypatch):
+    """argv_builder=None (default) is byte-identical to the pre-existing argv shape."""
+    import cli.runner as r
+
+    monkeypatch.setattr(r.shutil, "which", lambda exe: "/bin/claude")
+    captured = {}
+
+    def spy(argv, *a, **k):
+        captured["argv"] = argv
+        return _fake_proc(0, "ok")
+
+    AgentRunner(runner=spy).run("hello")
+    assert captured["argv"] == ["claude", "-p", "hello"]
+
+
+def test_runner_output_cleaner_applied(monkeypatch):
+    """A set output_cleaner post-processes raw stdout before it becomes AgentResult.output."""
+    import cli.runner as r
+
+    monkeypatch.setattr(r.shutil, "which", lambda exe: "/bin/codex")
+    raw = "workdir: /tmp\nVERDICT: PASS\n"
+    runner = AgentRunner(
+        executable="codex",
+        runner=lambda *a, **k: _fake_proc(0, raw),
+        output_cleaner=lambda text: "VERDICT: PASS",
+    )
+    res = runner.run("p")
+    assert res.ok is True
+    assert res.output == "VERDICT: PASS"
+
+
+def test_runner_no_output_cleaner_strips_raw(monkeypatch):
+    """output_cleaner=None (default) is byte-identical to today's bare .strip()."""
+    import cli.runner as r
+
+    monkeypatch.setattr(r.shutil, "which", lambda exe: "/bin/claude")
+    runner = AgentRunner(runner=lambda *a, **k: _fake_proc(0, "  done  "))
+    res = runner.run("p")
+    assert res.output == "done"
+
+
 # --------------------------------------------------------------------------- #
 # Trajectory sink
 # --------------------------------------------------------------------------- #

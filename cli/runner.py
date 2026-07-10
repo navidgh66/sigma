@@ -37,6 +37,17 @@ class AgentRunner:
       step record (role, model, ok, verdict-free metadata, duration). Best-effort
       observability — a failing sink NEVER breaks the run (the inverse of a hard
       gate). `clock` supplies timestamps; `time.monotonic` by default.
+
+    Two more optional fields extend this to non-claude-shaped CLIs (e.g. codex,
+    whose argv is `exec --sandbox <mode> ...`, not `-p ...`), both additive:
+
+    - `argv_builder`: `Callable[[str, Optional[str]], List[str]]`. When set, fully
+      replaces the built-in `[-p, --model, prompt]` argv construction — called as
+      `argv_builder(prompt, self.model)`, its return value used as-is.
+    - `output_cleaner`: `Callable[[str], str]`. When set, applied to the raw
+      (unstripped) stdout before it becomes `AgentResult.output` — e.g. to strip
+      a CLI's session-metadata preamble (codex's `workdir:`/`tokens used:` lines)
+      that would otherwise corrupt a verifier's `VERDICT:` parsing.
     """
 
     executable: str = "claude"
@@ -45,9 +56,18 @@ class AgentRunner:
     model: Optional[str] = None
     trajectory_sink: Optional[Callable[[dict], None]] = None
     clock: Callable[[], float] = time.monotonic
+    argv_builder: Optional[Callable[[str, Optional[str]], list]] = None
+    output_cleaner: Optional[Callable[[str], str]] = None
 
     def available(self) -> bool:
         return shutil.which(self.executable) is not None
+
+    def _default_argv(self, prompt: str) -> list:
+        argv = [self.executable, "-p"]
+        if self.model:
+            argv += ["--model", self.model]
+        argv.append(prompt)
+        return argv
 
     def run(self, prompt: str, cwd: Optional[Path] = None, role: str = "agent") -> AgentResult:
         """Run the agent non-interactively with the prompt; capture output.
@@ -60,10 +80,7 @@ class AgentRunner:
             self._emit(role, result, duration=0.0)
             return result
 
-        argv = [self.executable, "-p"]
-        if self.model:
-            argv += ["--model", self.model]
-        argv.append(prompt)
+        argv = self.argv_builder(prompt, self.model) if self.argv_builder else self._default_argv(prompt)
 
         start = self.clock()
         try:
@@ -84,7 +101,8 @@ class AgentRunner:
             return result
 
         duration = self.clock() - start
-        out = (getattr(proc, "stdout", "") or "").strip()
+        raw_out = getattr(proc, "stdout", "") or ""
+        out = self.output_cleaner(raw_out) if self.output_cleaner else raw_out.strip()
         if proc.returncode != 0:
             err = (getattr(proc, "stderr", "") or "").strip() or f"exit code {proc.returncode}"
             result = AgentResult(ok=False, output=out, error=err, returncode=proc.returncode)
