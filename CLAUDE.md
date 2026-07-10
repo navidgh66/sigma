@@ -34,12 +34,16 @@ loop --e2e` gates each task's cycle on its mapped scenario the same way
 same per-task check. `sigma onboard` offers to sign in to Codex
 (`codex login`, ChatGPT subscription, no API key) for research's gpt lane and
 `loop --codex-verify`/`--codex-tdd`; `sigma doctor` surfaces + can fix a missing
-sign-in the same way it does RTK/caveman. 807 pytest tests, ruff clean.
+sign-in the same way it does RTK/caveman. `sigma claude-md-check` / `/claude-md-check`
+grade CLAUDE.md + CLAUDE.local.md against best-practice research (length,
+pasted-code, stale @imports/test-counts, structure); `sigma claude-md-create` /
+`/claude-md-create` scaffold a best-practice-shaped starter; `setup-repo` wires
+both in automatically. 866 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 807 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 866 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -102,6 +106,8 @@ sigma review                         # 3-axis review of local diff vs HEAD (code
 sigma review <PR#|url>               # review a PR (gh pr diff) + post a summary comment
 sigma review a..b                    # review a git range
 sigma review --check                 # CI gate: exit 1 on a CRITICAL/HIGH finding or an inconclusive axis
+sigma claude-md-check                # check CLAUDE.md + CLAUDE.local.md vs best-practice research; --check for CI
+sigma claude-md-create --target repo # scaffold a best-practice-shaped CLAUDE.md (capped ~200 lines); --target local for CLAUDE.local.md
 sigma cost                           # report sigma's OWN heavy-op token-cost ledger (sigma/costs.jsonl)
 sigma usage                          # real Claude Code token/cache/cost via ccusage (wraps `npx ccusage@latest`)
 sigma usage claude session --json    # passthrough args forward to ccusage unmodified
@@ -179,7 +185,11 @@ cli/doctor.py       sigma doctor — run checks, confirm-gated fixes, --check/--
 cli/onboard.py      sigma onboard — first-run setup: domains, API keys, sign-in guide, codex login, RTK, caveman, ccstatusline, graphify, SessionStart hook, + offer to build learn artifacts (step 11, confirm-gated, no-op if they exist; learn_fn injectable so tests never spawn an agent)
 cli/codex_login.py  detect/prompt ChatGPT sign-in for the codex CLI (`codex login`, confirm-gated, RTK-shaped) — powers research's gpt lane + `loop --codex-verify`/`--codex-tdd`; distinct from the OPENAI_API_KEY secret (codex exec doesn't use it)
 cli/uninstall.py    pure build_plan (launcher/~/.sigma/plugin surfaces) + run_uninstall (confirm-gated, separate .env-secrets confirm, best-effort, injectable I/O); leaves global RTK/caveman/statusline
-cli/setup_repo.py   one-shot per-repo bootstrap: composes config + session_hook + claude_local + learn (config-if-missing → hook idempotent → CLAUDE.local → map unless --no-learn / artifacts exist); learn_fn injectable (tests never spawn an agent)
+cli/setup_repo.py   one-shot per-repo bootstrap: composes config + session_hook + claude_local + learn + claude_md (config-if-missing → hook idempotent → CLAUDE.local → map unless --no-learn / artifacts exist → CLAUDE.md scaffold-if-missing/check-if-present unless --no-claude-md); learn_fn/claude_md_scaffold_fn/claude_md_check_fn all injectable (tests never spawn an agent)
+cli/claude_md_check.py  pure: deterministic checks (length vs ~200/300-line thresholds, pasted-code-block/@import/stale-test-count/placeholder detection) + qualitative agent-prompt/parse reusing review.Finding + review's FINDING grammar and CRIT/HIGH gate
+cli/claude_md_check_run.py  thin: real pytest --collect-only count, runs both layers on CLAUDE.md (required) + CLAUDE.local.md (optional, skipped if absent), writes sigma/claude-md-check.md
+cli/claude_md_scaffold.py  pure: WHAT/WHY/HOW skeleton + agent prompt for a best-practice CLAUDE.md ("repo") or CLAUDE.local.md ("local") — distinct from native /init (no length/structure discipline there)
+cli/claude_md_scaffold_run.py  thin: drives the scaffold agent, falls back to the static skeleton on failure/empty output, refuses to overwrite an existing file without --force
 cli/secrets.py      ~/.sigma/.env key store (chmod 600) — never the committed config
 cli/rtk.py          detect/install/activate RTK token-saver (confirm-gated, idempotent)
 cli/caveman.py      detect/install caveman terse-output mode (confirm-gated, RTK-shaped)
@@ -674,3 +684,10 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `codex exec` is ChatGPT-subscription-backed and never reads that key; the two
   coexist in onboard for unrelated reasons (OPENAI_API_KEY predates codex and may
   serve other future openai use, not consumed by any current sigma code path).
+- `claude_md_check`/`claude_md_scaffold` NEVER auto-edit an existing CLAUDE.md —
+  check surfaces findings, scaffold refuses to overwrite without `--force`. This
+  file's own first real run scored a HIGH (676 lines, past the ~300-line ceiling
+  the research it's built from documents) — a live demonstration the tool works,
+  not yet acted on. `check_imports` resolves `@path` relative to the FILE, not
+  cwd, per official docs; `check_test_count_claims` skips (never guesses) when
+  `real_test_count` is `None`.

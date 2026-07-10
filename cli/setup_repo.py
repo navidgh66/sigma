@@ -2,13 +2,17 @@
 
 Globals (API keys, RTK, caveman, ccstatusline, graphify) are once-per-machine and
 live in `sigma onboard`. THIS command is purely repo-local: it makes any repo
-"sigma-ready" with its four important artifacts, in order:
+"sigma-ready" with its five important artifacts, in order:
 
   1. sigma.config.yml      — written if missing (self-contained; never clobbers one)
   2. .claude/settings.json — the SessionStart hook (idempotent)
   3. CLAUDE.local.md       — the learn-artifact pointer block (gitignored)
   4. ARCHITECTURE.md + .tours/*.tour — the codebase map (runs an agent; --no-learn skips,
      and it is skipped when the artifacts already exist)
+  5. CLAUDE.md — scaffolded (best-practice-shaped, capped ~200 lines) if missing,
+     else CHECKED against the same research and the finding count surfaced
+     (never auto-edited — a human decides whether to act on findings).
+     --no-claude-md opts out of both.
 
 All-yes by default (no per-step prompt); `--no-learn` opts out of the slow map step.
 Every side effect is composed from existing pure/injectable modules, and the agent
@@ -30,6 +34,9 @@ class SetupRepoResult:
     local_written: bool = False
     learned: bool = False
     learn_skipped_reason: Optional[str] = None
+    claude_md_created: bool = False
+    claude_md_findings: int = 0
+    claude_md_skipped_reason: Optional[str] = None
     steps: List[str] = field(default_factory=list)
 
 
@@ -38,12 +45,16 @@ def run_setup_repo(
     domains: Optional[List[str]] = None,
     no_learn: bool = False,
     learn_fn: Optional[Callable] = None,
+    no_claude_md: bool = False,
+    claude_md_scaffold_fn: Optional[Callable] = None,
+    claude_md_check_fn: Optional[Callable] = None,
 ) -> SetupRepoResult:
     """Bootstrap `root` as a sigma repo. Returns what each step did.
 
     Idempotent: an existing config / configured hook / present map are left as-is.
     `learn_fn(root)` is injected in tests so the map step never spawns a real
-    agent; in production it drives the real `sigma learn`.
+    agent; in production it drives the real `sigma learn`. Same for
+    `claude_md_scaffold_fn`/`claude_md_check_fn` and the CLAUDE.md step.
     """
     from cli.claude_local import write_block
     from cli.config import SigmaConfig, config_path, write_config
@@ -84,6 +95,10 @@ def run_setup_repo(
     # 4. Map — the only slow/expensive step. Skipped on --no-learn or when artifacts
     #    already exist (don't re-spawn an agent over a prior map).
     _maybe_map(root, no_learn, learn_fn, res)
+
+    # 5. CLAUDE.md — scaffold if missing, else check (never auto-edit an existing
+    #    one; a human decides whether to act on findings).
+    _maybe_claude_md(root, no_claude_md, claude_md_scaffold_fn, claude_md_check_fn, res)
     return res
 
 
@@ -112,8 +127,59 @@ def _maybe_map(
         res.steps.append(f"map: learn did not finish ({err})")
 
 
+def _maybe_claude_md(
+    root: Path,
+    no_claude_md: bool,
+    scaffold_fn: Optional[Callable],
+    check_fn: Optional[Callable],
+    res: SetupRepoResult,
+) -> None:
+    if no_claude_md:
+        res.claude_md_skipped_reason = "--no-claude-md"
+        res.steps.append("claude-md: skipped (--no-claude-md)")
+        return
+
+    if (root / "CLAUDE.md").exists():
+        check_fn = check_fn or _default_claude_md_check
+        result = check_fn(root)
+        if getattr(result, "ok", False):
+            res.claude_md_findings = len(getattr(result, "findings", []))
+            res.steps.append(
+                f"claude-md: checked existing CLAUDE.md ({res.claude_md_findings} finding(s))"
+            )
+        else:
+            err = getattr(result, "error", "unknown")
+            res.claude_md_skipped_reason = f"check failed: {err}"
+            res.steps.append(f"claude-md: check did not finish ({err})")
+        return
+
+    scaffold_fn = scaffold_fn or _default_claude_md_scaffold
+    result = scaffold_fn(root)
+    if getattr(result, "ok", False):
+        res.claude_md_created = True
+        res.steps.append("claude-md: scaffolded a best-practice-shaped CLAUDE.md")
+    else:
+        err = getattr(result, "error", "unknown")
+        res.claude_md_skipped_reason = f"scaffold failed: {err}"
+        res.steps.append(f"claude-md: scaffold did not finish ({err})")
+
+
 def _default_learn(root: Path):
     """Drive the real `sigma learn` (run_learn refreshes CLAUDE.local.md itself)."""
     from cli.learn import run_learn
 
     return run_learn(root)
+
+
+def _default_claude_md_scaffold(root: Path):
+    """Drive the real CLAUDE.md scaffold (target='repo' — team-shared)."""
+    from cli.claude_md_scaffold_run import run_scaffold
+
+    return run_scaffold(root, target="repo")
+
+
+def _default_claude_md_check(root: Path):
+    """Drive the real CLAUDE.md check."""
+    from cli.claude_md_check_run import run_check
+
+    return run_check(root)

@@ -128,16 +128,17 @@ export PATH="$PATH:$HOME/.local/bin"
 # friendly first run (once per machine): pick domains, capture API keys, optional RTK / status line
 sigma onboard
 
-# bootstrap any repo (per repo): config + SessionStart hook + CLAUDE.local + codebase map
-sigma setup-repo            # add --no-learn to skip the agent-built map
+# bootstrap any repo (per repo): config + SessionStart hook + CLAUDE.local + codebase map + CLAUDE.md
+sigma setup-repo            # add --no-learn / --no-claude-md to skip either agent step
 ```
 
 `sigma onboard` is the once-per-machine setup (keys, codex sign-in, RTK, caveman,
 status line, graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
-give it the four local artifacts (`sigma.config.yml`, the SessionStart hook,
-`CLAUDE.local.md`, and the `ARCHITECTURE.md` + CodeTour map) so Claude reads that
-repo's architecture every session instead of re-exploring. It's idempotent and
-never clobbers existing artifacts.
+give it the five local artifacts (`sigma.config.yml`, the SessionStart hook,
+`CLAUDE.local.md`, the `ARCHITECTURE.md` + CodeTour map, and CLAUDE.md — scaffolded
+if missing, checked against best-practice research if present) so Claude reads
+that repo's architecture every session instead of re-exploring. It's idempotent
+and never clobbers existing artifacts.
 
 Then, **inside Claude Code**, add the plugin and go:
 
@@ -227,6 +228,8 @@ sigma hermes "build it" --topic <t> --auto              # chain stages to a huma
 sigma board --topic <t> --watch                         # live kanban over agent progress
 sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
 sigma review <PR#|url>                                  # 3-axis team-change review (+ graph-impact section when a graphify graph exists)
+sigma claude-md-check                                   # check CLAUDE.md + CLAUDE.local.md against best-practice research
+sigma claude-md-create --target repo                    # scaffold a best-practice-shaped CLAUDE.md (capped ~200 lines)
 sigma profile                                           # codebase logic invariants → profile
 sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
 sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
@@ -335,7 +338,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **807 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **866 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or

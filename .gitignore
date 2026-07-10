@@ -40,5 +40,6 @@ sigma/profile/
 sigma/costs.jsonl
 sigma/evals/*/report.md
 sigma/specs/*/trajectory.jsonl
+sigma/claude-md-check.md
 CLAUDE.local.md
 .worktrees/

@@ -470,7 +470,11 @@ def cmd_setup_repo(args: argparse.Namespace) -> int:
     domains = [d.strip() for d in args.domains.split(",")] if args.domains else None
     if not args.no_learn:
         _print("  (will map the codebase with an agent — pass --no-learn to skip)")
-    res = run_setup_repo(root, domains=domains, no_learn=args.no_learn)
+    if not args.no_claude_md:
+        _print("  (will scaffold or check CLAUDE.md — pass --no-claude-md to skip)")
+    res = run_setup_repo(
+        root, domains=domains, no_learn=args.no_learn, no_claude_md=args.no_claude_md
+    )
     for step in res.steps:
         _print(f"  • {step}")
     _print("✓ repo ready — Claude will read this repo's architecture map each session")
@@ -728,6 +732,57 @@ def cmd_review(args: argparse.Namespace) -> int:
     # CI gate: --check exits non-zero on FAIL.
     if args.check and decision is not None and not decision.passed:
         return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# claude-md-check (check CLAUDE.md / CLAUDE.local.md against best-practice research)
+# --------------------------------------------------------------------------- #
+def cmd_claude_md_check(args: argparse.Namespace) -> int:
+    from cli.claude_md_check_run import run_check, write_report
+    from cli.paths import project_root
+
+    root = project_root()
+    _print(f"σ claude-md-check — {root}")
+    res = run_check(root)
+    if not res.ok:
+        _print(f"✗ {res.error}")
+        return 1
+    _print(f"  checked: {', '.join(res.files_checked)}")
+    for f in res.findings:
+        _print(f"  {f.render()}")
+    if not res.findings:
+        _print("  ✓ no findings")
+    decision = res.gate
+    mark = "✅ PASS" if decision.passed else "❌ FAIL"
+    _print(f"  verdict: {mark} — {decision.reason}")
+    out = write_report(root, res.report)
+    _print(f"✓ wrote {out}")
+    if args.check and not decision.passed:
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# claude-md-create (scaffold a best-practice-shaped CLAUDE.md / CLAUDE.local.md)
+# --------------------------------------------------------------------------- #
+def cmd_claude_md_create(args: argparse.Namespace) -> int:
+    from cli.claude_md_scaffold_run import run_scaffold
+    from cli.paths import project_root
+
+    root = project_root()
+    _print(f"σ claude-md-create — target={args.target} at {root}")
+    res = run_scaffold(root, target=args.target, force=args.force, dry_run=args.dry_run)
+    if args.dry_run:
+        _print("--- invocation (dry run) ---")
+        _print(res.prompt)
+        return 0
+    if not res.ok:
+        _print(f"✗ {res.error}")
+        return 1
+    if res.used_skeleton_fallback:
+        _print("  ⚠ agent pass did not produce usable content — wrote the static skeleton")
+    _print(f"✓ wrote {res.path}")
     return 0
 
 
@@ -993,6 +1048,8 @@ def build_parser() -> argparse.ArgumentParser:
     psr.add_argument("--domains", help="comma list for sigma.config.yml (default: all) — only if config is missing")
     psr.add_argument("--no-learn", action="store_true",
                      help="skip building the codebase map (no agent run)")
+    psr.add_argument("--no-claude-md", action="store_true",
+                     help="skip scaffolding/checking CLAUDE.md")
     psr.set_defaults(func=cmd_setup_repo)
 
     pscout = sub.add_parser("scout", help="Discover relevant skills on skillsmp.com → install on approval")
@@ -1027,6 +1084,19 @@ def build_parser() -> argparse.ArgumentParser:
                          help="PR number/URL, a git range (a..b), or empty for local diff vs HEAD")
     preview.add_argument("--check", action="store_true", help="exit 1 if the review gate FAILs (CI)")
     preview.set_defaults(func=cmd_review)
+
+    pcmc = sub.add_parser("claude-md-check",
+                          help="Check CLAUDE.md / CLAUDE.local.md against best-practice research")
+    pcmc.add_argument("--check", action="store_true", help="exit 1 if the check gate FAILs (CI)")
+    pcmc.set_defaults(func=cmd_claude_md_check)
+
+    pcmcr = sub.add_parser("claude-md-create",
+                           help="Scaffold a best-practice-shaped CLAUDE.md / CLAUDE.local.md")
+    pcmcr.add_argument("--target", choices=["repo", "local"], default="repo",
+                       help="repo → CLAUDE.md (team-shared), local → CLAUDE.local.md (personal, gitignored)")
+    pcmcr.add_argument("--force", action="store_true", help="overwrite an existing file")
+    pcmcr.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
+    pcmcr.set_defaults(func=cmd_claude_md_create)
 
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
