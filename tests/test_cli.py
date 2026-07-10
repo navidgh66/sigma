@@ -463,6 +463,38 @@ def test_codex_tdd_without_tdd_is_usage_error(tmp_path, monkeypatch, capsys):
     assert "--codex-tdd requires --tdd" in out
 
 
+def test_codex_tdd_with_all_flag_is_not_rejected(tmp_path, monkeypatch, capsys):
+    """--all implies --tdd, so --all --codex-tdd together must NOT be rejected
+    by the --codex-tdd/--tdd validation guard (regression for a validation-
+    ordering bug: the guard used to run before the --all flip applied)."""
+    from datetime import date
+
+    import cli.main as main_mod
+    from cli.paths import slugify
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
+    ws.mkdir(parents=True)
+    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
+
+    captured = {}
+
+    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
+
+    args = build_parser().parse_args(
+        ["loop", "--topic", "demo", "--execute", "--all", "--codex-tdd"]
+    )
+    main_mod.cmd_loop(args)
+
+    assert "make_test_writer" in captured
+    assert captured["make_test_writer"] is not None
+
+
 def test_codex_flags_default_false():
     args = build_parser().parse_args(["loop", "--topic", "t", "--execute"])
     assert args.codex_verify is False
@@ -503,6 +535,7 @@ def test_codex_verify_wires_codex_backed_verifier(tmp_path, monkeypatch, capsys)
     assert isinstance(verifier, AgentRunner)
     assert verifier.executable == "codex"
     assert verifier.argv_builder is not None
+    assert verifier.output_cleaner is not None
 
     implementer = captured["make_implementer"]()
     assert implementer.executable == "claude"

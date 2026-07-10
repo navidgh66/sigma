@@ -148,7 +148,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
         return 0
 
     # Execute: real maker→checker cycles with distinct agents.
-    if args.codex_tdd and not args.tdd:
+    if args.codex_tdd and not (args.tdd or args.all):
         _print("✗ --codex-tdd requires --tdd (the test-writer role only exists in TDD mode)")
         return 1
 
