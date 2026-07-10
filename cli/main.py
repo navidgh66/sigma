@@ -148,8 +148,13 @@ def cmd_loop(args: argparse.Namespace) -> int:
         return 0
 
     # Execute: real maker→checker cycles with distinct agents.
+    if args.codex_tdd and not args.tdd:
+        _print("✗ --codex-tdd requires --tdd (the test-writer role only exists in TDD mode)")
+        return 1
+
     from cli.cost import routing_for
     from cli.keepawake import keep_awake
+    from cli.models import clean_output, codex_argv_builder
     from cli.paths import project_root
     from cli.runner import AgentRunner
     from cli.trajectory import make_sink
@@ -184,6 +189,10 @@ def cmd_loop(args: argparse.Namespace) -> int:
     if args.advisor:
         _print(f"  🛟 advisor mode: on a verify/logic/e2e fail, a distinct advisor drafts a fix "
                 f"(max {args.advisor_rounds} round(s); reverts on exhaustion) (--no-advisor to disable)")
+    if args.codex_verify:
+        _print("  🐙 codex-verify: verifier runs via codex (cross-provider maker≠checker)")
+    if args.codex_tdd:
+        _print("  🐙 codex-tdd: test-writer runs via codex")
 
     # Trajectory capture: every agent run appends a step to the workspace
     # (best-effort observability, never breaks a run).
@@ -230,6 +239,14 @@ def cmd_loop(args: argparse.Namespace) -> int:
     def _make(role_tier: Optional[str]):
         return AgentRunner(model=role_tier, trajectory_sink=sink)
 
+    def _make_codex(sandbox: str):
+        return AgentRunner(
+            executable="codex",
+            argv_builder=codex_argv_builder(sandbox),
+            output_cleaner=lambda raw: clean_output("gpt", raw),
+            trajectory_sink=sink,
+        )
+
     with keep_awake(enabled=args.keep_awake):
         outcomes = run_loop(
             tasks,
@@ -237,9 +254,12 @@ def cmd_loop(args: argparse.Namespace) -> int:
             skills_dir,
             cfg.loop.max_cycles,
             make_implementer=lambda: _make(routes.get("implement")),
-            make_verifier=lambda: _make(routes.get("verify")),
+            make_verifier=(lambda: _make_codex("read-only")) if args.codex_verify else (lambda: _make(routes.get("verify"))),
             make_logic_checker=(lambda: _make(routes.get("logic"))) if args.logic else None,
-            make_test_writer=(lambda: _make(routes.get("verify"))) if args.tdd else None,
+            make_test_writer=(
+                (lambda: _make_codex("workspace-write")) if (args.tdd and args.codex_tdd)
+                else ((lambda: _make(routes.get("verify"))) if args.tdd else None)
+            ),
             make_simplifier=(lambda: _make(routes.get("implement"))) if args.simplify else None,
             make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
             advisor_rounds=args.advisor_rounds,
@@ -917,6 +937,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="disable the live e2e scenario gate")
     pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
+    pl.add_argument("--codex-verify", action="store_true",
+                     help="run the verifier role via the codex CLI instead of claude "
+                          "(genuine cross-provider maker≠checker)")
+    pl.add_argument("--codex-tdd", action="store_true",
+                     help="run the TDD test-writer role via the codex CLI instead of claude "
+                          "(requires --tdd)")
     pl.set_defaults(func=cmd_loop)
 
     ph = sub.add_parser("hermes", help="Conductor: route plain language to a stage and run it")

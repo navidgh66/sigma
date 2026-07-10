@@ -437,6 +437,77 @@ def test_cmd_loop_all_flag_applies_flip(tmp_path, monkeypatch, capsys):
     assert captured["make_e2e_runner"] is not None
 
 
+def test_codex_tdd_without_tdd_is_usage_error(tmp_path, monkeypatch, capsys):
+    """--codex-tdd requires --tdd; without it, cmd_loop errors before running anything."""
+    from datetime import date
+
+    import cli.main as main_mod
+    from cli.paths import slugify
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
+    ws.mkdir(parents=True)
+    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
+
+    def fake_run_loop(*a, **k):
+        raise AssertionError("run_loop must not be called when --codex-tdd validation fails")
+
+    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
+
+    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--codex-tdd"])
+    result = main_mod.cmd_loop(args)
+
+    assert result == 1
+    out = capsys.readouterr().out
+    assert "--codex-tdd requires --tdd" in out
+
+
+def test_codex_flags_default_false():
+    args = build_parser().parse_args(["loop", "--topic", "t", "--execute"])
+    assert args.codex_verify is False
+    assert args.codex_tdd is False
+
+
+def test_codex_verify_flag_parses():
+    args = build_parser().parse_args(["loop", "--topic", "t", "--execute", "--codex-verify"])
+    assert args.codex_verify is True
+
+
+def test_codex_verify_wires_codex_backed_verifier(tmp_path, monkeypatch, capsys):
+    """--codex-verify swaps make_verifier to a codex-backed factory; implementer untouched."""
+    from datetime import date
+
+    import cli.main as main_mod
+    from cli.paths import slugify
+    from cli.runner import AgentRunner
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
+    ws.mkdir(parents=True)
+    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
+
+    captured = {}
+
+    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
+
+    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--codex-verify"])
+    main_mod.cmd_loop(args)
+
+    verifier = captured["make_verifier"]()
+    assert isinstance(verifier, AgentRunner)
+    assert verifier.executable == "codex"
+    assert verifier.argv_builder is not None
+
+    implementer = captured["make_implementer"]()
+    assert implementer.executable == "claude"
+
+
 def test_parser_research_web_flag():
     a = build_parser().parse_args(["research", "topic", "--web"])
     assert a.web is True
