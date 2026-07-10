@@ -41,6 +41,37 @@ def test_deep_args_appended_only_when_deep():
     assert "-c" in deep and "tools.web_search=true" in deep
 
 
+def test_gpt_adapter_sandbox_param_defaults_read_only():
+    """Default sandbox is unchanged — byte-identical to pre-existing behavior."""
+    adapter = ADAPTERS["gpt"]
+    argv = adapter.build_argv("topic")
+    assert "--sandbox" in argv and "read-only" in argv
+
+
+def test_gpt_adapter_sandbox_param_overridable():
+    adapter = ADAPTERS["gpt"]
+    argv = adapter.build_argv("topic", sandbox="workspace-write")
+    idx = argv.index("--sandbox")
+    assert argv[idx + 1] == "workspace-write"
+    assert "read-only" not in argv
+
+
+def test_codex_argv_builder_read_only():
+    from cli.models import codex_argv_builder
+
+    build = codex_argv_builder("read-only")
+    argv = build("do the thing", None)
+    assert argv == ["codex", "exec", "--sandbox", "read-only", "--color", "never", "do the thing"]
+
+
+def test_codex_argv_builder_workspace_write():
+    from cli.models import codex_argv_builder
+
+    build = codex_argv_builder("workspace-write")
+    argv = build("write a test", "some-model-alias-ignored")
+    assert argv == ["codex", "exec", "--sandbox", "workspace-write", "--color", "never", "write a test"]
+
+
 def test_clean_output_claude_passthrough():
     assert clean_output("claude", "  findings  ") == "findings"
 
