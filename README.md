@@ -71,7 +71,10 @@ autonomous hands-off runs, a live kanban board, and setup.
   out). `--tdd` (writes the failing test first) and `--team` (independent tasks
   in parallel, each in its own **real git worktree**, merged back on pass,
   conflicts surfaced — never auto-resolved) stay opt-in — they change the
-  execution model, not just add a check. `--all` turns on every axis including
+  execution model, not just add a check. `--codex-verify`/`--codex-tdd` swap the
+  verifier/test-writer role to the `codex` CLI instead of `claude` for a genuine
+  cross-provider maker≠checker check — opt-in, and deliberately excluded from
+  `--all` (needs a second CLI + its own auth). `--all` turns on every axis including
   those two. `hermes --auto` chains whole stages until a human gate.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
