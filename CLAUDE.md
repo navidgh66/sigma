@@ -63,6 +63,8 @@ sigma loop --topic <t>               # plan cycles (safe default; autonomous esc
 sigma loop --topic <t> --execute     # run maker→checker cycles — logic/simplify/advisor/e2e ON by default
 sigma loop --topic <t> --execute --no-logic --no-simplify --no-advisor --no-e2e  # bare maker→checker only
 sigma loop --topic <t> --execute --tdd    # test-writer agent pens failing test first (RED→GREEN) — opt-in
+sigma loop --topic <t> --execute --codex-verify   # verifier via codex CLI — cross-provider maker≠checker, opt-in
+sigma loop --topic <t> --execute --tdd --codex-tdd  # test-writer via codex CLI, opt-in (requires --tdd)
 sigma loop --topic <t> --execute --team   # independent tasks run in parallel — opt-in
 sigma loop --topic <t> --execute --all    # every axis on, incl. --tdd --team
 sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
@@ -633,3 +635,24 @@ keeps only what Claude Code cannot do in-session, plus setup.
   not-installed). Onboard step 9b + `check_graphify_hook` (WARN-never-FAIL, gated on the
   graphify binary). `_default_spawn` gained an optional `cwd` so the install runs in the
   repo (existing one-arg callers unaffected).
+- `--codex-verify`/`--codex-tdd` (loop) run the verifier/test-writer role through
+  the `codex` CLI instead of `claude` — a genuine cross-provider maker≠checker
+  check (not just cross-prompt). Built on `AgentRunner`'s new `argv_builder`/
+  `output_cleaner` hooks (`cli/runner.py`) — `argv_builder` replaces the
+  claude-shaped `[-p, --model, prompt]` argv entirely (codex's shape is
+  `exec --sandbox <mode> --color never <prompt>`, no `-p`); `output_cleaner`
+  strips codex's session-metadata preamble (reuses `cli/models.py`'s
+  `clean_output("gpt", ...)`) so `VERDICT:` parsing isn't corrupted by
+  `workdir:`/`tokens used:` lines. Sandbox is role-specific: verifier is
+  `read-only` (a checker must never mutate), test-writer is `workspace-write`
+  (it writes a real failing-test file). `--codex-tdd` without `--tdd` is a
+  usage error (the test-writer role doesn't exist outside TDD mode).
+  Deliberately excluded from `--all` — codex needs a second CLI + its own
+  `codex login` auth the user may not have set up (`cli/checks.py`'s
+  `check_model_auth` already surfaces the login hint for research's gpt lane;
+  same login covers this), so bundling it into `--all` would risk silently
+  degrading every cycle to `codex CLI not found`. `--model` tier routing does
+  NOT apply to codex-backed roles — codex has no alias-passthrough `--model`
+  contract like claude's, so `codex_argv_builder` ignores the `model` arg it's
+  passed (ModelAdapter reuse via `cli/models.py`'s `ADAPTERS["gpt"].build_argv`,
+  not a separate codex adapter).
