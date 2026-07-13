@@ -198,6 +198,9 @@ plugin), confirm-gated and with a separate warning before deleting your API keys
       ↓
 /loop            autonomous: discover → implement → verify → ratchet failures
                  (--e2e adds a live scenario gate per task)
+
+/craft           bring your own design → drives spec → grill → tasks → loop
+                 (the back half, in-session; enters mid-pipeline from an artifact)
 ```
 
 `/e2e` runs every BDD scenario in `spec.md` live against the running app —
