@@ -222,3 +222,19 @@ def test_run_model_quick_default_timeout(monkeypatch):
 
     run_model("claude", "prompt", runner=fake_runner)
     assert captured["timeout"] == QUICK_TIMEOUT
+
+
+def test_build_argv_claude_injects_model_alias():
+    argv = ADAPTERS["claude"].build_argv("hello", model_alias="opus")
+    assert argv[:3] == ["claude", "--model", "opus"]
+    assert argv[-2:] == ["-p", "hello"]
+
+
+def test_build_argv_without_alias_is_unchanged():
+    assert ADAPTERS["claude"].build_argv("hello") == ["claude", "-p", "hello"]
+
+
+def test_build_argv_gpt_ignores_model_alias():
+    # codex has no alias-passthrough --model contract (same law as
+    # codex_argv_builder): the alias is dropped, argv unchanged.
+    assert ADAPTERS["gpt"].build_argv("hi", model_alias="opus") == ADAPTERS["gpt"].build_argv("hi")

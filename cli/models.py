@@ -50,16 +50,29 @@ class ModelAdapter:
     arg_template: List[str]
     # Extra argv appended only in --deep mode (enables web search / grounding).
     deep_args: List[str] = field(default_factory=list)
+    # Extra argv (template: {model}) injected right after the executable when a
+    # model_alias is passed. Empty for adapters with no alias-passthrough
+    # --model contract (gemini, codex) — the alias is then ignored, mirroring
+    # codex_argv_builder's law.
+    model_args: List[str] = field(default_factory=list)
 
     def available(self) -> bool:
         return shutil.which(self.executable) is not None
 
-    def build_argv(self, prompt: str, deep: bool = False, sandbox: str = "read-only") -> List[str]:
+    def build_argv(
+        self,
+        prompt: str,
+        deep: bool = False,
+        sandbox: str = "read-only",
+        model_alias: Optional[str] = None,
+    ) -> List[str]:
         argv = [
             self.executable if a == "{exe}"
             else a.replace("{sandbox}", sandbox).replace("{prompt}", prompt)
             for a in self.arg_template
         ]
+        if model_alias and self.model_args:
+            argv[1:1] = [a.replace("{model}", model_alias) for a in self.model_args]
         if deep:
             argv.extend(self.deep_args)
         return argv
@@ -74,6 +87,7 @@ ADAPTERS: Dict[str, ModelAdapter] = {
         arg_template=["{exe}", "-p", "{prompt}"],
         # claude has no web-search CLI flag; the deep brief instructs it instead.
         deep_args=[],
+        model_args=["--model", "{model}"],
     ),
     "gemini": ModelAdapter(
         name="gemini",
@@ -216,6 +230,7 @@ def run_model(
     prompt: str,
     timeout: Optional[int] = None,
     deep: bool = False,
+    model_alias: Optional[str] = None,
     runner=subprocess.run,
 ) -> ModelResult:
     """Run one model's CLI with the prompt. `runner` is injectable for tests.
@@ -232,7 +247,7 @@ def run_model(
     if timeout is None:
         timeout = DEEP_TIMEOUT if deep else QUICK_TIMEOUT
 
-    argv = adapter.build_argv(prompt, deep=deep)
+    argv = adapter.build_argv(prompt, deep=deep, model_alias=model_alias)
     try:
         proc = runner(
             argv,
