@@ -81,6 +81,11 @@ autonomous hands-off runs, a live kanban board, and setup.
   synthesis pass runs on the strong tier by default too. The verify + logic
   checkers receive each task's mapped BDD scenario as acceptance criteria, not
   just the task title.
+- **🛠️ Bring your own design** — already have a design, plan, or big spec?
+  `/craft` is the in-session back-half conductor: hand it the artifact and it
+  drives `spec → grill → tasks → loop` to verified code, skipping the
+  `research → propose → blueprint` front half (`hermes --auto` covers that from a
+  blank start). Same human gates: grill BLOCK, spec approval, verify fail.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
   MCP servers + plugins that tax every turn.

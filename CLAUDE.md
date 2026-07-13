@@ -157,6 +157,15 @@ finding is SURFACED to a human, never auto-edited. Stops on READY, a round cap
 (default 3), or no-progress (CRIT+HIGH didn't drop). SURFACED ≠ READY — honest
 about what's unresolved. Editor ≠ griller, same law as `execute_cycle`.
 
+`/craft` (plugin-only slash command, no Python backing) is the in-session
+BACK-HALF conductor: you bring a design/plan/big-spec (pasted, a file path, or an
+existing `architecture.md`) and it drives `spec → /grill → tasks → /loop` — the
+implementation half only, skipping `research → propose → blueprint` (that's what
+`hermes --auto` does from a blank start). Same gates as hermes (grill BLOCK,
+spec-approval, verify-fail); the design is the human's input — `/craft` never
+fabricates it. It is the in-session sibling of `hermes --auto`, entered from a
+design instead of an idea.
+
 ## Layout
 
 ```
@@ -224,7 +233,7 @@ cli/graph_impact.py pure: read graphify graph.json (stdlib, never import) → pe
 cli/profile_manifest.py  pure: logic-profile skeleton + validate (both sections) + staleness(profile, files) banner
 cli/profile_run.py  thin: AgentRunner walker → sigma/profile/logic-profile.md (ML-logic + system-logic invariants)
 cli/cost.py         pure: estimate(op,units) + model-tier routing + calibrate from ledger + record contract + report; fail-safe to static factors
-commands/           slash-command templates (one per stage + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /eval + /e2e + /sigma-learn-lesson), YAML frontmatter
+commands/           slash-command templates (one per stage + /craft + /grill + /grill-loop + /learn + /scout + /prune + /weave + /profile + /review + /eval + /e2e + /sigma-learn-lesson), YAML frontmatter
 context-engines/<d>/  9 domains, implementers/ + verifiers/ (each has logic-evaluator.md) — surfaced in-session via skills/sigma-domains
 subagents/researchers/  claude / gemini / gpt research subagents (CLI fan-out + /research in-session)
 skills/             ratcheted lessons (SKILL.md): written on loop failures + by /sigma-learn-lesson; recalled by domain next run
