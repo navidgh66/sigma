@@ -317,15 +317,23 @@ def cmd_hermes(args: argparse.Namespace) -> int:
     if args.keep_awake:
         _print("  ☕ keep-awake on (caffeinate)")
     sink = make_sink(ws, ts=_now_iso())
+    from cli.cost import routing_for
+
+    routes = {} if args.no_route else routing_for("hermes")
+    if args.no_route:
+        _print("  🧭 routing: off (--no-route) — CLI default model for every stage")
+    else:
+        _print("  🧭 routing: planning/grill stages→opus, execution stages→sonnet")
     with keep_awake(enabled=args.keep_awake):
         result = run_hermes(
             args.message,
             ws,
             auto=args.auto,
             terse=args.terse,
-            make_runner=lambda: AgentRunner(trajectory_sink=sink),
+            make_runner=lambda model=None: AgentRunner(model=model, trajectory_sink=sink),
             now=_now_iso(),
             gate=args.gate,
+            stage_routes=routes,
         )
     for stage in result.stages_run:
         _print(f"  • ran {stage}")
@@ -1007,6 +1015,8 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--terse", action="store_true", help="compress output (caveman skill)")
     ph.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
     ph.add_argument("--gate", help="wakeAgent script: skip a hop if it reports nothing to do")
+    ph.add_argument("--no-route", action="store_true",
+                    help="disable per-stage model routing (default: planning/grill→strong, execution→mid)")
     ph.set_defaults(func=cmd_hermes)
 
     pb = sub.add_parser("board", help="Kanban board over tasks + events")

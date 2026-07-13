@@ -577,3 +577,38 @@ def test_cmd_research_passes_a_synthesis_runner(tmp_path, monkeypatch):
     rc = main_mod.cmd_research(ns)
     assert rc == 0
     assert captured.get("synthesis_runner") is not None
+
+
+# --------------------------------------------------------------------------- #
+# cmd_hermes wiring — per-stage model routing (+ --no-route opt-out)
+# --------------------------------------------------------------------------- #
+def test_cmd_hermes_routes_stages_by_default(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_hermes(message, ws, **kwargs):
+        captured.update(kwargs)
+        from cli.hermes import HermesResult
+        return HermesResult(ok=True)
+
+    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
+    monkeypatch.setattr("cli.hermes.run_hermes", fake_run_hermes)
+    from cli.main import main
+    assert main(["hermes", "continue", "--topic", "t"]) == 0
+    routes = captured["stage_routes"]
+    assert routes["spec"] == "opus"
+    assert routes["implement-task"] == "sonnet"
+
+
+def test_cmd_hermes_no_route_passes_empty_routes(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_hermes(message, ws, **kwargs):
+        captured.update(kwargs)
+        from cli.hermes import HermesResult
+        return HermesResult(ok=True)
+
+    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
+    monkeypatch.setattr("cli.hermes.run_hermes", fake_run_hermes)
+    from cli.main import main
+    assert main(["hermes", "continue", "--topic", "t", "--no-route"]) == 0
+    assert captured["stage_routes"] == {}
