@@ -17,7 +17,8 @@ recall-carrying cycle steps there are NO archive candidates, only a note; and
 archive ≠ delete — `archive_lesson` MOVES a lesson dir to `skills/archive/`
 (excluded from recall by the domain scan) and is trivially reversible.
 
-Pure: no clock, no agent, no confirmation — the CLI layer owns prompts.
+Deterministic read-model: no clock, no agent, no confirmation — the CLI layer
+owns prompts. (`efficacy` fills counters on the LessonStats it is given.)
 """
 
 from __future__ import annotations

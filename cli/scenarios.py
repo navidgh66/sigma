@@ -101,8 +101,15 @@ def render_eval_set(topic: str, scenarios: List[Scenario]) -> str:
         "by hand; edit the spec and regenerate with `sigma eval --from-spec`.",
         "",
     ]
+    seen: dict = {}
     for sc in scenarios:
-        lines.append(f"## case: {_case_slug(sc.name)}")
+        slug = _case_slug(sc.name)
+        # Two scenario names that slugify identically would collide as case
+        # ids (grading rows would merge) — suffix duplicates deterministically.
+        seen[slug] = seen.get(slug, 0) + 1
+        if seen[slug] > 1:
+            slug = f"{slug}-{seen[slug]}"
+        lines.append(f"## case: {slug}")
         lines.append(f"input: Given {sc.given}. When {sc.when} — describe what happens and whether the expected behavior holds.")
         lines.append(f"rubric: the outcome must satisfy: Then {sc.then}")
         lines.append("")

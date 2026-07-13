@@ -67,3 +67,15 @@ def test_render_eval_set_deterministic():
 
     sc = [Scenario(name="x", given="g", when="w", then="t")]
     assert render_eval_set("t", sc) == render_eval_set("t", sc)
+
+
+def test_render_eval_set_suffixes_duplicate_slugs():
+    from cli.eval import parse_eval_set
+    from cli.scenarios import Scenario, render_eval_set
+
+    sc = [
+        Scenario(name="Happy Path", given="g1", when="w1", then="t1"),
+        Scenario(name="happy path!", given="g2", when="w2", then="t2"),
+    ]
+    cases = parse_eval_set(render_eval_set("t", sc))
+    assert [c.id for c in cases] == ["happy-path", "happy-path-2"]

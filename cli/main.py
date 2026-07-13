@@ -349,7 +349,9 @@ def cmd_hermes(args: argparse.Namespace) -> int:
     if args.no_route:
         _print("  🧭 routing: off (--no-route) — CLI default model for every stage")
     else:
-        _print("  🧭 routing: planning/grill stages→opus, execution stages→sonnet")
+        strong = routes.get("spec", "opus")
+        mid = routes.get("implement-task", "sonnet")
+        _print(f"  🧭 routing: planning/grill stages→{strong}, execution stages→{mid}")
     with keep_awake(enabled=args.keep_awake):
         result = run_hermes(
             args.message,
@@ -962,14 +964,30 @@ def cmd_trajectory(args: argparse.Namespace) -> int:
 def cmd_lessons(args: argparse.Namespace) -> int:
     from cli import render
     from cli.lessons import archive_lesson, efficacy, list_domain_lessons, render_report
+    from cli.paths import project_root
     from cli.trajectory import read_steps
 
-    ws = spec_workspace(args.topic)
-    if not ws.exists():
-        _print(f"✗ no spec workspace at {ws}. Run a loop first.")
-        return 1
+    # Evidence scope: by default aggregate EVERY spec workspace's trajectory —
+    # lessons are global (sigma_home()/skills), so judging them on one topic's
+    # runs would offer to archive a lesson that other topics recall constantly
+    # (violates never-act-on-absent-evidence). --topic restricts deliberately.
+    if args.topic:
+        workspaces = [spec_workspace(args.topic)]
+        if not workspaces[0].exists():
+            _print(f"✗ no spec workspace at {workspaces[0]}. Run a loop first.")
+            return 1
+    else:
+        specs_root = project_root() / "sigma" / "specs"
+        workspaces = sorted(d for d in specs_root.glob("*") if d.is_dir()) if specs_root.exists() else []
+        if not workspaces:
+            _print(f"✗ no spec workspaces under {specs_root}. Run a loop first.")
+            return 1
+    steps = []
+    for ws in workspaces:
+        steps.extend(read_steps(ws))
+    _print(f"σ lessons — evidence from {len(workspaces)} workspace(s)")
     skills_dir = sigma_home() / "skills"
-    report = efficacy(read_steps(ws), list_domain_lessons(skills_dir))
+    report = efficacy(steps, list_domain_lessons(skills_dir))
     _print(render_report(report))
 
     if not args.archive:
@@ -1239,7 +1257,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     plessons = sub.add_parser("lessons",
                               help="Lesson-efficacy report (working / not-working / no-evidence)")
-    plessons.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    plessons.add_argument("--topic",
+                          help="restrict evidence to one topic's workspace (default: aggregate ALL workspaces)")
     plessons.add_argument("--archive", action="store_true",
                           help="offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)")
     plessons.set_defaults(func=cmd_lessons)

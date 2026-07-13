@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-923%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-924%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -350,7 +350,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **923 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **924 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or

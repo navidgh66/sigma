@@ -45,12 +45,12 @@ ledger; `sigma lessons` correlates recalled lessons with real cycle outcomes
 (reversible archive of dead lessons); `sigma docs-check` gates version parity +
 stale test-count claims across doc surfaces; `sigma eval --from-spec` renders a
 spec's BDD scenarios into an eval set; the loop's verify/logic checkers receive
-each task's mapped scenario as acceptance criteria. 923 pytest tests, ruff clean.
+each task's mapped scenario as acceptance criteria. 924 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 923 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 924 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -92,8 +92,9 @@ sigma eval --set <name> --check      # CI gate: exit 1 below threshold
 sigma eval --set <name> --route      # route the judge to a strong tier
 sigma eval --from-spec <topic>       # generate sigma/evals/<slug>.md from the topic's spec.md BDD scenarios (--force to regenerate)
 
-sigma lessons --topic <t>            # lesson-efficacy report: working / not-working / no-evidence buckets
-sigma lessons --topic <t> --archive  # offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)
+sigma lessons                        # lesson-efficacy report over ALL workspaces: working / not-working / no-evidence
+sigma lessons --topic <t>            # restrict evidence to one topic's workspace
+sigma lessons --archive              # offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)
 
 sigma docs-check                     # cross-surface consistency: version parity + stale test-count claims; --check for CI
 
