@@ -798,6 +798,36 @@ def cmd_claude_md_check(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# docs-check (cross-surface consistency: version parity + stale test counts)
+# --------------------------------------------------------------------------- #
+def cmd_docs_check(args: argparse.Namespace) -> int:
+    from cli.docs_check_run import run_docs_check, write_report
+    from cli.paths import project_root
+
+    root = project_root()
+    _print(f"σ docs-check — {root}")
+    res = run_docs_check(root)
+    if not res.ok:
+        _print(f"✗ {res.error}")
+        return 1
+    _print(f"  checked: {', '.join(res.files_checked)}")
+    if res.real_count is not None:
+        _print(f"  real collected test count: {res.real_count}")
+    for f in res.findings:
+        _print(f"  {f.render()}")
+    if not res.findings:
+        _print("  ✓ no findings")
+    decision = res.gate
+    mark = "✅ PASS" if decision.passed else "❌ FAIL"
+    _print(f"  verdict: {mark} — {decision.reason}")
+    out = write_report(root, res.report)
+    _print(f"✓ wrote {out}")
+    if args.check and not decision.passed:
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # claude-md-create (scaffold a best-practice-shaped CLAUDE.md / CLAUDE.local.md)
 # --------------------------------------------------------------------------- #
 def cmd_claude_md_create(args: argparse.Namespace) -> int:
@@ -1127,6 +1157,11 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Check CLAUDE.md / CLAUDE.local.md against best-practice research")
     pcmc.add_argument("--check", action="store_true", help="exit 1 if the check gate FAILs (CI)")
     pcmc.set_defaults(func=cmd_claude_md_check)
+
+    pdc = sub.add_parser("docs-check",
+                         help="Cross-surface consistency: version parity + stale test counts")
+    pdc.add_argument("--check", action="store_true", help="exit 1 if the gate FAILs (CI)")
+    pdc.set_defaults(func=cmd_docs_check)
 
     pcmcr = sub.add_parser("claude-md-create",
                            help="Scaffold a best-practice-shaped CLAUDE.md / CLAUDE.local.md")
