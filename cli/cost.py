@@ -104,6 +104,23 @@ def routing_for(op: str) -> Dict[str, str]:
     if op == "eval":
         # The system-under-test can be any tier; the judge reasons → strong.
         return {"sut": TIER_MID, "judge": TIER_STRONG}
+    if op == "hermes":
+        # Per-STAGE tiers for the hermes conductor (keys = pipeline.STAGE_NAMES,
+        # asserted in tests — update both together). Planning + adversarial
+        # stages produce the reasoning artifacts everything downstream trusts →
+        # strong; execution stages are mechanical against a finished spec → mid.
+        return {
+            "research": TIER_MID,
+            "propose": TIER_STRONG,
+            "blueprint": TIER_STRONG,
+            "grill-blueprint": TIER_STRONG,
+            "spec": TIER_STRONG,
+            "grill-spec": TIER_STRONG,
+            "tasks": TIER_STRONG,
+            "implement-task": TIER_MID,
+            "verify": TIER_MID,
+            "loop": TIER_MID,
+        }
     return {}
 
 

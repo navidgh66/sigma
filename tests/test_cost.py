@@ -166,3 +166,17 @@ def test_estimate_render_includes_routing():
     line = est.render()
     assert "cost estimate" in line
     assert "code→" in line
+
+
+def test_routing_for_hermes_routes_planning_strong_execution_mid():
+    routes = routing_for("hermes")
+    for stage in ("propose", "blueprint", "grill-blueprint", "spec", "grill-spec", "tasks"):
+        assert routes[stage] == TIER_STRONG, stage
+    for stage in ("research", "implement-task", "verify", "loop"):
+        assert routes[stage] == TIER_MID, stage
+
+
+def test_routing_for_hermes_covers_every_pipeline_stage():
+    from cli.pipeline import STAGE_NAMES
+
+    assert set(routing_for("hermes")) == set(STAGE_NAMES)
