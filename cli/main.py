@@ -222,19 +222,20 @@ def cmd_loop(args: argparse.Namespace) -> int:
     # to the base model just because --no-route was passed. Default: opus.
     advisor_model = args.model_advisor or routes.get("advisor") or "opus"
 
-    # e2e axis: parse spec.md's BDD scenarios ONCE up front (spec_scenarios is
-    # a plain list passed to every cycle — execute_cycle never re-reads the
-    # file). Missing spec.md → empty list (fail-safe: every task's e2e step
-    # simply skips, same as having no mapped scenario).
-    spec_scenarios = []
-    if args.e2e:
-        from cli.scenarios import parse_scenarios
+    # Parse spec.md's BDD scenarios ONCE up front (spec_scenarios is a plain
+    # list passed to every cycle — execute_cycle never re-reads the file).
+    # Parsed regardless of --e2e: the verify + logic prompts use a task's
+    # mapped scenario as acceptance-criteria context even when the live e2e
+    # axis is off. Missing spec.md → empty list (fail-safe: verify prompts
+    # stay unchanged and every task's e2e step simply skips).
+    from cli.scenarios import parse_scenarios
 
-        spec_file = ws / "spec.md"
-        if spec_file.exists():
-            spec_scenarios = parse_scenarios(spec_file.read_text())
-        else:
-            _print(f"  ⚠ --e2e given but no spec.md at {spec_file} — every task's e2e step will skip")
+    spec_scenarios = []
+    spec_file = ws / "spec.md"
+    if spec_file.exists():
+        spec_scenarios = parse_scenarios(spec_file.read_text())
+    elif args.e2e:
+        _print(f"  ⚠ --e2e given but no spec.md at {spec_file} — every task's e2e step will skip")
 
     def _make(role_tier: Optional[str]):
         return AgentRunner(model=role_tier, trajectory_sink=sink)
@@ -264,7 +265,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
             make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
             advisor_rounds=args.advisor_rounds,
             make_e2e_runner=(lambda: _make(routes.get("e2e"))) if args.e2e else None,
-            spec_scenarios=spec_scenarios if args.e2e else None,
+            spec_scenarios=spec_scenarios,
             team=args.team,
             worktrees=cfg.loop.worktrees,
             project_root=project_root(),

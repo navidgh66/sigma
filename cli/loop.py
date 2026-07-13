@@ -453,8 +453,12 @@ def _run_verify(
     logic_checker: Optional[AgentRunner],
     recall: str,
     cwd: Optional[Path] = None,
+    scenario_ctx: str = "",
 ) -> tuple:
     """Run the verify (+ optional logic) axis once. Returns (passed, logic_ok, reason, detail).
+
+    `scenario_ctx` (from `_scenario_context`) appends the task's mapped BDD
+    scenario(s) to BOTH prompts as acceptance criteria; empty → byte-identical.
 
     `logic_ok` is None when no logic_checker was given (mirrors `CycleOutcome.logic_ok`'s
     default). `reason`/`detail` are only meaningful when `passed` is False: `reason` is
@@ -473,7 +477,7 @@ def _run_verify(
     title = plan.task.title
     domain = plan.implementer_domain
     chk = verifier.run(
-        _with_recall(VERIFY_PROMPT.format(domain=domain, title=title), recall),
+        _with_recall(VERIFY_PROMPT.format(domain=domain, title=title) + scenario_ctx, recall),
         cwd=cwd,
         role="verifier",
     )
@@ -485,7 +489,7 @@ def _run_verify(
     logic_output = ""
     if logic_checker is not None:
         logic = logic_checker.run(
-            LOGIC_PROMPT.format(domain=domain, title=title), cwd=cwd, role="logic"
+            LOGIC_PROMPT.format(domain=domain, title=title) + scenario_ctx, cwd=cwd, role="logic"
         )
         write_artifact(workspace / "verify" / f"{plan.worktree_name}.logic.md", logic.output)
         logic_passed = logic.ok and _verdict_pass(logic.output)
@@ -575,6 +579,7 @@ def _run_advisor_escalation(
     cwd: Optional[Path] = None,
     e2e_runner: Optional[AgentRunner] = None,
     spec_scenarios: Optional[List["Scenario"]] = None,
+    scenario_ctx: str = "",
 ) -> tuple:
     """Escalate a verify/logic/e2e FAIL to a distinct advisor before ratcheting.
 
@@ -632,7 +637,7 @@ def _run_advisor_escalation(
         write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl_output)
 
         passed, logic_ok, new_reason, new_detail = _run_verify(
-            plan, workspace, verifier, logic_checker, recall, cwd=cwd
+            plan, workspace, verifier, logic_checker, recall, cwd=cwd, scenario_ctx=scenario_ctx
         )
         if logic_ok is not None:
             outcome.logic_ok = logic_ok
@@ -671,6 +676,32 @@ def _run_advisor_escalation(
     write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", original_impl_output)
     append_loop_log(workspace, f"{title}: advisor exhausted ({rounds_used} round(s)) — reverted")
     return False, reason
+
+
+def _scenario_context(plan: CyclePlan, spec_scenarios: Optional[List["Scenario"]]) -> str:
+    """Render the task's mapped BDD scenario(s) as verify/logic acceptance context.
+
+    The e2e axis always received the full Given/When/Then; the gating verify
+    axes were title-only. This block closes that gap. Empty string when the
+    task has no mapped scenario or none match `spec_scenarios` — the prompts
+    stay byte-identical (fail-safe, same law as `_with_recall`).
+    """
+    if not plan.task.scenarios or not spec_scenarios:
+        return ""
+    from cli.scenarios import find_scenario
+
+    blocks = []
+    for name in plan.task.scenarios:
+        sc = find_scenario(spec_scenarios, name)
+        if sc is not None:
+            blocks.append(f"Scenario: {sc.name}\nGiven {sc.given}\nWhen {sc.when}\nThen {sc.then}")
+    if not blocks:
+        return ""
+    return (
+        "\n\nAcceptance criteria (BDD scenarios this task must satisfy — check "
+        "the implementation against these, not just the title):\n"
+        + "\n\n".join(blocks)
+    )
 
 
 def _with_recall(prompt: str, recall: str) -> str:
@@ -787,6 +818,9 @@ def execute_cycle(
     title = plan.task.title
     domain = plan.implementer_domain
     outcome = CycleOutcome(task_title=title, implemented=False, verified=False)
+    # Mapped-scenario acceptance context for the verify + logic prompts (empty
+    # when the task has no scenario in spec_scenarios — prompts unchanged).
+    scenario_ctx = _scenario_context(plan, spec_scenarios)
 
     # TDD: a distinct agent writes the failing test FIRST. Its output is fed to the
     # implementer. A failed test-writing step aborts the cycle (nothing to build
@@ -826,7 +860,7 @@ def execute_cycle(
     write_artifact(workspace / "impl" / f"{plan.worktree_name}.md", impl.output)
 
     passed, logic_ok, reason, detail = _run_verify(
-        plan, workspace, verifier, logic_checker, recall, cwd=cwd
+        plan, workspace, verifier, logic_checker, recall, cwd=cwd, scenario_ctx=scenario_ctx
     )
     if logic_ok is not None:
         outcome.logic_ok = logic_ok
@@ -862,6 +896,7 @@ def execute_cycle(
             plan, workspace, implementer, verifier, logic_checker,
             advisor, advisor_rounds, reason, detail, recall, impl.output, outcome,
             cwd=cwd, e2e_runner=e2e_runner, spec_scenarios=spec_scenarios,
+            scenario_ctx=scenario_ctx,
         )
         outcome.verified = passed
 

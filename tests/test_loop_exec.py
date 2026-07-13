@@ -1266,3 +1266,57 @@ def test_run_loop_team_merge_conflict_is_surfaced(tmp_path):
     conflicts = [o for o in outcomes if o.merge_conflict is not None]
     assert len(conflicts) == 1
     assert conflicts[0].merge_conflict.exists()
+
+
+# --------------------------- verifier scenario context -----------------------
+# Feature: the checker + logic evaluator receive the task's mapped BDD
+# scenario(s) as acceptance-criteria context (the e2e axis always had them;
+# the gating verify axes were title-only). Empty/no-match → byte-identical
+# prompts, same fail-safe law as _with_recall.
+
+SCENARIO_CTX_TASKS = """
+- [ ] T1 (nlp) [scenario: happy path]: build the flow
+"""
+
+
+def test_verify_and_logic_prompts_include_mapped_scenario(tmp_path):
+    tasks = parse_tasks(SCENARIO_CTX_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    logic = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    scenarios = [
+        Scenario(name="happy path", given="a fresh db", when="the flow runs", then="a row exists")
+    ]
+    out = execute_cycle(
+        plan, tmp_path, tmp_path / "skills", impl, chk, logic_checker=logic,
+        spec_scenarios=scenarios,
+    )
+    assert out.verified is True
+    assert "Given a fresh db" in chk.prompts[0]
+    assert "Then a row exists" in chk.prompts[0]
+    assert "Given a fresh db" in logic.prompts[0]
+
+
+def test_verify_prompt_byte_identical_without_scenarios(tmp_path):
+    from cli.loop import VERIFY_PROMPT
+
+    tasks = parse_tasks(TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk)
+    expected = VERIFY_PROMPT.format(domain=plan.implementer_domain, title=plan.task.title)
+    assert chk.prompts[0] == expected
+
+
+def test_verify_prompt_unchanged_when_scenario_name_not_in_spec(tmp_path):
+    from cli.loop import VERIFY_PROMPT
+
+    tasks = parse_tasks(SCENARIO_CTX_TASKS)
+    plan = plan_cycle(tasks[0])
+    impl = ScriptedRunner([AgentResult(ok=True, output="implemented")])
+    chk = ScriptedRunner([AgentResult(ok=True, output="VERDICT: PASS")])
+    execute_cycle(plan, tmp_path, tmp_path / "skills", impl, chk, spec_scenarios=[])
+    expected = VERIFY_PROMPT.format(domain=plan.implementer_domain, title=plan.task.title)
+    assert chk.prompts[0] == expected
