@@ -44,3 +44,26 @@ def test_find_scenario_case_insensitive_exact_match():
     assert found is not None
     assert found.name == "user signs up"
     assert find_scenario(scenarios, "no such scenario") is None
+
+
+def test_render_eval_set_round_trips_through_eval_parser():
+    from cli.eval import parse_eval_set
+    from cli.scenarios import Scenario, render_eval_set
+
+    scenarios = [
+        Scenario(name="Happy Path!", given="a fresh db", when="the flow runs", then="a row exists"),
+        Scenario(name="null input rejected", given="an empty payload", when="submitted", then="a 400 is returned"),
+    ]
+    text = render_eval_set("demo-topic", scenarios)
+    cases = parse_eval_set(text)
+    assert [c.id for c in cases] == ["happy-path", "null-input-rejected"]
+    assert "Given a fresh db" in cases[0].input
+    assert "Then a row exists" in cases[0].rubric
+    assert cases[1].rubric.endswith("Then a 400 is returned")
+
+
+def test_render_eval_set_deterministic():
+    from cli.scenarios import Scenario, render_eval_set
+
+    sc = [Scenario(name="x", given="g", when="w", then="t")]
+    assert render_eval_set("t", sc) == render_eval_set("t", sc)

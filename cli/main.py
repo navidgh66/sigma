@@ -861,6 +861,35 @@ def cmd_eval(args: argparse.Namespace) -> int:
     from cli.trajectory import make_sink
 
     root = project_root()
+
+    # spec→eval bridge: --from-spec renders the topic's BDD scenarios into an
+    # eval set (derived — spec.md stays the source of truth) and stops there.
+    if args.from_spec:
+        from cli.scenarios import parse_scenarios, render_eval_set
+
+        ws = spec_workspace(args.from_spec)
+        spec_file = ws / "spec.md"
+        if not spec_file.exists():
+            _print(f"✗ no spec.md at {spec_file}. Run /spec first.")
+            return 1
+        scenarios = parse_scenarios(spec_file.read_text())
+        if not scenarios:
+            _print("✗ spec.md has no Scenario/Given/When/Then blocks — nothing to generate")
+            return 1
+        set_name = args.set or ws.name
+        out = eval_set_path(root, set_name)
+        if out.exists() and not args.force:
+            _print(f"✗ {out} already exists — pass --force to regenerate")
+            return 1
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(render_eval_set(args.from_spec, scenarios))
+        _print(f"✓ wrote {out} ({len(scenarios)} case(s) from spec scenarios)")
+        _print(f"→ next: sigma eval --set {set_name}")
+        return 0
+
+    if not args.set:
+        _print("✗ --set is required (or --from-spec <topic> to generate one)")
+        return 1
     name = args.set
     _print(f"σ eval — set={name!r} threshold={args.threshold}")
     if not eval_set_path(root, name).exists():
@@ -1240,7 +1269,11 @@ def build_parser() -> argparse.ArgumentParser:
     ptraj.set_defaults(func=cmd_trajectory)
 
     peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")
-    peval.add_argument("--set", required=True, help="eval set name (sigma/evals/<name>.md)")
+    peval.add_argument("--set", help="eval set name (sigma/evals/<name>.md)")
+    peval.add_argument("--from-spec", dest="from_spec",
+                       help="generate the eval set from a topic's spec.md BDD scenarios, then exit")
+    peval.add_argument("--force", action="store_true",
+                       help="with --from-spec: overwrite an existing generated set")
     peval.add_argument("--threshold", type=float, default=0.8,
                        help="pass-rate bar the gate requires (default 0.8)")
     peval.add_argument("--artifact",

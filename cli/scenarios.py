@@ -78,3 +78,32 @@ def find_scenario(scenarios: List[Scenario], name: str) -> Optional[Scenario]:
         if s.name.strip().lower() == target:
             return s
     return None
+
+
+def _case_slug(name: str) -> str:
+    """Slugify a scenario name into an eval-case id (same shape as loop slugs)."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "scenario"
+
+
+def render_eval_set(topic: str, scenarios: List[Scenario]) -> str:
+    """Render spec.md's BDD scenarios as a sigma eval set (spec→eval bridge).
+
+    Each Scenario becomes one `## case:` block that `eval.parse_eval_set`
+    reads back verbatim: the Given/When framing is the case input, the Then
+    assertion is the rubric. The eval set is DERIVED — spec.md stays the
+    source of truth; regenerate after editing the spec (the header says so).
+    Deterministic: same scenarios → same text (no clock).
+    """
+    lines: List[str] = [
+        f"# Eval set: {topic}",
+        "",
+        "Generated from spec.md's Scenario/Given/When/Then blocks — do not edit",
+        "by hand; edit the spec and regenerate with `sigma eval --from-spec`.",
+        "",
+    ]
+    for sc in scenarios:
+        lines.append(f"## case: {_case_slug(sc.name)}")
+        lines.append(f"input: Given {sc.given}. When {sc.when} — describe what happens and whether the expected behavior holds.")
+        lines.append(f"rubric: the outcome must satisfy: Then {sc.then}")
+        lines.append("")
+    return "\n".join(lines)

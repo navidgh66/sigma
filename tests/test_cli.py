@@ -700,3 +700,60 @@ def test_cmd_loop_records_measured_tokens_to_ledger(monkeypatch, tmp_path):
     row = _json.loads(ledger.read_text().strip().splitlines()[-1])
     assert row["op"] == "loop"
     assert row["tokens"] == 150
+
+
+# --------------------------------------------------------------------------- #
+# eval --from-spec — spec→eval autogeneration
+# --------------------------------------------------------------------------- #
+def _spec_ws(tmp_path, monkeypatch, spec_text):
+    import cli.main as main_mod
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\nmodels: [claude]\n")
+    ws = tmp_path / "sigma" / "specs" / "2026-01-01-demo"
+    ws.mkdir(parents=True)
+    if spec_text is not None:
+        (ws / "spec.md").write_text(spec_text)
+    monkeypatch.setattr(main_mod, "spec_workspace", lambda topic: ws)
+    return ws
+
+
+SPEC_WITH_SCENARIOS = """# Spec
+Scenario: happy path
+Given a fresh db
+When the flow runs
+Then a row exists
+"""
+
+
+def test_eval_from_spec_generates_set(monkeypatch, tmp_path):
+    from cli.main import main
+
+    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
+    assert main(["eval", "--from-spec", "demo"]) == 0
+    out = tmp_path / "sigma" / "evals" / "2026-01-01-demo.md"
+    assert out.exists()
+    assert "## case: happy-path" in out.read_text()
+
+
+def test_eval_from_spec_refuses_overwrite_without_force(monkeypatch, tmp_path):
+    from cli.main import main
+
+    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
+    assert main(["eval", "--from-spec", "demo"]) == 0
+    assert main(["eval", "--from-spec", "demo"]) == 1
+    assert main(["eval", "--from-spec", "demo", "--force"]) == 0
+
+
+def test_eval_from_spec_errors_without_spec(monkeypatch, tmp_path):
+    from cli.main import main
+
+    _spec_ws(tmp_path, monkeypatch, None)
+    assert main(["eval", "--from-spec", "demo"]) == 1
+
+
+def test_eval_requires_set_or_from_spec(monkeypatch, tmp_path):
+    from cli.main import main
+
+    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
+    assert main(["eval"]) == 1
