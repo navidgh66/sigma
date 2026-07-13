@@ -105,12 +105,27 @@ def claude_synthesis_runner(prompt: str) -> str:
     static placeholder, so an unavailable/unauthenticated claude CLI degrades
     gracefully instead of crashing the research doc.
 
-    NOTE: `cost.routing_for("research")` already names a "synthesis" tier
-    (TIER_STRONG), but no `--route` flag wires it into the research CLI yet —
-    that's a separate, larger scope. This default stays unrouted (plain claude).
+    NOTE: `cmd_research` routes synthesis to `cost.routing_for("research")`'s
+    "synthesis" tier by default via `routed_synthesis_runner`; this function is
+    the unrouted `--no-route` fallback (plain claude, CLI default model).
     """
     result = run_model("claude", prompt)
     return result.text if result.ok else ""
+
+
+def routed_synthesis_runner(model_alias: str) -> Callable[[str], str]:
+    """A `synthesis_runner` routed to a model tier (the cross-referencing pass
+    is reasoning work — cost.routing_for("research") provisions TIER_STRONG).
+
+    Same contract + degrade-to-"" failure behavior as `claude_synthesis_runner`,
+    which stays as the unrouted (--no-route) path.
+    """
+
+    def run(prompt: str) -> str:
+        result = run_model("claude", prompt, model_alias=model_alias)
+        return result.text if result.ok else ""
+
+    return run
 
 
 def aggregate(

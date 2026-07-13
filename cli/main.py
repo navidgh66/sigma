@@ -30,7 +30,7 @@ from cli.loop import (
 )
 from cli.models import available_models
 from cli.paths import DOMAINS, sigma_home, spec_workspace
-from cli.research import claude_synthesis_runner, research
+from cli.research import claude_synthesis_runner, research, routed_synthesis_runner
 
 
 def _now_iso() -> str:
@@ -105,9 +105,17 @@ def cmd_research(args: argparse.Namespace) -> int:
         _print("  mode: deep (web-grounded — this may take a few minutes)")
     elif web:
         _print("  mode: web (quick web-grounded pass)")
+    from cli.cost import routing_for
+
+    if args.no_route:
+        synthesis = claude_synthesis_runner
+    else:
+        synthesis_tier = routing_for("research")["synthesis"]
+        synthesis = routed_synthesis_runner(synthesis_tier)
+        _print(f"  🧭 routing: synthesis→{synthesis_tier}")
     out = research(
         args.topic, models, ws, requested_tools=tools, deep=deep, web=web,
-        synthesis_runner=claude_synthesis_runner,
+        synthesis_runner=synthesis,
     )
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
@@ -954,6 +962,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="web-grounded deep research (exhaustive live web search; slower)")
     pr.add_argument("--web", action="store_true",
                     help="quick web-grounded pass (lighter than --deep; --deep wins if both)")
+    pr.add_argument("--no-route", action="store_true",
+                    help="disable synthesis model routing (default: synthesis→strong tier)")
     pr.set_defaults(func=cmd_research)
 
     pl = sub.add_parser("loop", help="Autonomous loop planner/executor")

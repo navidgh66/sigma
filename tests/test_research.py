@@ -342,3 +342,29 @@ def test_research_unchanged_when_no_tools_or_manual_findings(tmp_path):
     assert "claude says hi" in body
     assert "cross-reference" in body.lower()  # fallback synthesis text, unchanged wording
     assert "manual:" not in body  # no manual dir → nothing manual rendered
+
+
+def test_routed_synthesis_runner_passes_alias(monkeypatch):
+    from cli.research import routed_synthesis_runner
+
+    calls = {}
+
+    def fake_run_model(model, prompt, model_alias=None, **kwargs):
+        calls["model"] = model
+        calls["alias"] = model_alias
+        return ModelResult(model=model, ok=True, text="synth text")
+
+    monkeypatch.setattr("cli.research.run_model", fake_run_model)
+    runner = routed_synthesis_runner("opus")
+    assert runner("some prompt") == "synth text"
+    assert calls == {"model": "claude", "alias": "opus"}
+
+
+def test_routed_synthesis_runner_degrades_to_empty_on_failure(monkeypatch):
+    from cli.research import routed_synthesis_runner
+
+    monkeypatch.setattr(
+        "cli.research.run_model",
+        lambda model, prompt, model_alias=None, **kw: ModelResult(model=model, ok=False, text="", error="boom"),
+    )
+    assert routed_synthesis_runner("opus")("p") == ""

@@ -573,7 +573,7 @@ def test_cmd_research_passes_a_synthesis_runner(tmp_path, monkeypatch):
 
     monkeypatch.setattr(main_mod, "research", fake_research)
 
-    ns = argparse.Namespace(topic="wiring check", models=None, deep=False, web=False)
+    ns = argparse.Namespace(topic="wiring check", models=None, deep=False, web=False, no_route=False)
     rc = main_mod.cmd_research(ns)
     assert rc == 0
     assert captured.get("synthesis_runner") is not None
@@ -612,3 +612,45 @@ def test_cmd_hermes_no_route_passes_empty_routes(monkeypatch, tmp_path):
     from cli.main import main
     assert main(["hermes", "continue", "--topic", "t", "--no-route"]) == 0
     assert captured["stage_routes"] == {}
+
+
+def test_cmd_research_routes_synthesis_to_strong_tier(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_research(topic, models, ws, requested_tools=None, deep=False, web=False, synthesis_runner=None):
+        captured["runner"] = synthesis_runner
+        out = tmp_path / "research.md"
+        out.write_text("x")
+        return out
+
+    calls = {}
+
+    def fake_run_model(model, prompt, model_alias=None, **kwargs):
+        calls["alias"] = model_alias
+        from cli.models import ModelResult
+        return ModelResult(model=model, ok=True, text="s")
+
+    monkeypatch.setattr("cli.main.research", fake_research)
+    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
+    monkeypatch.setattr("cli.research.run_model", fake_run_model)
+    from cli.main import main
+    assert main(["research", "some topic"]) == 0
+    captured["runner"]("prompt")
+    assert calls["alias"] == "opus"
+
+
+def test_cmd_research_no_route_uses_default_synthesis(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_research(topic, models, ws, requested_tools=None, deep=False, web=False, synthesis_runner=None):
+        captured["runner"] = synthesis_runner
+        out = tmp_path / "research.md"
+        out.write_text("x")
+        return out
+
+    monkeypatch.setattr("cli.main.research", fake_research)
+    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
+    from cli.main import main
+    from cli.research import claude_synthesis_runner
+    assert main(["research", "some topic", "--no-route"]) == 0
+    assert captured["runner"] is claude_synthesis_runner
