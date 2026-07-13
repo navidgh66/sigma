@@ -18,7 +18,8 @@ pressure-tests the blueprint + spec before code. `sigma learn` grounds its map i
 graphify knowledge graph; `sigma scout` keeps the skill bundle fresh from
 skillsmp.com; `sigma prune` cuts unused MCP/plugin context bloat. `sigma eval` runs
 eval sets (LM-judge + pass-rate gate); `sigma trajectory` observes what agents
-actually did; `--route` (loop/eval) does intelligent model-tier routing. `sigma
+actually did; model-tier routing is ON BY DEFAULT across loop/hermes/research
+(`--no-route` opts out; eval keeps opt-in `--route`). `sigma
 session-context` + a SessionStart hook feed `learn` artifacts back into every new
 session (closing the learn loop); `loop --simplify` adds a distinct anti-slop
 cleanup pass after each verified cycle. `sigma usage` wraps ccusage for real
@@ -38,12 +39,18 @@ sign-in the same way it does RTK/caveman. `sigma claude-md-check` / `/claude-md-
 grade CLAUDE.md + CLAUDE.local.md against best-practice research (length,
 pasted-code, stale @imports/test-counts, structure); `sigma claude-md-create` /
 `/claude-md-create` scaffold a best-practice-shaped starter; `setup-repo` wires
-both in automatically. 866 pytest tests, ruff clean.
+both in automatically. Agent runs parse `claude --output-format json` result
+envelopes → REAL token/cost telemetry on trajectories + a self-calibrating cost
+ledger; `sigma lessons` correlates recalled lessons with real cycle outcomes
+(reversible archive of dead lessons); `sigma docs-check` gates version parity +
+stale test-count claims across doc surfaces; `sigma eval --from-spec` renders a
+spec's BDD scenarios into an eval set; the loop's verify/logic checkers receive
+each task's mapped scenario as acceptance criteria. 923 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 866 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 923 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -52,6 +59,7 @@ sigma init --domains nlp,rl          # scaffold sigma.config.yml for a project
 sigma research "topic"               # multi-model research → research.md
 sigma research "topic" --web         # quick web-grounded pass (light; --deep wins if both)
 sigma research "topic" --deep        # web-grounded deep research (exhaustive web search; slower)
+sigma research "topic" --no-route    # disable synthesis routing (default: synthesis→strong tier)
 sigma learn                          # learn the codebase → ARCHITECTURE.md + .tours/<slug>.tour (+ graphify graph if installed)
 sigma session-context                # print the learn-artifact pointer (wired as a SessionStart hook → every new session reads the map)
 sigma learn --no-graph               # skip the graphify knowledge-graph build
@@ -74,7 +82,7 @@ sigma loop --topic <t> --execute --codex-verify   # verifier via codex CLI — c
 sigma loop --topic <t> --execute --tdd --codex-tdd  # test-writer via codex CLI, opt-in (requires --tdd)
 sigma loop --topic <t> --execute --team   # independent tasks run in parallel — opt-in
 sigma loop --topic <t> --execute --all    # every axis on, incl. --tdd --team
-sigma loop --topic <t> --execute --route  # intelligent model routing: mechanical→cheap tier, logic→strong tier
+sigma loop --topic <t> --execute --no-route  # disable model routing (routing is ON by default: mechanical→mid, logic/advisor/e2e→strong; --route is a deprecated no-op)
 
 # Eval — run an eval set, LM-judge each case, gate at a pass-rate threshold (set the bar at the eval, not the demo)
 sigma eval --set <name>              # prompt mode: run each case input through a SUT, grade with a DISTINCT judge
@@ -82,6 +90,12 @@ sigma eval --set <name> --artifact spec.md  # artifact mode: grade an existing f
 sigma eval --set <name> --threshold 0.9     # require a 90% pass rate (default 0.8)
 sigma eval --set <name> --check      # CI gate: exit 1 below threshold
 sigma eval --set <name> --route      # route the judge to a strong tier
+sigma eval --from-spec <topic>       # generate sigma/evals/<slug>.md from the topic's spec.md BDD scenarios (--force to regenerate)
+
+sigma lessons --topic <t>            # lesson-efficacy report: working / not-working / no-evidence buckets
+sigma lessons --topic <t> --archive  # offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)
+
+sigma docs-check                     # cross-surface consistency: version parity + stale test-count claims; --check for CI
 
 # Trajectory — observe what agents actually did in a workspace (loop/hermes record steps)
 sigma trajectory --topic <t>         # summary: step count, failures, per-role/model, total agent time
@@ -91,6 +105,7 @@ sigma trajectory --topic <t> --json  # machine-readable summary
 sigma hermes "continue" --topic <t>         # route → run ONE stage, then stop
 sigma hermes "build it" --topic <t> --auto  # chain stages until a human gate
 sigma hermes "..." --topic <t> --terse      # compress output (caveman skill)
+sigma hermes "..." --topic <t> --no-route   # disable per-stage routing (default: planning/grill→strong, execution→mid)
 
 # Kanban board — projection over tasks.md + events.jsonl
 sigma board --topic <t>              # static snapshot (rich)
@@ -162,7 +177,11 @@ cli/prune.py        pure: parse_plugins/parse_mcp_servers, belongs (tool→item 
 cli/prune_run.py    thin: read settings/.claude.json/.mcp.json + scan transcripts for usage, build report, reversible disable (enabledPlugins=false, immutable merge)
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable); optional `model` (→ --model alias, intelligent routing) + `trajectory_sink` (observability), both fail-safe no-ops by default
-cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration) + summarize projection + make_sink (best-effort, never breaks a run)
+cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration + measured tokens/cost + cycle domain/lesson provenance) + summarize/efficiency projections + make_sink/counting_sink (best-effort, never breaks a run)
+cli/telemetry.py    pure: parse_result_envelope for `claude -p --output-format json` stdout → UsageEnvelope (text + REAL input/output/cache tokens + cost_usd); lenient — malformed → None, caller falls back to plain text
+cli/lessons.py      pure: lesson-efficacy projection (cycle recall provenance × outcomes → working/not-working/no-evidence) + reversible archive_lesson (skills/archive/, never a delete); powers `sigma lessons`
+cli/docs_check.py   pure: cross-surface consistency checks (version parity cli/__init__.py ↔ plugin.json; stale test-count claims) → review.Finding
+cli/docs_check_run.py  thin: gather README/CLAUDE.md/PLAYGROUND surfaces + real collected count, gate + report → sigma/docs-check.md; powers `sigma docs-check --check`
 cli/session_context.py  pure: build_pointer(root) → names ARCHITECTURE.md + .tours/*.tour for a SessionStart hook (lazy /learn hint when absent); never raises (read side of learn)
 cli/session_hook.py     thin: confirm-gated idempotent install of the SessionStart hook into project .claude/settings.json (immutable merge, like statusline.py)
 cli/claude_local.py     pure upsert_block (marker-delimited) + thin write_block into gitignored CLAUDE.local.md — static fallback for the learn pointer
@@ -284,10 +303,12 @@ keeps only what Claude Code cannot do in-session, plus setup.
 - `sigma research`'s real synthesis (`cli/research.py`'s `synthesize`) runs on
   `claude_synthesis_runner` by default — a real `run_model("claude", prompt)`
   call, unrouted (always the CLI default model, not the `TIER_STRONG` tier
-  `cli/cost.py`'s `routing_for("research")["synthesis"]` already provisions).
-  That routing key exists but is deliberately UNCONSUMED — no `--route` flag
-  on `sigma research` yet. A failed/unavailable claude CLI degrades to the
-  static placeholder text (fail-safe), never crashes the run.
+  `cli/cost.py`'s `routing_for("research")["synthesis"]` provisions). That key
+  IS consumed now: `cmd_research` routes synthesis to the strong tier by
+  default via `routed_synthesis_runner` (claude adapter `model_alias`
+  passthrough); `--no-route` restores the unrouted `claude_synthesis_runner`.
+  A failed/unavailable claude CLI degrades to the static placeholder text
+  (fail-safe), never crashes the run.
 - The in-session `/research` command's claude lane invokes a `deep-research`
   skill IF ONE IS AVAILABLE in the session (sigma does not vendor/ship one —
   it's a conditional capability check, not a guarantee). A clean
@@ -527,10 +548,11 @@ keeps only what Claude Code cannot do in-session, plus setup.
 - Model routing + trajectory both extend `AgentRunner` via OPTIONAL fields that
   default to prior behavior (a bare `AgentRunner()` is byte-identical). `model` →
   injects `--model <alias>` into the argv (alias passed straight through — no
-  model-ID map to drift); `--route` on `loop`/`eval` wires `cost.routing_for(op)`
-  onto the factories (mechanical roles→cheap/mid, reasoning role→strong). OFF by
-  default = no behavior change (so `--model` validity per claude version can't break
-  an unrouted run). `trajectory_sink` is a best-effort `Callable[[dict], None]`
+  model-ID map to drift); routing is ON BY DEFAULT on `loop` (`--no-route` opts
+  out; `--route` is a deprecated no-op) and per-STAGE on `hermes`
+  (`routing_for("hermes")`: planning/grill stages→strong, execution→mid —
+  resolved AFTER `intent.route` picks the stage via `_stage_runner`; the
+  intent-classification runner stays unrouted); `eval` keeps opt-in `--route`. `trajectory_sink` is a best-effort `Callable[[dict], None]`
   called once per run — a failing sink is SWALLOWED (observability must never break a
   run, the inverse of a hard gate). `AgentRunner.run` gained a `role=` label
   (default `"agent"`); loop/hermes pass it (implementer/verifier/logic/test-writer/
@@ -684,6 +706,29 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `codex exec` is ChatGPT-subscription-backed and never reads that key; the two
   coexist in onboard for unrelated reasons (OPENAI_API_KEY predates codex and may
   serve other future openai use, not consumed by any current sigma code path).
+- Telemetry (`cli/telemetry.py` + `AgentRunner(telemetry=True)`) parses the
+  `claude -p --output-format json` result envelope: output becomes the agent's
+  final text and the trajectory step carries MEASURED tokens/cost. Fail-safe:
+  a malformed envelope degrades to the raw-text path; codex-shaped runners
+  (`argv_builder` set) are never touched. `cmd_loop` sums a run's real tokens
+  via `trajectory.counting_sink` and appends an actuals row to
+  `sigma/costs.jsonl` — zero measured tokens → no row (never a fake actual).
+- `sigma lessons` follows prune's laws: zero recall-carrying cycle steps → NO
+  archive candidates (never act on absent evidence); `--archive` MOVES a lesson
+  to `skills/archive/` (confirm-gated per lesson, reversible) — recall +
+  `list_domain_lessons` both exclude `archive/`. "Not working" lessons
+  (recalled but cycles keep failing) are surfaced for a human rewrite, never
+  auto-edited.
+- `sigma eval --from-spec <topic>` renders spec.md scenarios into
+  `sigma/evals/<slug>.md` via the pure, deterministic
+  `scenarios.render_eval_set` (Given/When → case input, Then → rubric — the
+  round-trip through `eval.parse_eval_set` is regression-locked). The set is
+  DERIVED; spec.md stays the source of truth; refuses overwrite without
+  `--force`.
+- The verify + logic prompts receive a task's mapped BDD scenario(s) as
+  acceptance criteria (`loop._scenario_context`) — `cmd_loop` parses spec.md
+  regardless of `--e2e` now. No mapped scenario → prompts byte-identical
+  (regression-locked), same fail-safe law as `_with_recall`.
 - `claude_md_check`/`claude_md_scaffold` NEVER auto-edit an existing CLAUDE.md —
   check surfaces findings, scaffold refuses to overwrite without `--force`. This
   file's own first real run scored a HIGH (676 lines, past the ~300-line ceiling

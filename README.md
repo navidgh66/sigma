@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-779%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-923%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -75,10 +75,22 @@ autonomous hands-off runs, a live kanban board, and setup.
   verifier/test-writer role to the `codex` CLI instead of `claude` for a genuine
   cross-provider maker≠checker check — opt-in, and deliberately excluded from
   `--all` (needs a second CLI + its own auth). `--all` turns on every axis including
-  those two. `hermes --auto` chains whole stages until a human gate.
+  those two. `hermes --auto` chains whole stages until a human gate — and routes
+  each stage by tier (planning/grill stages → the strong model, execution stages
+  → the mid tier; `--no-route` opts out). `sigma research`'s cross-referencing
+  synthesis pass runs on the strong tier by default too. The verify + logic
+  checkers receive each task's mapped BDD scenario as acceptance criteria, not
+  just the task title.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
   MCP servers + plugins that tax every turn.
+- **📊 Measured, not guessed** — agent runs parse `claude --output-format json`
+  result envelopes, so trajectories carry **real** token/cost usage and the cost
+  ledger calibrates from actuals. `sigma lessons` correlates recalled lessons
+  with real cycle outcomes (working / not-working / archive candidates —
+  reversible archive, never a delete). `sigma docs-check` gates version parity
+  and stale test-count claims across README/CLAUDE.md/PLAYGROUND. `sigma eval
+  --from-spec` turns a spec's BDD scenarios into a standing eval set.
 - **🗺️ Graph-grounded onboarding** — `sigma learn` builds a real dependency graph
   of the repo (via graphify) and grounds its `ARCHITECTURE.md` + CodeTour in
   *extracted* structure, not an eyeball read.
@@ -338,7 +350,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **866 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **923 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or
