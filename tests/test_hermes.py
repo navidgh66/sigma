@@ -263,3 +263,52 @@ def test_grill_ready_ignores_per_axis_lines():
         "VERDICT: READY"
     )
     assert hermes._grill_ready(ok) is True
+
+
+def test_stage_routes_model_reaches_runner_factory(tmp_path):
+    models_seen = []
+
+    def make_runner(model=None):
+        models_seen.append(model)
+        return None
+
+    def execute(stage, workspace, agent=None, prompt_prefix=""):
+        return AgentResult(ok=True, output="done")
+
+    result = hermes.run_hermes(
+        "continue", tmp_path,
+        execute=execute, make_runner=make_runner,
+        stage_routes={"research": "sonnet"},
+    )
+    assert result.ok
+    # The intent-route call uses an unrouted runner (None); the stage-execute
+    # runner is routed to the mapped tier.
+    assert "sonnet" in models_seen
+
+
+def test_stage_routes_tolerates_zero_arg_factory(tmp_path):
+    # Existing callers/tests pass factories with no `model` kwarg — routing
+    # must degrade to an unrouted runner, never crash.
+    def execute(stage, workspace, agent=None, prompt_prefix=""):
+        return AgentResult(ok=True, output="done")
+
+    result = hermes.run_hermes(
+        "continue", tmp_path,
+        execute=execute, make_runner=lambda: None,
+        stage_routes={"research": "sonnet"},
+    )
+    assert result.ok
+
+
+def test_no_stage_routes_is_byte_identical_default(tmp_path):
+    calls = []
+
+    def make_runner(model=None):
+        calls.append(model)
+        return None
+
+    def execute(stage, workspace, agent=None, prompt_prefix=""):
+        return AgentResult(ok=True, output="done")
+
+    hermes.run_hermes("continue", tmp_path, execute=execute, make_runner=make_runner)
+    assert all(m is None for m in calls)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from cli import events, intent, skill_map
 from cli.loop import _verdict_pass
@@ -58,6 +58,22 @@ def _log(workspace: Path, message: str) -> None:
         fh.write(f"- {message}\n")
 
 
+def _stage_runner(make_runner: Callable, model: Optional[str]):
+    """Build the stage-execution runner, routed to `model` when given.
+
+    The model resolves AFTER the route has picked the stage — a runner made
+    stage-blind can't be tier-routed. Falls back to a plain `make_runner()`
+    for factories that don't accept a `model` kwarg (older callers, test
+    stand-ins) — same tolerance pattern as `_invoke`.
+    """
+    if model is None:
+        return make_runner()
+    try:
+        return make_runner(model=model)
+    except TypeError:
+        return make_runner()
+
+
 def run_hermes(
     message: str,
     workspace: Path,
@@ -69,6 +85,7 @@ def run_hermes(
     vendor: Optional[Path] = None,
     now: Optional[str] = None,
     gate: Optional[str] = None,
+    stage_routes: Optional[Dict[str, str]] = None,
 ) -> HermesResult:
     """Route + run one stage (default) or chain until a gate (auto).
 
@@ -78,6 +95,11 @@ def run_hermes(
 
     `gate`, when set, is a wakeAgent script checked before each hop; a skip
     decision stops the run before spending tokens on that hop.
+
+    `stage_routes` maps a stage name to a model alias (see
+    `cost.routing_for("hermes")`); unmapped stages and `None` run unrouted.
+    The intent-routing runner is deliberately NOT routed (classification is
+    cheap).
     """
     execute = execute or _real_execute_stage
     make_runner = make_runner or (lambda: None)
@@ -115,7 +137,8 @@ def run_hermes(
             workspace,
             events.Event(task=stage, stage=stage, status=events.STATUS_IN_PROGRESS, ts=now),
         )
-        run_result = _invoke(execute, stage, workspace, make_runner(), prefix)
+        runner = _stage_runner(make_runner, (stage_routes or {}).get(stage))
+        run_result = _invoke(execute, stage, workspace, runner, prefix)
         hops += 1
         result.stages_run.append(stage)
 
