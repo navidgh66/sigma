@@ -95,6 +95,11 @@ def recall_lessons(
         return Recall(lessons=[], truncated=False)
     selected: List[Lesson] = []
     for skill_md in sorted(skills_dir.rglob("SKILL.md")):
+        # skills/archive/ holds lessons a human retired via `sigma lessons
+        # --archive` — excluded from recall (that's the whole point of the
+        # move), but still on disk and trivially restorable.
+        if "archive" in skill_md.relative_to(skills_dir).parts:
+            continue
         meta = parse_skill_meta(skill_md)
         if meta.get("domain") != domain:
             continue

@@ -190,10 +190,17 @@ def record_cycle_steps(outcomes: List["CycleOutcome"], sink) -> None:
     reads for cycle pass rate — distinct from a subprocess crash (`ok` on an
     implementer/verifier step means "exited zero", not "verdict passed"). `sink`
     is the same best-effort callable `AgentRunner` uses; a broken sink degrades
-    silently (observability must never break a run).
+    silently (observability must never break a run). Each cycle step also
+    carries the cycle's domain + recalled lesson slugs so `sigma lessons` can
+    correlate lesson recall with real outcomes (the efficacy read-side).
     """
     for outcome in outcomes:
-        sink({"role": "cycle", "ok": outcome.verified})
+        sink({
+            "role": "cycle",
+            "ok": outcome.verified,
+            "domain": outcome.domain,
+            "lessons": list(outcome.lessons_recalled),
+        })
 
 
 def _team_worktrees_available(project_root: Path) -> bool:
@@ -434,6 +441,11 @@ class CycleOutcome:
     # e2e_runner was given: True=PASS, False=FAIL (blocks+ratchets), None=no
     # mapped scenario OR e2e ERROR (inconclusive, never blocks/ratchets).
     e2e_ok: Optional[bool] = None
+    # Lesson-efficacy provenance (read by `sigma lessons`): the cycle's domain
+    # and the slugs of the ratcheted lessons that were recalled into its
+    # implement/verify prompts. Empty when no lessons existed for the domain.
+    domain: Optional[str] = None
+    lessons_recalled: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
 
 
@@ -1087,10 +1099,15 @@ def run_loop(
     # Pre-build the per-domain recall snapshot for the whole batch (one read per
     # domain). In team mode this MUST happen before fan-out so threads only read it.
     recall_cache: Dict[str, str] = {}
+    # Slugs recalled per domain — stamped onto each cycle's outcome so `sigma
+    # lessons` can correlate recall with real pass/fail (efficacy read-side).
+    recall_slugs: Dict[str, List[str]] = {}
     for task in batch:
         domain = plan_cycle(task).implementer_domain
         if domain not in recall_cache:
-            lessons = render_recall_block(recall_lessons(skills_dir, domain))
+            recall = recall_lessons(skills_dir, domain)
+            lessons = render_recall_block(recall)
+            recall_slugs[domain] = [le.path.parent.name for le in recall.lessons]
             # Architecture map first, then past lessons; either may be empty.
             combined = "\n\n".join(b for b in (arch_block, lessons) if b)
             recall_cache[domain] = combined
@@ -1099,7 +1116,7 @@ def run_loop(
 
     def run_one(task: Task, agent_cwd: Optional[Path] = None) -> CycleOutcome:
         plan = plan_cycle(task)
-        return execute_cycle(
+        outcome = execute_cycle(
             plan, workspace, skills_dir,
             make_implementer(), make_verifier(),
             make_logic_checker() if make_logic_checker else None,
@@ -1112,6 +1129,9 @@ def run_loop(
             e2e_runner=make_e2e_runner() if make_e2e_runner else None,
             spec_scenarios=spec_scenarios,
         )
+        outcome.domain = plan.implementer_domain
+        outcome.lessons_recalled = list(recall_slugs.get(plan.implementer_domain, []))
+        return outcome
 
     if team:
         # Worktree isolation is gated on an EXPLICITLY passed project_root, not

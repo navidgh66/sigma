@@ -928,6 +928,43 @@ def cmd_trajectory(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# lessons (lesson-efficacy report + reversible archive of unused lessons)
+# --------------------------------------------------------------------------- #
+def cmd_lessons(args: argparse.Namespace) -> int:
+    from cli import render
+    from cli.lessons import archive_lesson, efficacy, list_domain_lessons, render_report
+    from cli.trajectory import read_steps
+
+    ws = spec_workspace(args.topic)
+    if not ws.exists():
+        _print(f"✗ no spec workspace at {ws}. Run a loop first.")
+        return 1
+    skills_dir = sigma_home() / "skills"
+    report = efficacy(read_steps(ws), list_domain_lessons(skills_dir))
+    _print(render_report(report))
+
+    if not args.archive:
+        return 0
+    if not report.has_recall_evidence:
+        _print("\n(--archive) no recall evidence — nothing is archived on absent evidence")
+        return 0
+    if not report.no_evidence:
+        _print("\n(--archive) no archive candidates")
+        return 0
+    archived = 0
+    for stats in report.no_evidence:
+        if render.confirm(f"Archive lesson '{stats.slug}' → skills/archive/? (reversible)"):
+            dest = archive_lesson(skills_dir, stats.slug)
+            if dest is not None:
+                _print(f"  ✓ archived → {dest}")
+                archived += 1
+            else:
+                _print(f"  ✗ could not archive '{stats.slug}' (missing or target exists)")
+    _print(f"✓ archived {archived} lesson(s)")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # cost (report the cost ledger)
 # --------------------------------------------------------------------------- #
 def cmd_cost(args: argparse.Namespace) -> int:
@@ -1170,6 +1207,13 @@ def build_parser() -> argparse.ArgumentParser:
     pcmcr.add_argument("--force", action="store_true", help="overwrite an existing file")
     pcmcr.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     pcmcr.set_defaults(func=cmd_claude_md_create)
+
+    plessons = sub.add_parser("lessons",
+                              help="Lesson-efficacy report (working / not-working / no-evidence)")
+    plessons.add_argument("--topic", required=True, help="topic/slug locating the workspace")
+    plessons.add_argument("--archive", action="store_true",
+                          help="offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)")
+    plessons.set_defaults(func=cmd_lessons)
 
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)

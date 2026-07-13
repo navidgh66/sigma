@@ -47,6 +47,10 @@ class TrajectoryStep:
     cache_read_tokens: Optional[int] = None
     cache_creation_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
+    # Lesson-efficacy provenance on role="cycle" steps (from record_cycle_steps):
+    # the cycle's domain + the ratcheted-lesson slugs recalled into its prompts.
+    domain: Optional[str] = None
+    lessons: Optional[List[str]] = None
 
 
 def trajectory_path(workspace: Path) -> Path:
@@ -58,6 +62,13 @@ def _opt_int(value) -> Optional[int]:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return int(value)
+
+
+def _opt_str_list(value) -> Optional[List[str]]:
+    """Optional list of strings (lesson slugs); anything malformed → None."""
+    if not isinstance(value, list):
+        return None
+    return [v for v in value if isinstance(v, str)]
 
 
 def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
@@ -78,6 +89,8 @@ def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
         cache_read_tokens=_opt_int(raw.get("cache_read_tokens")),
         cache_creation_tokens=_opt_int(raw.get("cache_creation_tokens")),
         cost_usd=float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
+        domain=raw.get("domain") if isinstance(raw.get("domain"), str) else None,
+        lessons=_opt_str_list(raw.get("lessons")),
     )
 
 

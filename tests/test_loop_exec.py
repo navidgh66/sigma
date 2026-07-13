@@ -1034,7 +1034,10 @@ def test_record_cycle_steps_emits_one_per_outcome():
     ]
     seen = []
     record_cycle_steps(outcomes, lambda step: seen.append(step))
-    assert seen == [{"role": "cycle", "ok": True}, {"role": "cycle", "ok": False}]
+    assert seen == [
+        {"role": "cycle", "ok": True, "domain": None, "lessons": []},
+        {"role": "cycle", "ok": False, "domain": None, "lessons": []},
+    ]
 
 
 def test_record_cycle_steps_empty_outcomes_no_op():
