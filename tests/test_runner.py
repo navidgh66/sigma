@@ -199,3 +199,92 @@ def test_runner_no_sink_no_step(monkeypatch):
     monkeypatch.setattr(r.shutil, "which", lambda exe: "/bin/claude")
     res = AgentRunner(runner=lambda *a, **k: _fake_proc(0, "done")).run("p")
     assert res.ok is True
+
+
+# --------------------------- telemetry (real token usage) --------------------
+
+def _telemetry_proc(stdout, returncode=0, stderr=""):
+    class P:
+        pass
+    p = P()
+    p.stdout = stdout
+    p.returncode = returncode
+    p.stderr = stderr
+    return p
+
+
+def test_telemetry_argv_requests_json_output(monkeypatch):
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return _telemetry_proc('{"result": "hi", "usage": {"input_tokens": 1, "output_tokens": 2}}')
+
+    r = AgentRunner(runner=fake_run, telemetry=True)
+    monkeypatch.setattr(r, "available", lambda: True)
+    r.run("prompt")
+    assert "--output-format" in seen["argv"]
+    assert seen["argv"][seen["argv"].index("--output-format") + 1] == "json"
+    assert seen["argv"][-1] == "prompt"
+
+
+def test_no_telemetry_argv_unchanged(monkeypatch):
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return _telemetry_proc("plain")
+
+    r = AgentRunner(runner=fake_run)
+    monkeypatch.setattr(r, "available", lambda: True)
+    r.run("prompt")
+    assert "--output-format" not in seen["argv"]
+
+
+def test_telemetry_parses_envelope_text_and_emits_usage(monkeypatch):
+    steps = []
+    envelope = ('{"result": "VERDICT: PASS", "total_cost_usd": 0.05, '
+                '"usage": {"input_tokens": 100, "output_tokens": 40, '
+                '"cache_read_input_tokens": 300, "cache_creation_input_tokens": 10}}')
+
+    r = AgentRunner(runner=lambda argv, **kw: _telemetry_proc(envelope),
+                    telemetry=True, trajectory_sink=steps.append)
+    monkeypatch.setattr(r, "available", lambda: True)
+    result = r.run("prompt", role="verifier")
+    assert result.ok
+    assert result.output == "VERDICT: PASS"
+    step = steps[0]
+    assert step["input_tokens"] == 100
+    assert step["output_tokens"] == 40
+    assert step["cache_read_tokens"] == 300
+    assert step["cache_creation_tokens"] == 10
+    assert step["cost_usd"] == 0.05
+
+
+def test_telemetry_degrades_to_raw_text_on_unparseable_stdout(monkeypatch):
+    steps = []
+    r = AgentRunner(runner=lambda argv, **kw: _telemetry_proc("  not json at all  "),
+                    telemetry=True, trajectory_sink=steps.append)
+    monkeypatch.setattr(r, "available", lambda: True)
+    result = r.run("prompt")
+    assert result.ok
+    assert result.output == "not json at all"
+    assert "input_tokens" not in steps[0]  # no fabricated usage
+
+
+def test_telemetry_ignored_when_argv_builder_set(monkeypatch):
+    # codex-shaped runners own their argv + output; telemetry must not touch them.
+    seen = {}
+
+    def build(prompt, model):
+        return ["codex", "exec", prompt]
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+        return _telemetry_proc('{"result": "x"}')
+
+    r = AgentRunner(runner=fake_run, telemetry=True, argv_builder=build)
+    monkeypatch.setattr(r, "available", lambda: True)
+    result = r.run("prompt")
+    assert "--output-format" not in seen["argv"]
+    assert result.output == '{"result": "x"}'

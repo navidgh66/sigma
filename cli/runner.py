@@ -58,6 +58,12 @@ class AgentRunner:
     clock: Callable[[], float] = time.monotonic
     argv_builder: Optional[Callable[[str, Optional[str]], list]] = None
     output_cleaner: Optional[Callable[[str], str]] = None
+    # When True (and no argv_builder overrides the claude-shaped argv), request
+    # `--output-format json` and parse the result envelope: AgentResult.output
+    # becomes the agent's final text, and the trajectory step carries REAL
+    # measured usage (input/output/cache tokens + cost_usd). A malformed
+    # envelope degrades to the raw-text path — telemetry never breaks a run.
+    telemetry: bool = False
 
     def available(self) -> bool:
         return shutil.which(self.executable) is not None
@@ -66,6 +72,8 @@ class AgentRunner:
         argv = [self.executable, "-p"]
         if self.model:
             argv += ["--model", self.model]
+        if self.telemetry:
+            argv += ["--output-format", "json"]
         argv.append(prompt)
         return argv
 
@@ -102,17 +110,30 @@ class AgentRunner:
 
         duration = self.clock() - start
         raw_out = getattr(proc, "stdout", "") or ""
-        out = self.output_cleaner(raw_out) if self.output_cleaner else raw_out.strip()
+        usage = None
+        if self.telemetry and self.argv_builder is None:
+            from cli.telemetry import parse_result_envelope
+
+            usage = parse_result_envelope(raw_out)
+        if usage is not None:
+            out = usage.text.strip()
+        else:
+            out = self.output_cleaner(raw_out) if self.output_cleaner else raw_out.strip()
         if proc.returncode != 0:
             err = (getattr(proc, "stderr", "") or "").strip() or f"exit code {proc.returncode}"
             result = AgentResult(ok=False, output=out, error=err, returncode=proc.returncode)
         else:
             result = AgentResult(ok=True, output=out, returncode=0)
-        self._emit(role, result, duration)
+        self._emit(role, result, duration, usage=usage)
         return result
 
-    def _emit(self, role: str, result: AgentResult, duration: float) -> None:
-        """Best-effort: hand one step record to the trajectory sink. Never raises."""
+    def _emit(self, role: str, result: AgentResult, duration: float, usage=None) -> None:
+        """Best-effort: hand one step record to the trajectory sink. Never raises.
+
+        `usage` (a `cli.telemetry.UsageEnvelope`, when telemetry parsed one)
+        adds REAL measured token/cost fields to the step; absent → the step is
+        byte-identical to the pre-telemetry shape.
+        """
         if self.trajectory_sink is None:
             return
         step = {
@@ -124,6 +145,13 @@ class AgentRunner:
             "output_chars": len(result.output or ""),
             "duration_s": round(duration, 3),
         }
+        if usage is not None:
+            step["input_tokens"] = usage.input_tokens
+            step["output_tokens"] = usage.output_tokens
+            step["cache_read_tokens"] = usage.cache_read_tokens
+            step["cache_creation_tokens"] = usage.cache_creation_tokens
+            if usage.cost_usd is not None:
+                step["cost_usd"] = usage.cost_usd
         try:
             self.trajectory_sink(step)
         except Exception:  # noqa: BLE001 — observability must never break the run

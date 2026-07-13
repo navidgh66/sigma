@@ -654,3 +654,49 @@ def test_cmd_research_no_route_uses_default_synthesis(monkeypatch, tmp_path):
     from cli.research import claude_synthesis_runner
     assert main(["research", "some topic", "--no-route"]) == 0
     assert captured["runner"] is claude_synthesis_runner
+
+
+# --------------------------------------------------------------------------- #
+# cmd_loop telemetry — real measured tokens recorded into the cost ledger
+# --------------------------------------------------------------------------- #
+def test_cmd_loop_records_measured_tokens_to_ledger(monkeypatch, tmp_path):
+    import cli.main as main_mod
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\nmodels: [claude]\n")
+    ws = tmp_path / "sigma" / "specs" / "2026-01-01-t"
+    ws.mkdir(parents=True)
+    (ws / "tasks.md").write_text("- [ ] T1 (nlp): do thing\n")
+    monkeypatch.setattr(main_mod, "spec_workspace", lambda topic: ws)
+
+    captured = {}
+
+    def fake_run_loop(tasks, workspace, skills_dir, max_cycles, **kwargs):
+        # The implementer factory must produce telemetry-enabled runners, and
+        # its sink must feed the counting wrapper cmd_loop records from.
+        runner = kwargs["make_implementer"]()
+        captured["telemetry"] = runner.telemetry
+        runner.trajectory_sink({"role": "implementer", "ok": True,
+                                "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.02})
+        from cli.loop import CycleOutcome
+        return [CycleOutcome(task_title="do thing", implemented=True, verified=True)]
+
+    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
+
+    ns = argparse.Namespace(
+        topic="t", execute=True, all=False, tdd=False, team=False, logic=False,
+        simplify=False, advisor=False, advisor_rounds=1, e2e=False,
+        keep_awake=False, gate=None, codex_verify=False, codex_tdd=False,
+        no_route=True, model_implement=None, model_verify=None, model_logic=None,
+        model_advisor=None,
+    )
+    rc = main_mod.cmd_loop(ns)
+    assert rc == 0
+    assert captured["telemetry"] is True
+
+    ledger = tmp_path / "sigma" / "costs.jsonl"
+    assert ledger.exists()
+    import json as _json
+    row = _json.loads(ledger.read_text().strip().splitlines()[-1])
+    assert row["op"] == "loop"
+    assert row["tokens"] == 150

@@ -203,8 +203,12 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print("  🐙 codex-tdd: test-writer runs via codex")
 
     # Trajectory capture: every agent run appends a step to the workspace
-    # (best-effort observability, never breaks a run).
-    sink = make_sink(ws, ts=_now_iso())
+    # (best-effort observability, never breaks a run). The counting wrapper
+    # also accumulates THIS run's real measured tokens (from claude
+    # --output-format json envelopes) for the cost-ledger record below.
+    from cli.trajectory import counting_sink
+
+    sink, run_usage = counting_sink(make_sink(ws, ts=_now_iso()))
 
     # Intelligent model routing is ON BY DEFAULT: mechanical roles (implement,
     # verify) → mid tier, reasoning roles (logic) → strong tier. --no-route
@@ -246,7 +250,7 @@ def cmd_loop(args: argparse.Namespace) -> int:
         _print(f"  ⚠ --e2e given but no spec.md at {spec_file} — every task's e2e step will skip")
 
     def _make(role_tier: Optional[str]):
-        return AgentRunner(model=role_tier, trajectory_sink=sink)
+        return AgentRunner(model=role_tier, trajectory_sink=sink, telemetry=True)
 
     def _make_codex(sandbox: str):
         return AgentRunner(
@@ -285,6 +289,19 @@ def cmd_loop(args: argparse.Namespace) -> int:
     # Record one "cycle" trajectory step per completed outcome — the real,
     # measured pass/fail signal `sigma trajectory --efficiency` reports on.
     record_cycle_steps(outcomes, sink)
+    # Real-usage ledger record: telemetry measured actual tokens for this run →
+    # append them so cost.calibrate() sharpens from actuals, not static factors.
+    # Zero tokens (telemetry unavailable/unparsed) → no row, never a fake actual.
+    if run_usage["tokens"] > 0:
+        from cli.cost import append_ledger, build_record, ledger_path
+
+        append_ledger(
+            ledger_path(project_root()),
+            build_record("loop", units=max(len(outcomes), 1),
+                         tokens=run_usage["tokens"], ts=_now_iso()),
+        )
+        cost_note = f" (~${run_usage['cost_usd']:.2f})" if run_usage["cost_usd"] > 0 else ""
+        _print(f"  📊 measured: {run_usage['tokens']:,} tokens{cost_note} → sigma/costs.jsonl")
     passed = sum(1 for o in outcomes if o.verified)
     _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
     for o in outcomes:
@@ -339,7 +356,7 @@ def cmd_hermes(args: argparse.Namespace) -> int:
             ws,
             auto=args.auto,
             terse=args.terse,
-            make_runner=lambda model=None: AgentRunner(model=model, trajectory_sink=sink),
+            make_runner=lambda model=None: AgentRunner(model=model, trajectory_sink=sink, telemetry=True),
             now=_now_iso(),
             gate=args.gate,
             stage_routes=routes,
@@ -832,8 +849,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     res = run_eval(
         name,
         root,
-        make_sut=lambda: AgentRunner(model=routes.get("sut"), trajectory_sink=sink),
-        make_grader=lambda: AgentRunner(model=routes.get("judge"), trajectory_sink=sink),
+        make_sut=lambda: AgentRunner(model=routes.get("sut"), trajectory_sink=sink, telemetry=True),
+        make_grader=lambda: AgentRunner(model=routes.get("judge"), trajectory_sink=sink, telemetry=True),
         threshold=args.threshold,
         artifact=artifact,
         ts=_now_iso(),

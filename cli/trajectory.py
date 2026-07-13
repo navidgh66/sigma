@@ -39,15 +39,31 @@ class TrajectoryStep:
     output_chars: int = 0
     duration_s: float = 0.0
     ts: Optional[str] = None
+    # REAL measured usage (from claude --output-format json envelopes, via
+    # AgentRunner telemetry). None = not measured (pre-telemetry steps, codex
+    # runs, parse failures) — never fabricated.
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    cache_read_tokens: Optional[int] = None
+    cache_creation_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
 
 
 def trajectory_path(workspace: Path) -> Path:
     return workspace / TRAJECTORY_FILENAME
 
 
+def _opt_int(value) -> Optional[int]:
+    """Optional token count: numeric → int, anything else (incl. bool) → None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
 def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
     """Build a TrajectoryStep from a runner's step dict (caller passes `ts`)."""
     raw = raw or {}
+    cost = raw.get("cost_usd")
     return TrajectoryStep(
         role=str(raw.get("role", "agent")),
         model=raw.get("model"),
@@ -57,6 +73,11 @@ def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
         output_chars=int(raw.get("output_chars", 0) or 0),
         duration_s=float(raw.get("duration_s", 0.0) or 0.0),
         ts=ts if ts is not None else raw.get("ts"),
+        input_tokens=_opt_int(raw.get("input_tokens")),
+        output_tokens=_opt_int(raw.get("output_tokens")),
+        cache_read_tokens=_opt_int(raw.get("cache_read_tokens")),
+        cache_creation_tokens=_opt_int(raw.get("cache_creation_tokens")),
+        cost_usd=float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
     )
 
 
@@ -109,6 +130,32 @@ def make_sink(workspace: Path, ts: Optional[str] = None) -> Callable[[dict], Non
     return sink
 
 
+def counting_sink(base: Callable[[dict], None]):
+    """Wrap a sink so measured usage also accumulates in-memory for THIS run.
+
+    Returns `(sink, totals)` where `totals` is a live dict
+    `{"tokens": int, "cost_usd": float}` summing every token dimension across
+    the steps the wrapped sink sees. The trajectory file is append-only across
+    runs, so a caller that wants "this run's real cost" (e.g. cmd_loop's ledger
+    record) counts here instead of re-reading and mis-attributing old steps.
+    Non-numeric fields are skipped — absent telemetry leaves totals at zero.
+    """
+    totals = {"tokens": 0, "cost_usd": 0.0}
+
+    def sink(raw: dict) -> None:
+        base(raw)
+        raw = raw or {}
+        for key in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
+            v = raw.get(key)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                totals["tokens"] += int(v)
+        cost = raw.get("cost_usd")
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            totals["cost_usd"] += float(cost)
+
+    return sink, totals
+
+
 # --------------------------------------------------------------------------- #
 # Projection
 # --------------------------------------------------------------------------- #
@@ -159,16 +206,14 @@ def summarize(steps: List[TrajectoryStep]) -> TrajectorySummary:
 # --------------------------------------------------------------------------- #
 # Efficiency report (real, measured signals only — no token estimate)
 # --------------------------------------------------------------------------- #
-# `claude -p` (and the other agent CLIs sigma shells out to) never surfaces token
-# usage in its stdout, so sigma has no source for a real per-run token count —
-# only a static units×factor guess that never calibrates (see cli/cost.py's
-# calibrate()). Rather than present that guess as an efficiency signal, this
-# report leads with what IS real and measured: the loop's own "cycle" steps (one
-# per completed execute_cycle, role="cycle", ok=verified — appended by cmd_loop
-# after run_loop returns) give a true pass rate; the per-role step counts already
-# in TrajectorySummary give a true escalation rate (how often the expensive axes
-# fire relative to the implementer). A future fast-follow can add a token axis IF
-# a real usage source ever exists (e.g. a CLI flag that surfaces it) — not before.
+# Real signals only. Cycle steps (role="cycle", ok=verified — appended by
+# cmd_loop after run_loop returns) give a true pass rate; per-role step counts
+# give a true escalation rate. Token usage IS real when present: AgentRunner
+# telemetry parses `claude -p --output-format json` result envelopes and stamps
+# measured input/output/cache tokens (+cost_usd) onto steps — the report shows a
+# token axis only for steps that actually carry measurements, and keeps the
+# honest "no data" caveat otherwise (a static estimate must never wear a
+# measured metric's clothes — that guess lives in `sigma cost`).
 CYCLE_ROLE = "cycle"
 ESCALATION_ROLES = ("logic", "advisor", "test-writer", "simplifier")
 
@@ -226,9 +271,28 @@ def efficiency_report(steps: List[TrajectoryStep]) -> str:
             "",
         ]
 
-    lines += [
-        "_Token cost is intentionally omitted: `claude -p` does not surface real usage, "
-        "so a token count here would be a static estimate wearing a measured metric's "
-        "clothes — see `sigma cost` for the honestly-labeled estimate instead._",
+    measured = [
+        s for s in non_cycle
+        if any(v is not None for v in (s.input_tokens, s.output_tokens,
+                                       s.cache_read_tokens, s.cache_creation_tokens))
     ]
+    if measured:
+        total_tokens = sum(
+            (s.input_tokens or 0) + (s.output_tokens or 0)
+            + (s.cache_read_tokens or 0) + (s.cache_creation_tokens or 0)
+            for s in measured
+        )
+        total_cost = sum(s.cost_usd or 0.0 for s in measured)
+        cost_note = f", ~${total_cost:.2f}" if total_cost > 0 else ""
+        lines += [
+            f"**Measured tokens: {total_tokens:,}**{cost_note} across {len(measured)} "
+            f"agent step(s) — REAL usage from `claude --output-format json` result "
+            "envelopes (steps without telemetry are excluded, never estimated).",
+        ]
+    else:
+        lines += [
+            "_No measured token data yet: steps carry real usage only when run with "
+            "AgentRunner telemetry (`claude -p --output-format json`) — see `sigma cost` "
+            "for the honestly-labeled estimate instead._",
+        ]
     return "\n".join(lines)

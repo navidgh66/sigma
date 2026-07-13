@@ -134,6 +134,55 @@ def test_efficiency_report_crash_rate_distinct_from_verify_fail():
 
 
 def test_efficiency_report_never_claims_token_savings():
+    # Without measured telemetry, the report must keep the honest caveat and
+    # never fabricate a token number (the original law, new wording).
     steps = [TrajectoryStep(role="cycle", ok=True, ts="t1")]
     out = efficiency_report(steps)
-    assert "Token cost is intentionally omitted" in out
+    assert "No measured token data yet" in out
+    assert "Measured tokens" not in out
+
+
+def test_build_step_maps_measured_usage():
+    step = build_step({"role": "implementer", "input_tokens": 10, "output_tokens": 5,
+                       "cache_read_tokens": 70, "cache_creation_tokens": 3, "cost_usd": 0.02})
+    assert step.input_tokens == 10
+    assert step.output_tokens == 5
+    assert step.cache_read_tokens == 70
+    assert step.cache_creation_tokens == 3
+    assert step.cost_usd == 0.02
+
+
+def test_build_step_without_usage_leaves_none():
+    step = build_step({"role": "implementer"})
+    assert step.input_tokens is None
+    assert step.output_tokens is None
+    assert step.cost_usd is None
+
+
+def test_counting_sink_accumulates_tokens_and_forwards():
+    from cli.trajectory import counting_sink
+
+    forwarded = []
+    sink, totals = counting_sink(forwarded.append)
+    sink({"role": "implementer", "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01})
+    sink({"role": "verifier", "input_tokens": 20, "cache_read_tokens": 30})
+    sink({"role": "logic"})  # no telemetry — contributes nothing
+    assert len(forwarded) == 3
+    assert totals["tokens"] == 200
+    assert totals["cost_usd"] == 0.01
+
+
+def test_efficiency_report_shows_measured_tokens_when_present():
+    steps = [
+        build_step({"role": "implementer", "ok": True, "input_tokens": 100, "output_tokens": 50}),
+        build_step({"role": "cycle", "ok": True}),
+    ]
+    report = efficiency_report(steps)
+    assert "Measured tokens: 150" in report
+    assert "intentionally omitted" not in report
+
+
+def test_efficiency_report_keeps_caveat_without_measurements():
+    steps = [build_step({"role": "implementer", "ok": True})]
+    report = efficiency_report(steps)
+    assert "No measured token data yet" in report
