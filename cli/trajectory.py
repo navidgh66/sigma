@@ -51,6 +51,15 @@ class TrajectoryStep:
     # the cycle's domain + the ratcheted-lesson slugs recalled into its prompts.
     domain: Optional[str] = None
     lessons: Optional[List[str]] = None
+    # Per-axis effect flags, also on role="cycle" steps (from record_cycle_steps):
+    # the CycleOutcome outcome of each optional axis, so `axis_economy` can join
+    # tokens-spent-per-axis with did-that-axis-produce-value. None = the axis
+    # didn't run (or a pre-effect-fields trajectory) — never fabricated.
+    logic_ok: Optional[bool] = None
+    advised: Optional[bool] = None
+    e2e_ok: Optional[bool] = None
+    simplified: Optional[bool] = None
+    test_written: Optional[bool] = None
 
 
 def trajectory_path(workspace: Path) -> Path:
@@ -69,6 +78,15 @@ def _opt_str_list(value) -> Optional[List[str]]:
     if not isinstance(value, list):
         return None
     return [v for v in value if isinstance(v, str)]
+
+
+def _opt_bool(value) -> Optional[bool]:
+    """Optional axis effect flag: a real bool → itself; anything else → None.
+
+    Absent (pre-effect-fields trajectory) or non-bool (hand-edited/garbage) both
+    degrade to None — the axis is treated as "didn't run", never fabricated.
+    """
+    return value if isinstance(value, bool) else None
 
 
 def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
@@ -91,6 +109,11 @@ def build_step(raw: dict, ts: Optional[str] = None) -> TrajectoryStep:
         cost_usd=float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
         domain=raw.get("domain") if isinstance(raw.get("domain"), str) else None,
         lessons=_opt_str_list(raw.get("lessons")),
+        logic_ok=_opt_bool(raw.get("logic_ok")),
+        advised=_opt_bool(raw.get("advised")),
+        e2e_ok=_opt_bool(raw.get("e2e_ok")),
+        simplified=_opt_bool(raw.get("simplified")),
+        test_written=_opt_bool(raw.get("test_written")),
     )
 
 

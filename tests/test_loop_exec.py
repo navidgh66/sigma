@@ -1034,9 +1034,13 @@ def test_record_cycle_steps_emits_one_per_outcome():
     ]
     seen = []
     record_cycle_steps(outcomes, lambda step: seen.append(step))
+    effect_flags = {
+        "logic_ok": None, "advised": None, "e2e_ok": None,
+        "simplified": None, "test_written": None,
+    }
     assert seen == [
-        {"role": "cycle", "ok": True, "domain": None, "lessons": []},
-        {"role": "cycle", "ok": False, "domain": None, "lessons": []},
+        {"role": "cycle", "ok": True, "domain": None, "lessons": [], **effect_flags},
+        {"role": "cycle", "ok": False, "domain": None, "lessons": [], **effect_flags},
     ]
 
 

@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-924%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-935%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -255,6 +255,7 @@ sigma learn                                             # codebase map → ARCHI
 sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
 sigma prune                                             # cut loaded-but-unused MCP/plugins → reversible disable
 sigma trajectory --topic <t> --efficiency               # real cycle pass rate + escalation rate (measured, not estimated)
+sigma trajectory --topic <t> --economy                  # per-axis token economy: tokens-per-value-event, idle-axis prune candidates
 sigma usage                                             # real Claude Code token/cache/cost via ccusage (wraps `npx ccusage@latest`)
 sigma doctor --update                                   # refresh CLI + plugin, then health-check
 ```
@@ -358,7 +359,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **924 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **935 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or

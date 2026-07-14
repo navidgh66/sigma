@@ -944,6 +944,18 @@ def cmd_trajectory(args: argparse.Namespace) -> int:
         _print(f"✗ no spec workspace at {ws}. Run a loop or hermes first.")
         return 1
     steps = read_steps(ws)
+    if getattr(args, "economy", False):
+        from cli.axis_economy import build_economy
+
+        economy = build_economy(steps)
+        if args.json:
+            import json
+            from dataclasses import asdict
+
+            _print(json.dumps(asdict(economy), sort_keys=True))
+        else:
+            _print(economy.render())
+        return 0
     if args.efficiency:
         _print(efficiency_report(steps))
         return 0
@@ -1285,6 +1297,8 @@ def build_parser() -> argparse.ArgumentParser:
     ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
     ptraj.add_argument("--efficiency", action="store_true",
                         help="report cycle pass rate + escalation rate (real, measured signals)")
+    ptraj.add_argument("--economy", action="store_true",
+                        help="per-axis token economy: tokens-per-value-event, idle-axis prune candidates")
     ptraj.set_defaults(func=cmd_trajectory)
 
     peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")

@@ -192,7 +192,9 @@ def record_cycle_steps(outcomes: List["CycleOutcome"], sink) -> None:
     is the same best-effort callable `AgentRunner` uses; a broken sink degrades
     silently (observability must never break a run). Each cycle step also
     carries the cycle's domain + recalled lesson slugs so `sigma lessons` can
-    correlate lesson recall with real outcomes (the efficacy read-side).
+    correlate lesson recall with real outcomes (the efficacy read-side), and the
+    per-axis effect flags (logic_ok/advised/e2e_ok/simplified/test_written) so
+    `sigma trajectory --economy` can join tokens-per-axis with per-axis value.
     """
     for outcome in outcomes:
         sink({
@@ -200,6 +202,13 @@ def record_cycle_steps(outcomes: List["CycleOutcome"], sink) -> None:
             "ok": outcome.verified,
             "domain": outcome.domain,
             "lessons": list(outcome.lessons_recalled),
+            # Per-axis effect flags → `axis_economy` joins these with tokens-per-axis.
+            # None passes through unchanged (axis didn't run); never fabricated.
+            "logic_ok": outcome.logic_ok,
+            "advised": outcome.advised,
+            "e2e_ok": outcome.e2e_ok,
+            "simplified": outcome.simplified,
+            "test_written": outcome.test_written,
         })
 
 

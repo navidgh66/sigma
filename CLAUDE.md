@@ -45,12 +45,16 @@ ledger; `sigma lessons` correlates recalled lessons with real cycle outcomes
 (reversible archive of dead lessons); `sigma docs-check` gates version parity +
 stale test-count claims across doc surfaces; `sigma eval --from-spec` renders a
 spec's BDD scenarios into an eval set; the loop's verify/logic checkers receive
-each task's mapped scenario as acceptance criteria. 924 pytest tests, ruff clean.
+each task's mapped scenario as acceptance criteria. `sigma trajectory --economy`
+joins real per-axis token spend with per-axis value events (from the cycle
+step's effect flags) → ranks each loop axis by tokens-per-value-event and
+surfaces idle-but-expensive axes as prune candidates (surface-only, never
+auto-disabled). 935 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 924 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 935 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -187,7 +191,8 @@ cli/prune.py        pure: parse_plugins/parse_mcp_servers, belongs (tool→item 
 cli/prune_run.py    thin: read settings/.claude.json/.mcp.json + scan transcripts for usage, build report, reversible disable (enabledPlugins=false, immutable merge)
 cli/codetour.py     pure CodeTour .tour validator (file exists / line in range / pattern present)
 cli/runner.py       AgentRunner — the single execution chokepoint (injectable); optional `model` (→ --model alias, intelligent routing) + `trajectory_sink` (observability), both fail-safe no-ops by default
-cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration + measured tokens/cost + cycle domain/lesson provenance) + summarize/efficiency projections + make_sink/counting_sink (best-effort, never breaks a run)
+cli/trajectory.py   pure: append-only trajectory.jsonl (one step/agent run: role/model/ok/duration + measured tokens/cost + cycle domain/lesson provenance + per-axis effect flags logic_ok/advised/e2e_ok/simplified/test_written) + summarize/efficiency projections + make_sink/counting_sink (best-effort, never breaks a run)
+cli/axis_economy.py pure: per-axis token-economy projection — joins tokens-per-role (real telemetry only) with per-axis value events (from cycle-step effect flags) → build_economy/AxisEconomy.render; flags idle-but-expensive axes as prune candidates (surface-only); powers `sigma trajectory --economy`
 cli/telemetry.py    pure: parse_result_envelope for `claude -p --output-format json` stdout → UsageEnvelope (text + REAL input/output/cache tokens + cost_usd); lenient — malformed → None, caller falls back to plain text
 cli/lessons.py      pure: lesson-efficacy projection (cycle recall provenance × outcomes → working/not-working/no-evidence) + reversible archive_lesson (skills/archive/, never a delete); powers `sigma lessons`
 cli/docs_check.py   pure: cross-surface consistency checks (version parity cli/__init__.py ↔ plugin.json; stale test-count claims) → review.Finding
@@ -572,6 +577,26 @@ keeps only what Claude Code cannot do in-session, plus setup.
   `trajectory.jsonl` in the workspace; caller passes `ts` (no clock in the pure
   path). `summarize` is a deterministic projection. `sigma trajectory --topic <t>`
   renders it. Missing file → empty (lenient read-model). Git-ignored (derived).
+- `sigma trajectory --economy` (`cli/axis_economy.py` pure) joins tokens-per-axis
+  with did-that-axis-produce-value, one level finer than `--efficiency`'s run total.
+  Two projections over the SAME `trajectory.jsonl`: non-cycle steps → tokens + run
+  count per role (REAL telemetry only — a role with no measured tokens is
+  "unmeasured", NEVER estimated; that guess lives in `sigma cost`); `role="cycle"`
+  steps → per-axis value events via `_VALUE_FIELD` (logic/e2e EARN by CATCHING a fail
+  the code checker missed → flag is `False`; advisor/simplifier/test-writer by
+  SUCCEEDING → flag is `True`). `record_cycle_steps` stamps those effect flags onto
+  each cycle step (T2); `TrajectoryStep`/`build_step` gained the five `Optional[bool]`
+  fields (lenient — a pre-effect-fields trajectory reads with them all None, so old
+  files still parse). `implementer`/`verifier` are CORE (always earn, never flagged).
+  Flagging follows the prune law: an axis is a candidate only when
+  `not is_core AND measured AND token_total > 0 AND value_events == 0` — the `measured`
+  check MUST precede `token_total > 0` because an unmeasured axis has
+  `token_total=None` and `None > 0` raises `TypeError` (regression-locked by
+  `test_unmeasured_zero_value_axis_does_not_raise_on_flag_check`). Zero tokens AND zero
+  value → NOT flagged (never act on absent evidence). SURFACE-only, never
+  auto-disabled; run-scoped wording ("0 value events in this run", not "useless").
+  `--json` emits the `AxisEconomy` via `asdict`. Fail-safe: empty/missing → "no data
+  yet", never raises.
 - `sigma session-context` (`cli/session_context.py` pure) closes the LEARN loop —
   the read side of `sigma learn`. `build_pointer(root)` names the durable learn
   artifacts (ARCHITECTURE.md + `.tours/*.tour`) so a Claude Code SessionStart hook
