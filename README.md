@@ -95,7 +95,13 @@ autonomous hands-off runs, a live kanban board, and setup.
   with real cycle outcomes (working / not-working / archive candidates —
   reversible archive, never a delete). `sigma docs-check` gates version parity
   and stale test-count claims across README/CLAUDE.md/PLAYGROUND. `sigma eval
-  --from-spec` turns a spec's BDD scenarios into a standing eval set.
+  --from-spec` turns a spec's BDD scenarios into a standing eval set. `sigma
+  trajectory --economy` goes one level finer than the run total: it joins each
+  loop axis's **real** token spend with whether that axis actually produced value
+  this run (the logic axis caught a fail the checker missed, the advisor rescued a
+  cycle, …), ranks them by tokens-per-value-event, and surfaces an
+  idle-but-expensive axis as a prune candidate — surfaced, never auto-disabled,
+  and unmeasured axes are labeled, never estimated.
 - **🗺️ Graph-grounded onboarding** — `sigma learn` builds a real dependency graph
   of the repo (via graphify) and grounds its `ARCHITECTURE.md` + CodeTour in
   *extracted* structure, not an eyeball read.
