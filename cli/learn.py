@@ -92,6 +92,7 @@ class LearnResult:
     prompt: str = ""
     graph_built: bool = False
     graph_note: Optional[str] = None
+    claude_md_ref_added: bool = False
 
 
 def build_learn_prompt(
@@ -179,6 +180,7 @@ def run_learn(
     build_graph: bool = True,
     graph_runner: Optional[Callable[[List[str], Path], int]] = None,
     which: Optional[Callable] = None,
+    confirm: Optional[Callable[[str], bool]] = None,
 ) -> LearnResult:
     """Drive the agent to learn `root`, then write + validate the artifacts.
 
@@ -187,6 +189,10 @@ def run_learn(
     the prompt. Both steps are fail-safe — graphify absent, or a build that errors,
     degrades to a plain agent read (the prompt is byte-identical to the no-graph
     case). `graph_runner`/`which` are injectable so tests never spawn graphify.
+
+    After writing artifacts, also offers to add a one-line ARCHITECTURE.md
+    reference to CLAUDE.md — confirm-gated (`confirm`, default deny) because
+    unlike CLAUDE.local.md, CLAUDE.md is committed/shared with the team.
     """
     root = root.resolve()
 
@@ -231,6 +237,10 @@ def run_learn(
     # never fatal (same fail-safe discipline as the graphify build above).
     _refresh_local_pointer(root)
 
+    from cli.claude_md_ref import setup_claude_md_reference
+
+    claude_md_ref_added = setup_claude_md_reference(root, confirm=confirm)
+
     return LearnResult(
         ok=True,
         architecture_path=arch_path,
@@ -239,6 +249,7 @@ def run_learn(
         prompt=prompt,
         graph_built=graph_built,
         graph_note=graph_note,
+        claude_md_ref_added=claude_md_ref_added,
     )
 
 

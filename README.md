@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-935%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-951%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -298,6 +298,11 @@ also install graphify's **post-commit hook** (its own `graphify hook install`) s
 graph auto-refreshes on each commit — AST-only, no API cost, with a `graph.json` merge
 driver for parallel commits.
 
+After writing the artifacts, `learn` also offers (confirm-gated — it's committed,
+shared with your team) a one-line `ARCHITECTURE.md` reference in `CLAUDE.md`, so a
+future session or teammate knows to read it. Decline and nothing is touched;
+CLAUDE.md is never created or edited without asking first.
+
 ### `sigma scout` — keep your skill bundle fresh from skillsmp.com
 
 ```bash
@@ -365,7 +370,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **935 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
+- **951 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
   projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
   separated from subprocess execution and fully tested with fakes (worktree/merge
   logic is tested against real temp git repos). No real agent, network, or

@@ -446,6 +446,7 @@ def cmd_learn(args: argparse.Namespace) -> int:
         topic=args.topic,
         dry_run=args.dry_run,
         build_graph=not args.no_graph,
+        confirm=render.confirm,
     )
     if res.graph_built:
         _print("  ✓ built knowledge graph (graphify)")
@@ -468,6 +469,8 @@ def cmd_learn(args: argparse.Namespace) -> int:
                 _print(f"    - {p}")
         else:
             _print("  ✓ all tour anchors valid")
+    if res.claude_md_ref_added:
+        _print("  ✓ added ARCHITECTURE.md reference to CLAUDE.md")
     return 0
 
 

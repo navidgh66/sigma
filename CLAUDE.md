@@ -52,12 +52,12 @@ each task's mapped scenario as acceptance criteria. `sigma trajectory --economy`
 joins real per-axis token spend with per-axis value events (from the cycle
 step's effect flags) → ranks each loop axis by tokens-per-value-event and
 surfaces idle-but-expensive axes as prune candidates (surface-only, never
-auto-disabled). 935 pytest tests, ruff clean.
+auto-disabled). 951 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q          # run all 935 tests (must stay green)
+python3 -m pytest tests/ -q          # run all 951 tests (must stay green)
 python3 -m ruff check cli/ tests/    # lint (py39 target)
 python3 -m ruff check --fix cli/ tests/
 
@@ -203,6 +203,7 @@ cli/docs_check_run.py  thin: gather README/CLAUDE.md/PLAYGROUND surfaces + real 
 cli/session_context.py  pure: build_pointer(root) → names ARCHITECTURE.md + .tours/*.tour for a SessionStart hook (lazy /learn hint when absent); never raises (read side of learn)
 cli/session_hook.py     thin: confirm-gated idempotent install of the SessionStart hook into project .claude/settings.json (immutable merge, like statusline.py)
 cli/claude_local.py     pure upsert_block (marker-delimited) + thin write_block into gitignored CLAUDE.local.md — static fallback for the learn pointer
+cli/claude_md_ref.py    pure upsert_reference (marker-delimited) + confirm-gated setup_claude_md_reference — a one-line ARCHITECTURE.md pointer into the COMMITTED CLAUDE.md (unlike claude_local.py's always-on refresh, this asks first); powers `sigma learn`'s post-write offer
 cli/eval.py         pure: parse eval set (markdown cases) + build LM-judge prompt + skeptical parse_grade + aggregate/gate(threshold) + ensure_distinct (SUT≠judge)
 cli/eval_run.py     thin: resolve eval set, prompt mode (run SUT → grade w/ distinct judge) or artifact mode, parallel grading fan-out, cost record, write report, --check gate
 cli/pipeline.py     execute_stage library (used by hermes/loop): run stage, chain prior artifact, persist; verify reads full chain via chain.json. STAGES includes the two grill GATE stages (grill-blueprint/grill-spec, shared grill template via `template` key + GRILL_TARGET)
@@ -450,6 +451,24 @@ keeps only what Claude Code cannot do in-session, plus setup.
   nothing (`commands/learn.md` was the only command with `=== header` blocks).
   Fixed: the command now says "Write both files with the Write tool". The two
   paths stay decoupled — the CLI never reads `commands/learn.md`.
+- After writing artifacts, `run_learn` also offers a one-line ARCHITECTURE.md
+  reference into `CLAUDE.md` (`cli/claude_md_ref.py`'s `setup_claude_md_reference`)
+  — **confirm-gated**, unlike the always-on `CLAUDE.local.md` refresh
+  (`_refresh_local_pointer`) just above it. The difference is deliberate:
+  `CLAUDE.local.md` is gitignored/personal, so refreshing it silently is
+  harmless; `CLAUDE.md` is committed/shared, so it follows the SAME rule as
+  RTK/caveman/statusline/graphify (`cli/statusline.py`) — never touch shared
+  state without asking. It is also a narrower carve-out of the "never
+  auto-edit CLAUDE.md" rule below: `claude_md_check`/`claude_md_scaffold` never
+  touch it at all, but this ask-first upsert is explicitly what a human
+  confirmed they want when they say yes. No CLAUDE.md at all → no-op (`sigma
+  learn` never creates one; that's `claude_md_scaffold`'s job). Reference
+  already present (marker-delimited, `<!-- sigma:architecture-ref:start -->`)
+  → no-op, idempotent. `cmd_learn` passes `render.confirm`; a bare `run_learn()`
+  call with no `confirm` kwarg defaults to always-deny (same as
+  `setup_statusline`/`setup_rtk`'s `lambda msg: False` default). The plugin path
+  (`commands/learn.md`) carries the identical ask + marker text so both surfaces
+  stay in lockstep.
 - `installer/setup.sh` is non-interactive (TTY-safe under `curl|sh`): no `read`.
   All prompts live in `sigma onboard`. Targets Python 3.9 (not 3.10).
 - `--gate <script>` (loop/hermes) is a **fail-safe** wakeAgent pre-check: the

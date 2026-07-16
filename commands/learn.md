@@ -31,6 +31,19 @@ artifact.
    `codebase`). Each step has a `description` (Markdown) and, when it anchors to
    code, a `file` (path RELATIVE to the project root) plus EITHER `line` (1-based)
    OR `pattern` (a substring that appears on the target line).
+4. If `CLAUDE.md` exists at the project root and does **not** already contain a
+   line pointing at `ARCHITECTURE.md`, ask the user: "Add a one-line
+   ARCHITECTURE.md reference to CLAUDE.md (committed, shared with your team)?"
+   On yes, insert this line near the top (right after the title/intro), between
+   markers so a future run can find and update it idempotently:
+   ```
+   <!-- sigma:architecture-ref:start -->
+   **Reference:** read `ARCHITECTURE.md` for the full architecture map. If it
+   does not exist, run `sigma learn` (or `/sigma:learn`) to generate it first.
+   <!-- sigma:architecture-ref:end -->
+   ```
+   On no, or if `CLAUDE.md` doesn't exist, skip this step — never create or
+   edit CLAUDE.md without asking first.
 
 ## Rules
 

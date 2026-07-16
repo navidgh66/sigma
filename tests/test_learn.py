@@ -134,6 +134,65 @@ def test_run_learn_refreshes_claude_local(tmp_path):
     assert "CLAUDE.local.md" in (repo / ".gitignore").read_text()
 
 
+def test_run_learn_no_claude_md_ref_without_claude_md(tmp_path):
+    # No CLAUDE.md in the repo → nothing to reference into; no-op, no crash.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')\n")
+    vendor = _vendor(tmp_path)
+    output = f"{ARCH_HEADER}\nbody\n{TOUR_HEADER}\n" + json.dumps({"title": "T", "steps": []})
+
+    res = run_learn(repo, agent=FakeAgent(output), vendor=vendor, confirm=lambda m: True)
+    assert res.ok
+    assert res.claude_md_ref_added is False
+    assert not (repo / "CLAUDE.md").exists()
+
+
+def test_run_learn_adds_claude_md_ref_when_confirmed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')\n")
+    (repo / "CLAUDE.md").write_text("# My Repo\n\nSome notes.\n")
+    vendor = _vendor(tmp_path)
+    output = f"{ARCH_HEADER}\nbody\n{TOUR_HEADER}\n" + json.dumps({"title": "T", "steps": []})
+
+    res = run_learn(repo, agent=FakeAgent(output), vendor=vendor, confirm=lambda m: True)
+    assert res.ok
+    assert res.claude_md_ref_added is True
+    text = (repo / "CLAUDE.md").read_text()
+    assert "ARCHITECTURE.md" in text
+    assert "Some notes." in text
+
+
+def test_run_learn_declines_claude_md_ref_without_confirm(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')\n")
+    (repo / "CLAUDE.md").write_text("# My Repo\n")
+    vendor = _vendor(tmp_path)
+    output = f"{ARCH_HEADER}\nbody\n{TOUR_HEADER}\n" + json.dumps({"title": "T", "steps": []})
+
+    res = run_learn(repo, agent=FakeAgent(output), vendor=vendor, confirm=lambda m: False)
+    assert res.ok
+    assert res.claude_md_ref_added is False
+    assert "ARCHITECTURE.md" not in (repo / "CLAUDE.md").read_text()
+
+
+def test_run_learn_claude_md_ref_default_declines(tmp_path):
+    # No confirm fn passed at all → defaults to always-deny (same as CLI flags
+    # like RTK/statusline that never touch shared state without asking).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hi')\n")
+    (repo / "CLAUDE.md").write_text("# My Repo\n")
+    vendor = _vendor(tmp_path)
+    output = f"{ARCH_HEADER}\nbody\n{TOUR_HEADER}\n" + json.dumps({"title": "T", "steps": []})
+
+    res = run_learn(repo, agent=FakeAgent(output), vendor=vendor)
+    assert res.ok
+    assert res.claude_md_ref_added is False
+
+
 def test_run_learn_surfaces_tour_anchor_problems(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

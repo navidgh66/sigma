@@ -23,7 +23,7 @@ $ sigma --help
 $ python3 -m cli.main --help
 
 # dev checks (must stay green)
-$ python3 -m pytest tests/ -q          # 935 passed
+$ python3 -m pytest tests/ -q          # 951 passed
 $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
