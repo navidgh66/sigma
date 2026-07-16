@@ -2,6 +2,9 @@
 
 Guide for AI assistants working in the sigma repo.
 
+**Reference:** read `ARCHITECTURE.md` for the full architecture map. If it does
+not exist, run `sigma learn` (or `/sigma:learn`) to generate it first.
+
 ## What this is
 
 `sigma` is a personal, portable AI workflow toolkit for data science & AI
