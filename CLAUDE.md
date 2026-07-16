@@ -435,6 +435,18 @@ keeps only what Claude Code cannot do in-session, plus setup.
   must resolve). **No graph engine** — Graphify/tree-sitter need py3.10; we stay 3.9.
   Gotcha: the agent prompt must NOT start with `-` (claude -p reads it positionally
   and a leading dash parses as an option flag); skill blocks use `### skill:` headers.
+- **Two learn paths, two OUTPUT contracts — don't cross them.** The CLI (`sigma
+  learn`, `cli/learn.py`'s `LEARN_INSTRUCTIONS`) tells the agent to EMIT
+  `=== ARCHITECTURE.md ===` / `=== TOUR.json ===` blocks to stdout; the CLI
+  captures that stdout, `split_output` parses the headers, and the CLI writes the
+  files. That contract ONLY works because a subprocess wrapper reads the output.
+  The plugin path (`commands/learn.md`, `/sigma:learn`) has NO wrapper — it runs
+  in-session, so it must instruct the agent to **Write the files directly** (like
+  every sibling command: spec/propose/weave). It previously reused the CLI's
+  emit-to-stdout format, so `/sigma:learn` printed the map into chat and wrote
+  nothing (`commands/learn.md` was the only command with `=== header` blocks).
+  Fixed: the command now says "Write both files with the Write tool". The two
+  paths stay decoupled — the CLI never reads `commands/learn.md`.
 - `installer/setup.sh` is non-interactive (TTY-safe under `curl|sh`): no `read`.
   All prompts live in `sigma onboard`. Targets Python 3.9 (not 3.10).
 - `--gate <script>` (loop/hermes) is a **fail-safe** wakeAgent pre-check: the

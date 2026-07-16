@@ -41,5 +41,9 @@ sigma/costs.jsonl
 sigma/evals/*/report.md
 sigma/specs/*/trajectory.jsonl
 sigma/claude-md-check.md
+sigma/docs-check.md
 CLAUDE.local.md
 .worktrees/
+
+# graphify knowledge-graph output (derived; built by `sigma learn`)
+graphify-out/

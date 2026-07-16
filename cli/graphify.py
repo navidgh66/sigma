@@ -1,6 +1,6 @@
 """Detect, install, and consume graphify for `sigma learn`.
 
-graphify (https://github.com/safishamsi/graphify) turns a repo into a queryable
+graphify (https://github.com/Graphify-Labs/graphify) turns a repo into a queryable
 knowledge graph via local tree-sitter extraction (free, no API key for code) plus
 optional LLM semantic links for docs. sigma does NOT import it — graphify requires
 Python 3.10+ and sigma stays on the 3.9 floor. Instead sigma SHELLS OUT to a
