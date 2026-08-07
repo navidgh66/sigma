@@ -56,6 +56,44 @@ def test_status_hook_inactive_but_installed(tmp_path):
     assert st["hook_active"] is False
 
 
+def test_status_hook_active_via_plugin_manifest(tmp_path):
+    """A plugin-declared hook is live even though settings.json never mentions it."""
+    settings = tmp_path / "settings.json"
+    plugins = tmp_path / "installed_plugins.json"
+    install_path = tmp_path / "cache" / "caveman"
+    manifest = install_path / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps({"name": "caveman", "hooks": {"SessionStart": [{"hooks": []}]}})
+    )
+    _write_settings(settings, {"SessionStart": [{"hooks": [{"command": "node other.js"}]}]})
+    _write_plugins(plugins, {"caveman@caveman": [{"installPath": str(install_path)}]})
+
+    st = caveman.caveman_status(
+        which=lambda n: "/usr/bin/claude",
+        settings_path=settings,
+        plugins_path=plugins,
+    )
+    assert st["hook_active"] is True
+
+
+def test_status_plugin_without_hooks_is_not_active(tmp_path):
+    """An installed plugin that declares no hooks must not count as active."""
+    plugins = tmp_path / "installed_plugins.json"
+    install_path = tmp_path / "cache" / "caveman"
+    manifest = install_path / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps({"name": "caveman"}))
+    _write_plugins(plugins, {"caveman@caveman": [{"installPath": str(install_path)}]})
+
+    st = caveman.caveman_status(
+        which=lambda n: "/usr/bin/claude",
+        settings_path=tmp_path / "missing.json",
+        plugins_path=plugins,
+    )
+    assert st["hook_active"] is False
+
+
 def test_status_tolerates_bad_json(tmp_path):
     settings = tmp_path / "settings.json"
     settings.write_text("{ not json")
