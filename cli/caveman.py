@@ -54,6 +54,35 @@ def _hook_active(settings_path: Path) -> bool:
     return "caveman" in json.dumps(data.get("hooks", {}))
 
 
+def _plugin_declares_hooks(plugins_path: Path) -> bool:
+    """True if the installed caveman plugin declares hooks in its own manifest.
+
+    Claude Code loads hooks directly from an enabled plugin's `plugin.json`, so a
+    plugin-provided SessionStart hook is live without ever being written into
+    settings.json. Checking settings.json alone therefore reports a false
+    "hook not active" for every plugin-declared hook.
+    """
+    if not plugins_path.exists():
+        return False
+    try:
+        data = json.loads(plugins_path.read_text())
+    except (json.JSONDecodeError, ValueError, OSError):
+        return False
+    for name, entries in (data.get("plugins") or {}).items():
+        if "caveman" not in name or not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict) or not entry.get("installPath"):
+                continue
+            manifest = Path(entry["installPath"]) / ".claude-plugin" / "plugin.json"
+            try:
+                if manifest.is_file() and json.loads(manifest.read_text()).get("hooks"):
+                    return True
+            except (json.JSONDecodeError, ValueError, OSError):
+                continue
+    return False
+
+
 def _plugin_installed(plugins_path: Path) -> bool:
     """True if installed_plugins.json lists a caveman plugin."""
     if not plugins_path.exists():
@@ -74,7 +103,9 @@ def caveman_status(
 
     - claude_cli: the `claude` binary is on PATH (needed to install the plugin).
     - installed: the caveman plugin is recorded in installed_plugins.json.
-    - hook_active: a caveman command is registered in settings.json hooks.
+    - hook_active: a caveman hook is live — either registered in settings.json
+      or declared by the installed plugin's own manifest (Claude Code loads
+      plugin-declared hooks directly, so they never touch settings.json).
     """
     which = which or shutil.which
     settings_path = settings_path or _default_settings_path()
@@ -83,7 +114,7 @@ def caveman_status(
     return {
         "claude_cli": which("claude") is not None,
         "installed": _plugin_installed(plugins_path),
-        "hook_active": _hook_active(settings_path),
+        "hook_active": _hook_active(settings_path) or _plugin_declares_hooks(plugins_path),
     }
 
 
