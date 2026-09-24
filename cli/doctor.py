@@ -20,6 +20,18 @@ from cli import render
 from cli.checks import FAIL, OK, Check
 
 
+def _disk_version(home) -> Optional[str]:
+    """Version of the checkout on disk (this process may still run older code)."""
+    import re
+
+    try:
+        text = (home / "cli" / "__init__.py").read_text()
+    except OSError:
+        return None
+    m = re.search(r'__version__ = "([^"]+)"', text)
+    return m.group(1) if m else None
+
+
 def _default_updater(
     spawn: Optional[Callable[[List[str]], int]] = None,
     which: Optional[Callable[[str], Optional[str]]] = None,
@@ -50,7 +62,16 @@ def _default_updater(
 
     home = sigma_home()
     if (home / ".git").exists():
-        spawn(["git", "-C", str(home), "pull", "--ff-only"])
+        rc = spawn(["git", "-C", str(home), "pull", "--ff-only"])
+        if rc != 0:
+            # Loud on purpose: a refused pull (local edits, diverged history)
+            # otherwise hides behind the plugin's success line below.
+            print(f"  ✗ CLI update failed (git pull exit {rc}); {home} is unchanged.")
+            print(f"    Fix: git -C {home} stash && sigma doctor --update")
+        else:
+            version = _disk_version(home)
+            if version:
+                print(f"  ✓ CLI now at {version}")
 
     # Plugin surface — only when the `claude` CLI is on PATH (mirror rtk).
     if which("claude"):

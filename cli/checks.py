@@ -33,7 +33,7 @@ _MODEL_EXES = {"claude": "claude", "gemini": "gemini", "gpt": "codex"}
 # How to authenticate each, shown as guidance (never auto-run).
 _AUTH_HINT = {
     "gemini": "gemini  (sign in with Google / GEMINI_API_KEY)",
-    "gpt": "codex login  (uses your ChatGPT subscription)",
+    "gpt": "codex login --device-auth  (device code, uses your ChatGPT subscription)",
     "claude": "claude  (already authed if you're running it)",
 }
 
@@ -243,7 +243,7 @@ def check_codex_login(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     if not st.get("logged_in"):
         return Check(
             "codex-login", WARN, "codex CLI installed but not signed in",
-            fix=("sign in to Codex (codex login)", _fix),
+            fix=("sign in to Codex (codex login --device-auth)", _fix),
         )
     return Check("codex-login", OK, "codex CLI signed in")
 

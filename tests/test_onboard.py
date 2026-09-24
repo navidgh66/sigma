@@ -150,7 +150,7 @@ def test_onboard_signs_in_to_codex_on_confirm(tmp_path, monkeypatch):
         use_rich=False,
         domains=["nlp"],
     )
-    assert ["codex", "login"] in spawned
+    assert ["codex", "login", "--device-auth"] in spawned
 
 
 def test_onboard_skips_codex_login_when_declined(tmp_path, monkeypatch):
@@ -193,7 +193,7 @@ def test_onboard_codex_login_noop_when_already_logged_in(tmp_path, monkeypatch):
         use_rich=False,
         domains=["nlp"],
     )
-    assert ["codex", "login"] not in spawned
+    assert ["codex", "login", "--device-auth"] not in spawned
 
 
 # --------------------------- graphify --------------------------- #

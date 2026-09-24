@@ -91,8 +91,8 @@ def run_onboard(
     if auth.detail:
         print(f"  ℹ {auth.detail}")
 
-    # 5b. Codex sign-in — confirm-gated, offers to actually RUN `codex login`
-    #     (interactive OAuth, opens a browser; ChatGPT subscription, no API key).
+    # 5b. Codex sign-in — confirm-gated, offers to actually RUN `codex login --device-auth`
+    #     (device code: prints a URL + one-time code; ChatGPT subscription, no API key).
     #     Distinct from the OPENAI_API_KEY secret captured in step 4 above — codex
     #     exec doesn't use that key. No-ops when codex isn't installed or is
     #     already logged in. Needed for `sigma research`'s gpt lane.

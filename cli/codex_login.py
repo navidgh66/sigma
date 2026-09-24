@@ -1,8 +1,10 @@
 """Detect and prompt ChatGPT sign-in for the codex CLI.
 
-`codex exec` (research's gpt lane) is
-subscription-backed via `codex login` (opens a browser, no API key). Because
-that's an interactive OAuth flow, sigma never runs it without confirmation —
+`codex exec` (research's gpt lane) is subscription-backed via ChatGPT sign-in
+(no API key). sigma signs in with the device-code flow, `codex login
+--device-auth`: it prints a URL + one-time code you approve in any browser, so it
+works on a laptop, over SSH, and in cloud sessions alike. Because it is still an
+interactive sign-in, sigma never runs it without confirmation —
 `setup_codex_login` is confirm-gated and idempotent (no-ops when already logged
 in, mirroring `cli/rtk.py`'s shape).
 
@@ -16,7 +18,7 @@ import shutil
 import subprocess
 from typing import Callable, Dict, List, Optional, Tuple
 
-_LOGIN = ["codex", "login"]
+_LOGIN = ["codex", "login", "--device-auth"]
 _STATUS = ["codex", "login", "status"]
 
 
@@ -68,8 +70,9 @@ def setup_codex_login(
 
     - Not installed → no-op, no prompt (nothing to log into).
     - Already logged in → no-op.
-    - Installed, not logged in → confirm, then `codex login` (interactive,
-      opens a browser). The user must approve before anything runs.
+    - Installed, not logged in → confirm, then `codex login --device-auth`
+      (prints a URL + one-time code, waits for approval). The user must approve
+      before anything runs.
     """
     status_fn = status_fn or (lambda: codex_login_status(which=which))
     confirm = confirm or (lambda msg: False)
@@ -80,8 +83,8 @@ def setup_codex_login(
         return False
 
     if not confirm(
-        "Sign in to Codex now (opens browser, ChatGPT subscription; used by "
-        "sigma research's gpt lane)?"
+        "Sign in to Codex now with a device code (open the printed URL, enter "
+        "the code; ChatGPT subscription, used by sigma research's gpt lane)?"
     ):
         return False
 
