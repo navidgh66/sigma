@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cli.loop import ratchet_to_skills
+from cli.ratchet import ratchet_to_skills
 from cli.skills_recall import recall_lessons, render_recall_block
 
 
@@ -87,3 +87,41 @@ def test_recall_falls_back_to_dir_name_when_no_heading(tmp_path):
     recall = recall_lessons(skills, "nlp")
     assert len(recall.lessons) == 1
     assert recall.lessons[0].title == "headless-lesson"
+
+
+# --------------------------- cap + newest-first ordering --------------------------- #
+def _lesson(root, slug, domain, created=None):
+    d = root / slug
+    d.mkdir(parents=True)
+    meta = f"metadata:\n  domain: {domain}\n" + (f"  created: {created}\n" if created else "")
+    (d / "SKILL.md").write_text(f"---\nname: {slug}\n{meta}---\n\n# {slug}\n")
+
+
+def test_default_limit_is_five(tmp_path):
+    for i in range(7):
+        _lesson(tmp_path, f"l{i}", "nlp", f"2026-01-0{i + 1}")
+    rec = recall_lessons(tmp_path, "nlp")
+    assert len(rec.lessons) == 5
+    assert rec.truncated is True
+
+
+def test_newest_first_then_undated(tmp_path):
+    _lesson(tmp_path, "a-old", "nlp", "2026-01-01")
+    _lesson(tmp_path, "b-undated", "nlp")
+    _lesson(tmp_path, "c-new", "nlp", "2026-09-01")
+    _lesson(tmp_path, "d-bad", "nlp", "not-a-date")
+    titles = [le.title for le in recall_lessons(tmp_path, "nlp").lessons]
+    assert titles == ["c-new", "a-old", "b-undated", "d-bad"]
+
+
+def test_same_date_ties_by_path(tmp_path):
+    _lesson(tmp_path, "z", "nlp", "2026-05-05")
+    _lesson(tmp_path, "a", "nlp", "2026-05-05")
+    assert [le.title for le in recall_lessons(tmp_path, "nlp").lessons] == ["a", "z"]
+
+
+def test_truncation_note_says_newest(tmp_path):
+    for i in range(6):
+        _lesson(tmp_path, f"l{i}", "nlp", f"2026-02-0{i + 1}")
+    block = render_recall_block(recall_lessons(tmp_path, "nlp"))
+    assert "showing newest 5" in block

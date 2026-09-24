@@ -6,8 +6,8 @@ description: >
   any sigma domain (classic-ml, deep-learning, nlp, rl, data-analysis,
   data-engineering, ai-agent-engineering, mlops, llm-engineering), when starting a
   loop task, or when the user asks "what have we learned" / "avoid past mistakes".
-  Lessons are written by the loop on failure and by /sigma-learn-lesson; this skill
-  reads them back.
+  Lessons are written by /loop on failure, by sigma review, and by
+  /sigma-learn-lesson; this skill reads back the 5 newest.
 origin: sigma
 ---
 
@@ -28,18 +28,21 @@ them instead of repeating the mistake.
 
 1. **Identify the domain** of the current task (one of the 9 sigma domains; if a
    task line is annotated `(domain)`, use that).
-2. **Read the lessons for that domain:** scan `skills/**/SKILL.md` for files whose
-   frontmatter `domain:` matches. Each has a `**Lesson (ratcheted):**` line and a
-   `**How to apply:**` line — those are the actionable parts.
+2. **Read the lessons for that domain:** scan `skills/**/SKILL.md` (skip
+   `skills/archive/`) for files whose frontmatter `domain:` matches. Keep at most
+   **5**, newest first by `metadata.created` (lessons without a date come last).
+   Each has a `**Lesson (ratcheted):**` line and a `**How to apply:**` line; those
+   are the actionable parts.
 3. **Apply them** as constraints while implementing or as extra checks while
    verifying. Treat a lesson as "do not repeat this mistake."
-4. If a lesson looks stale or wrong, do NOT silently delete it — flag it for the
-   human (sigma never auto-resolves lessons; see `skills/CONTRADICTIONS.md`).
+4. If a lesson looks stale or wrong, flag it for the human instead of deleting it
+   (sigma never auto-resolves lessons; see `skills/CONTRADICTIONS.md`).
 
 ## Notes
 
-- The CLI loop does this automatically (`cli/skills_recall.py` builds the recall
-  block and injects it into the implement + verify prompts). This skill is the
-  in-session equivalent for slash-command work.
-- Lessons without a `domain:` (vendor skills, sigma-present, sigma-domains) are
-  NOT lessons — ignore them here.
+- The cap is small on purpose: big skill libraries measurably hurt agents (they
+  pick the wrong lesson), so the few most recent lessons win. `/loop` passes these
+  to its implementer and verifier; `sigma review` uses the same rule via
+  `cli/skills_recall.py`.
+- Lessons without a `domain:` (vendor skills, sigma-present, sigma-domains) are not
+  lessons; ignore them here.
