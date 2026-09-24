@@ -121,7 +121,7 @@ def run_uninstall(
         msg = f"Remove the sigma install dir {plan.install_dir}?"
         if plan.has_secrets:
             msg = (
-                f"⚠ {plan.install_dir}/.env holds your API keys (GEMINI/OPENAI). "
+                f"⚠ {plan.install_dir}/.env holds your API keys (OPENAI/FIRECRAWL). "
                 f"Remove the entire install dir {plan.install_dir} INCLUDING those keys?"
             )
         if _ask(msg):

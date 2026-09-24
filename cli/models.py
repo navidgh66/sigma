@@ -1,4 +1,4 @@
-"""Model-provider adapters: invoke Claude / Gemini / GPT CLIs as research
+"""Model-provider adapters: invoke the Claude and GPT (Codex) CLIs as research
 subprocesses (tier 1 of sigma's two-tier research providers — see
 cli/search_providers.py for tier 2, HTTP search tools).
 
@@ -7,10 +7,9 @@ argv (prompt passed via argv, never the shell — no injection risk), and (c) cl
 the CLI's raw stdout into plain text for aggregation. Missing CLIs degrade
 gracefully — the research engine skips them and records that they were skipped.
 
-All three providers are driven through their subscription-backed CLIs (no paid
-API keys required):
+Both providers are driven through their subscription-backed CLIs (no paid API
+keys required):
   - claude → `claude -p`            (Claude subscription)
-  - gemini → `gemini -p --output-format json`  (Google OAuth quota)
   - gpt    → `codex exec`           (ChatGPT subscription via Codex CLI)
 
 A `--deep` mode (see cli/research.py) appends each adapter's `deep_args` to turn
@@ -19,7 +18,6 @@ on live web search / grounding.
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -52,7 +50,7 @@ class ModelAdapter:
     deep_args: List[str] = field(default_factory=list)
     # Extra argv (template: {model}) injected right after the executable when a
     # model_alias is passed. Empty for adapters with no alias-passthrough
-    # --model contract (gemini, codex) — the alias is then ignored, mirroring
+    # --model contract (codex) — the alias is then ignored, mirroring
     model_args: List[str] = field(default_factory=list)
 
     def available(self) -> bool:
@@ -88,14 +86,6 @@ ADAPTERS: Dict[str, ModelAdapter] = {
         deep_args=[],
         model_args=["--model", "{model}"],
     ),
-    "gemini": ModelAdapter(
-        name="gemini",
-        executable="gemini",
-        arg_template=["{exe}", "-p", "{prompt}", "--output-format", "json"],
-        # Gemini CLI grounds via Google Search; deep mode is driven by the brief
-        # plus (where supported) the CLI's default grounding.
-        deep_args=[],
-    ),
     "gpt": ModelAdapter(
         name="gpt",
         executable="codex",
@@ -121,60 +111,13 @@ def available_models(requested: List[str]) -> List[str]:
 def clean_output(model: str, raw: str) -> str:
     """Normalize a CLI's raw stdout into plain findings text.
 
-    - gemini: parse the JSON envelope and extract the response text; fall back to
-      raw on any parse failure (never crash the fan-out).
     - gpt (codex): strip event/preamble noise, keeping the agent's final message.
     - claude: passthrough.
     """
     raw = raw or ""
-    if model == "gemini":
-        return _clean_gemini(raw)
     if model == "gpt":
         return _clean_codex(raw)
     return raw.strip()
-
-
-def _clean_gemini(raw: str) -> str:
-    """Extract text from `gemini --output-format json` output.
-
-    The CLI emits a JSON object; the response lives under "response" (newer CLIs)
-    or nested in a candidates/parts structure. Fall back to raw text on failure.
-    """
-    text = raw.strip()
-    if not text:
-        return ""
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return text
-    if isinstance(data, dict):
-        # Newer Gemini CLI: {"response": "..."} (possibly with stats/other keys).
-        resp = data.get("response")
-        if isinstance(resp, str) and resp.strip():
-            return resp.strip()
-        # Fallback: dig into candidates → content → parts → text.
-        parts_text = _gemini_candidates_text(data)
-        if parts_text:
-            return parts_text
-    return text
-
-
-def _gemini_candidates_text(data: dict) -> str:
-    """Pull concatenated part text from a candidates/content/parts structure."""
-    candidates = data.get("candidates")
-    if not isinstance(candidates, list):
-        return ""
-    chunks: List[str] = []
-    for cand in candidates:
-        if not isinstance(cand, dict):
-            continue
-        content = cand.get("content")
-        if not isinstance(content, dict):
-            continue
-        for part in content.get("parts", []) or []:
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                chunks.append(part["text"])
-    return "\n".join(chunks).strip()
 
 
 def _clean_codex(raw: str) -> str:

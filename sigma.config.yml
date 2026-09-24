@@ -4,7 +4,6 @@ profile:
 research:
   models:
   - claude
-  - gemini
   - gpt
 domains:
 - classic-ml

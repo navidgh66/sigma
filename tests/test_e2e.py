@@ -10,14 +10,14 @@ def test_onboard_then_doctor_clean(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     # Run onboard with everything injected — choose nlp, store one key, skip rtk.
     onboard.run_onboard(
         name="e2e",
         domain_input=lambda: "3",
-        secret_input=lambda key: "gkey" if key == "GEMINI_API_KEY" else "",
+        secret_input=lambda key: "gkey" if key == "FIRECRAWL_API_KEY" else "",
         confirm=lambda msg: False,
         rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
         spawn=lambda argv: 0,
@@ -28,7 +28,7 @@ def test_onboard_then_doctor_clean(tmp_path, monkeypatch):
     )
 
     # Secret landed in ~/.sigma/.env, not the committed config.
-    assert secrets.read_env().get("GEMINI_API_KEY") == "gkey"
+    assert secrets.read_env().get("FIRECRAWL_API_KEY") == "gkey"
     assert "gkey" not in (tmp_path / "sigma.config.yml").read_text()
 
     # doctor --check honours statuses: config OK + secrets WARN → exit 0

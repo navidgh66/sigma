@@ -27,12 +27,6 @@ def test_gpt_adapter_uses_codex_exec():
     assert "--sandbox" in argv and "read-only" in argv
 
 
-def test_gemini_adapter_uses_json_output():
-    argv = ADAPTERS["gemini"].build_argv("topic")
-    assert argv[0] == "gemini"
-    assert "--output-format" in argv and "json" in argv
-
-
 def test_deep_args_appended_only_when_deep():
     adapter = ADAPTERS["gpt"]
     quick = adapter.build_argv("t", deep=False)
@@ -58,23 +52,6 @@ def test_gpt_adapter_sandbox_param_overridable():
 
 def test_clean_output_claude_passthrough():
     assert clean_output("claude", "  findings  ") == "findings"
-
-
-def test_clean_output_gemini_parses_response():
-    raw = '{"response": "graph nets are great", "stats": {"x": 1}}'
-    assert clean_output("gemini", raw) == "graph nets are great"
-
-
-def test_clean_output_gemini_candidates_fallback():
-    raw = (
-        '{"candidates": [{"content": {"parts": ['
-        '{"text": "part one"}, {"text": "part two"}]}}]}'
-    )
-    assert clean_output("gemini", raw) == "part one\npart two"
-
-
-def test_clean_output_gemini_bad_json_falls_back_to_raw():
-    assert clean_output("gemini", "not json at all") == "not json at all"
 
 
 def test_clean_output_codex_strips_metadata():
@@ -103,7 +80,7 @@ def test_available_models_filters_missing(monkeypatch):
         return "/usr/bin/" + exe if exe == "claude" else None
 
     monkeypatch.setattr(m.shutil, "which", fake_which)
-    assert available_models(["claude", "gemini", "gpt"]) == ["claude"]
+    assert available_models(["claude", "unknown-model", "gpt"]) == ["claude"]
 
 
 def test_run_model_unknown():

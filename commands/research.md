@@ -1,6 +1,6 @@
 ---
 command: /research
-description: Multi-model parallel research (real Gemini/GPT CLI dispatch + Claude-side deep-research skill if available), MCP search-tool grounding, and manual findings — synthesized into one cited research.md
+description: Multi-model parallel research (real GPT dispatch via the codex CLI + Claude-side deep-research skill if available), MCP search-tool grounding, and manual findings — synthesized into one cited research.md
 stage: 1
 inputs: ["topic"]
 outputs: ["sigma/specs/{date}-{slug}/research.md"]
@@ -27,21 +27,19 @@ roleplaying as other models.
    dispatching a "claude-researcher" persona subagent — that persona ran on
    the SAME model already running this session, so it added no real
    capability beyond a self-instruction.
-3. **Real Gemini/GPT dispatch via Bash** — check CLI availability first
-   (`which gemini`, `which codex` via the Bash tool). If found, invoke the
-   REAL CLI as a subprocess:
+3. **Real GPT dispatch via Bash** — check CLI availability first (`which codex`
+   via the Bash tool). If found, invoke the REAL CLI as a subprocess:
    ```
-   gemini -p "<brief>" --output-format json
    codex exec --sandbox read-only --color never "<brief>"
    ```
    using the brief + argv template described in `subagents/researchers/
-   gemini-researcher.md` / `gpt-researcher.md`. Clean the raw output using the
-   same rules those files describe (gemini JSON-envelope extraction, codex
-   event-noise stripping — matching `cli/models.py`'s `clean_output` logic).
-   If a CLI is NOT found locally, fall back to dispatching that persona as a
-   Task subagent instead, but say so explicitly: "gemini CLI not found locally
-   — using Claude-side approximation, not real Gemini." Never silently
-   substitute persona output for real model output.
+   gpt-researcher.md`. Clean the raw output using the same rules that file
+   describes (codex event-noise stripping, matching `cli/models.py`'s
+   `clean_output` logic). If codex is NOT found locally (or not signed in:
+   `codex login --device-auth`), fall back to dispatching that persona as a
+   Task subagent instead, but say so explicitly: "codex CLI not found locally —
+   using Claude-side approximation, not real GPT." Never silently substitute
+   persona output for real model output.
 4. **MCP search-tool dispatch** — if a web-search MCP tool is connected in
    this session (any tool whose name matches a search/web-search pattern —
    e.g. `mcp__firecrawl__firecrawl_search` — not hardcoded to one vendor),

@@ -81,7 +81,7 @@ small capped lesson recall).
 ### Research
 - `cli/research.py` — parallel fan-out to model CLIs + search tools + real synthesis → cited `research.md`
 - `cli/research_brief.py` / `cli/research_docs.py` — brief templates + generated doc blocks
-- `cli/models.py` — model-CLI adapters (`claude -p`, `gemini -p --output-format json`, `codex exec`); `clean_output`
+- `cli/models.py` — model-CLI adapters (`claude -p`, `codex exec`); `clean_output`
 - `cli/search_providers.py` — Firecrawl search tier (deep mode scrapes top-3 pages)
 
 ### Knowledge

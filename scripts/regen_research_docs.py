@@ -37,7 +37,7 @@ def _replace_block(path: Path, new_block_body: str) -> None:
 
 def main() -> None:
     _replace_block(ROOT / "commands" / "research.md", render_command_rules_block())
-    for name in ("gemini-researcher.md", "gpt-researcher.md"):
+    for name in ("gpt-researcher.md",):
         _replace_block(ROOT / "subagents" / "researchers" / name, render_persona_rules_block())
     print("regenerated research docs from cli/research_brief.py")
 

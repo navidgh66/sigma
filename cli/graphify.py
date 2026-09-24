@@ -6,7 +6,7 @@ optional LLM semantic links for docs. sigma does NOT import it — graphify requ
 Python 3.10+ and sigma stays on the 3.9 floor. Instead sigma SHELLS OUT to a
 standalone `graphify` binary installed in its own isolated environment via
 `uv tool install graphifyy` (or pipx/pip). This is the same pattern sigma already
-uses for `claude`/`gemini`/`codex`/`rtk` — a subprocess, never an import — so the
+uses for `claude`/`codex`/`rtk` — a subprocess, never an import — so the
 3.9 constraint is untouched.
 
 `sigma learn` builds the graph (incremental `--update`) and injects graphify's

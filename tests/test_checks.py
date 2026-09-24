@@ -65,9 +65,9 @@ def test_models_warn_when_none():
 
 # --------------------------- model auth --------------------------- #
 def test_model_auth_guidance_when_cli_present():
-    c = checks.check_model_auth(which=_which({"gemini"}))
+    c = checks.check_model_auth(which=_which({"codex"}))
     # present but auth unknown → a guidance command is offered, never auto-run
-    assert "gemini" in c.detail
+    assert "codex login --device-auth" in c.detail
 
 
 def test_models_detects_gpt_via_codex_binary():
@@ -80,7 +80,7 @@ def test_models_detects_gpt_via_codex_binary():
 # --------------------------- secrets --------------------------- #
 def test_secrets_ok_when_present(monkeypatch, tmp_path):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
     monkeypatch.setenv("FIRECRAWL_API_KEY", "z")
     c = checks.check_secrets()
@@ -89,7 +89,7 @@ def test_secrets_ok_when_present(monkeypatch, tmp_path):
 
 def test_secrets_warn_when_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     c = checks.check_secrets()
     assert c.status == WARN

@@ -58,7 +58,7 @@ def test_write_then_load_roundtrip(tmp_path):
 
 
 def test_local_override_merges(tmp_path):
-    cfg = SigmaConfig(name="base", models=["claude", "gemini", "gpt"])
+    cfg = SigmaConfig(name="base", models=["claude", "gpt"])
     write_config(cfg, root=tmp_path)
     (tmp_path / "sigma.config.local.yml").write_text(
         "research:\n  models: [claude]\n"

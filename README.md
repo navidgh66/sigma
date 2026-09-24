@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-660%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-662%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -45,7 +45,7 @@ research) plus setup and hygiene.
 
 ## ✨ Why sigma
 
-- **🔬 Multi-model research** — fan out a question to Claude + Gemini + GPT *in
+- **🔬 Multi-model research** — fan out a question to Claude + GPT (via codex) *in
   parallel*, aggregate into one cited `research.md`. Real concurrency, not a
   sequential loop.
 - **📋 Spec-driven, BDD-native** — specs carry Gherkin `Scenario / Given / When /
@@ -165,7 +165,7 @@ plugin), confirm-gated and with a separate warning before deleting your API keys
 ## 🛠️ The pipeline
 
 ```
-/research        multi-model parallel search (Claude + Gemini + GPT) → research.md
+/research        multi-model parallel search (Claude + GPT via codex) → research.md
       ↓
 /propose         synthesize → 2-3 approaches with trade-offs + a recommendation
       ↓
@@ -354,7 +354,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **660 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
+- **662 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
   lesson ratchet + recall, the Stop-hook decision, the tamper guard, cost,
   graph/scout/prune) is separated from subprocess execution and tested with fakes.
   No real agent, network, or settings file is touched by the suite.
