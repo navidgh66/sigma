@@ -8,7 +8,6 @@ See README.md and CLAUDE.md for the design and layout.
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -546,177 +545,6 @@ def cmd_claude_md_create(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# eval (run an eval set, LM-judge each case, gate at a threshold)
-# --------------------------------------------------------------------------- #
-def cmd_eval(args: argparse.Namespace) -> int:
-    from cli.cost import routing_for
-    from cli.eval_run import eval_set_path, run_eval
-    from cli.paths import project_root
-    from cli.runner import AgentRunner
-    from cli.trajectory import make_sink
-
-    root = project_root()
-
-    # spec→eval bridge: --from-spec renders the topic's BDD scenarios into an
-    # eval set (derived — spec.md stays the source of truth) and stops there.
-    if args.from_spec:
-        from cli.scenarios import parse_scenarios, render_eval_set
-
-        ws = spec_workspace(args.from_spec)
-        spec_file = ws / "spec.md"
-        if not spec_file.exists():
-            _print(f"✗ no spec.md at {spec_file}. Run /spec first.")
-            return 1
-        scenarios = parse_scenarios(spec_file.read_text())
-        if not scenarios:
-            _print("✗ spec.md has no Scenario/Given/When/Then blocks — nothing to generate")
-            return 1
-        set_name = args.set or ws.name
-        out = eval_set_path(root, set_name)
-        if out.exists() and not args.force:
-            _print(f"✗ {out} already exists — pass --force to regenerate")
-            return 1
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(render_eval_set(args.from_spec, scenarios))
-        _print(f"✓ wrote {out} ({len(scenarios)} case(s) from spec scenarios)")
-        _print(f"→ next: sigma eval --set {set_name}")
-        return 0
-
-    if not args.set:
-        _print("✗ --set is required (or --from-spec <topic> to generate one)")
-        return 1
-    name = args.set
-    _print(f"σ eval — set={name!r} threshold={args.threshold}")
-    if not eval_set_path(root, name).exists():
-        _print(f"✗ no eval set at {eval_set_path(root, name)}")
-        _print("  create sigma/evals/<name>.md (see commands/eval.md for the format)")
-        return 1
-
-    # Trajectory sink lives in the eval set's report dir.
-    ws = root / "sigma" / "evals" / name
-    sink = make_sink(ws, ts=_now_iso())
-    routes = routing_for("eval") if args.route else {}
-    if args.route:
-        _print(f"  🧭 routing: sut→{routes['sut']}, judge→{routes['judge']}")
-
-    artifact = Path(args.artifact).expanduser() if args.artifact else None
-    res = run_eval(
-        name,
-        root,
-        make_sut=lambda: AgentRunner(model=routes.get("sut"), trajectory_sink=sink, telemetry=True),
-        make_grader=lambda: AgentRunner(model=routes.get("judge"), trajectory_sink=sink, telemetry=True),
-        threshold=args.threshold,
-        artifact=artifact,
-        ts=_now_iso(),
-    )
-    if res.skipped_reason:
-        _print(f"  {res.skipped_reason}")
-        return 0
-    if not res.ok:
-        _print(f"✗ eval failed: {res.error}")
-        return 1
-    if res.report_path:
-        _print(f"✓ wrote {res.report_path}")
-    decision = res.gate
-    if decision is not None:
-        mark = "✅ PASS" if decision.passed else "❌ FAIL"
-        _print(f"  verdict: {mark} — {decision.reason}")
-    if args.check and decision is not None and not decision.passed:
-        return 1
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# trajectory (observe what agents actually did in a workspace)
-# --------------------------------------------------------------------------- #
-def cmd_trajectory(args: argparse.Namespace) -> int:
-    from cli.trajectory import efficiency_report, read_steps, summarize
-
-    ws = spec_workspace(args.topic)
-    if not ws.exists():
-        _print(f"✗ no spec workspace at {ws}. Run a loop or hermes first.")
-        return 1
-    steps = read_steps(ws)
-    if getattr(args, "economy", False):
-        from cli.axis_economy import build_economy
-
-        economy = build_economy(steps)
-        if args.json:
-            import json
-            from dataclasses import asdict
-
-            _print(json.dumps(asdict(economy), sort_keys=True))
-        else:
-            _print(economy.render())
-        return 0
-    if args.efficiency:
-        _print(efficiency_report(steps))
-        return 0
-    summary = summarize(steps)
-    if args.json:
-        import json
-        from dataclasses import asdict
-
-        _print(json.dumps(asdict(summary), sort_keys=True))
-    else:
-        _print(summary.render())
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# lessons (lesson-efficacy report + reversible archive of unused lessons)
-# --------------------------------------------------------------------------- #
-def cmd_lessons(args: argparse.Namespace) -> int:
-    from cli import render
-    from cli.lessons import archive_lesson, efficacy, list_domain_lessons, render_report
-    from cli.paths import project_root
-    from cli.trajectory import read_steps
-
-    # Evidence scope: by default aggregate EVERY spec workspace's trajectory —
-    # lessons are global (sigma_home()/skills), so judging them on one topic's
-    # runs would offer to archive a lesson that other topics recall constantly
-    # (violates never-act-on-absent-evidence). --topic restricts deliberately.
-    if args.topic:
-        workspaces = [spec_workspace(args.topic)]
-        if not workspaces[0].exists():
-            _print(f"✗ no spec workspace at {workspaces[0]}. Run a loop first.")
-            return 1
-    else:
-        specs_root = project_root() / "sigma" / "specs"
-        workspaces = sorted(d for d in specs_root.glob("*") if d.is_dir()) if specs_root.exists() else []
-        if not workspaces:
-            _print(f"✗ no spec workspaces under {specs_root}. Run a loop first.")
-            return 1
-    steps = []
-    for ws in workspaces:
-        steps.extend(read_steps(ws))
-    _print(f"σ lessons — evidence from {len(workspaces)} workspace(s)")
-    skills_dir = sigma_home() / "skills"
-    report = efficacy(steps, list_domain_lessons(skills_dir))
-    _print(render_report(report))
-
-    if not args.archive:
-        return 0
-    if not report.has_recall_evidence:
-        _print("\n(--archive) no recall evidence — nothing is archived on absent evidence")
-        return 0
-    if not report.no_evidence:
-        _print("\n(--archive) no archive candidates")
-        return 0
-    archived = 0
-    for stats in report.no_evidence:
-        if render.confirm(f"Archive lesson '{stats.slug}' → skills/archive/? (reversible)"):
-            dest = archive_lesson(skills_dir, stats.slug)
-            if dest is not None:
-                _print(f"  ✓ archived → {dest}")
-                archived += 1
-            else:
-                _print(f"  ✗ could not archive '{stats.slug}' (missing or target exists)")
-    _print(f"✓ archived {archived} lesson(s)")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
 # cost (report the cost ledger)
 # --------------------------------------------------------------------------- #
 def cmd_cost(args: argparse.Namespace) -> int:
@@ -748,33 +576,6 @@ def cmd_usage(args: argparse.Namespace) -> int:
         return 0
     passthrough = list(getattr(args, "usage_args", None) or [])
     return _usage_spawn(build_argv(passthrough))
-
-
-# --------------------------------------------------------------------------- #
-# launch (default: open Claude Code with sigma context)
-# --------------------------------------------------------------------------- #
-def cmd_launch(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    _print("σ sigma")
-    _print(f"  project: {cfg.name}")
-    _print(f"  domains: {', '.join(cfg.domains)}")
-    if not shutil.which("claude"):
-        _print("✗ claude CLI not found. Install Claude Code.")
-        return 1
-    if args.no_launch:
-        return 0
-    return _run_claude(None)
-
-
-def _run_claude(prompt: Optional[str]) -> int:
-    argv = ["claude"]
-    if prompt is not None:
-        argv += ["-p", prompt]
-    try:
-        return subprocess.call(argv)
-    except FileNotFoundError:
-        _print("✗ claude CLI not found.")
-        return 1
 
 
 # --------------------------------------------------------------------------- #
@@ -886,14 +687,6 @@ def build_parser() -> argparse.ArgumentParser:
     pcmcr.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     pcmcr.set_defaults(func=cmd_claude_md_create)
 
-    plessons = sub.add_parser("lessons",
-                              help="Lesson-efficacy report (working / not-working / no-evidence)")
-    plessons.add_argument("--topic",
-                          help="restrict evidence to one topic's workspace (default: aggregate ALL workspaces)")
-    plessons.add_argument("--archive", action="store_true",
-                          help="offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)")
-    plessons.set_defaults(func=cmd_lessons)
-
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
 
@@ -910,34 +703,6 @@ def build_parser() -> argparse.ArgumentParser:
     # listing) still shows `usage` with its passthrough-args hint.
     pu.add_argument("usage_args", nargs=argparse.REMAINDER, help="passthrough args for ccusage")
     pu.set_defaults(func=cmd_usage)
-
-    ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
-    ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-    ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
-    ptraj.add_argument("--efficiency", action="store_true",
-                        help="report cycle pass rate + escalation rate (real, measured signals)")
-    ptraj.add_argument("--economy", action="store_true",
-                        help="per-axis token economy: tokens-per-value-event, idle-axis prune candidates")
-    ptraj.set_defaults(func=cmd_trajectory)
-
-    peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")
-    peval.add_argument("--set", help="eval set name (sigma/evals/<name>.md)")
-    peval.add_argument("--from-spec", dest="from_spec",
-                       help="generate the eval set from a topic's spec.md BDD scenarios, then exit")
-    peval.add_argument("--force", action="store_true",
-                       help="with --from-spec: overwrite an existing generated set")
-    peval.add_argument("--threshold", type=float, default=0.8,
-                       help="pass-rate bar the gate requires (default 0.8)")
-    peval.add_argument("--artifact",
-                       help="grade an existing file's text against each case (skip the SUT run)")
-    peval.add_argument("--route", action="store_true",
-                       help="intelligent model routing: judge→strong tier")
-    peval.add_argument("--check", action="store_true", help="exit 1 if the eval gate FAILs (CI)")
-    peval.set_defaults(func=cmd_eval)
-
-    plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
-    plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
-    plaunch.set_defaults(func=cmd_launch)
 
     return p
 
@@ -961,8 +726,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
-        # Default action: launch.
-        return cmd_launch(argparse.Namespace(no_launch=True))
+        parser.print_help()
+        return 0
     return args.func(args)
 
 

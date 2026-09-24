@@ -95,31 +95,6 @@ def test_help_omits_retired_stages():
     assert {"research", "learn", "review", "profile", "doctor"} <= commands
 
 
-def test_parser_trajectory():
-    a = build_parser().parse_args(["trajectory", "--topic", "demo", "--json"])
-    assert a.command == "trajectory"
-    assert a.topic == "demo"
-    assert a.json is True
-    assert a.efficiency is False
-
-
-def test_parser_trajectory_efficiency_flag():
-    a = build_parser().parse_args(["trajectory", "--topic", "demo", "--efficiency"])
-    assert a.efficiency is True
-
-
-def test_cmd_trajectory_efficiency_no_workspace(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    res = run_cli("trajectory", "--topic", "nonexistent", "--efficiency")
-    assert res.returncode == 1
-
-
-def test_help_lists_trajectory_and_eval():
-    res = run_cli("--help")
-    assert "trajectory" in res.stdout
-    assert "eval" in res.stdout
-
-
 def test_help_lists_doctor_and_onboard():
     res = run_cli("--help")
     assert "doctor" in res.stdout
@@ -388,34 +363,14 @@ Then a row exists
 """
 
 
-def test_eval_from_spec_generates_set(monkeypatch, tmp_path):
+def test_no_command_prints_help(capsys):
     from cli.main import main
 
-    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
-    assert main(["eval", "--from-spec", "demo"]) == 0
-    out = tmp_path / "sigma" / "evals" / "2026-01-01-demo.md"
-    assert out.exists()
-    assert "## case: happy-path" in out.read_text()
+    assert main([]) == 0
+    assert "usage" in capsys.readouterr().out.lower()
 
 
-def test_eval_from_spec_refuses_overwrite_without_force(monkeypatch, tmp_path):
-    from cli.main import main
-
-    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
-    assert main(["eval", "--from-spec", "demo"]) == 0
-    assert main(["eval", "--from-spec", "demo"]) == 1
-    assert main(["eval", "--from-spec", "demo", "--force"]) == 0
-
-
-def test_eval_from_spec_errors_without_spec(monkeypatch, tmp_path):
-    from cli.main import main
-
-    _spec_ws(tmp_path, monkeypatch, None)
-    assert main(["eval", "--from-spec", "demo"]) == 1
-
-
-def test_eval_requires_set_or_from_spec(monkeypatch, tmp_path):
-    from cli.main import main
-
-    _spec_ws(tmp_path, monkeypatch, SPEC_WITH_SCENARIOS)
-    assert main(["eval"]) == 1
+def test_removed_commands_are_not_subcommands():
+    commands = _subcommands()
+    for gone in ("loop", "hermes", "board", "weave", "eval", "trajectory", "lessons", "launch"):
+        assert gone not in commands, gone
