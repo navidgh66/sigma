@@ -20,11 +20,11 @@ success on its own).
   if CLAUDE.md already exists first; don't duplicate what's already there.
 
 ## Refuse to overwrite
-If the target file already exists, STOP and say so — do not clobber it. The user
+If the target file already exists, stop and say so; don't clobber it. The user
 can ask again explicitly with intent to overwrite.
 
 ## Write the file
-Target UNDER 200 lines. For every line: would removing it cause a mistake? If
+Target under 200 lines. For every line: would removing it cause a mistake? If
 not, don't write it.
 
 Structure:

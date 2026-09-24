@@ -18,7 +18,8 @@ artifact — and, like `/verify`, it **defaults to BLOCK on doubt**.
 > — Lee Boonstra, *Spec-Driven, Production-Grade Development in the Age of Vibe Coding*
 
 Maker ≠ griller: the griller is a **separate agent** from whoever authored the
-artifact. Never let the author grill its own work (same law as `execute_cycle`).
+artifact. Never let the author grill its own work (same law as `/loop`'s implementer
+and verifier).
 
 ## Pick the target
 

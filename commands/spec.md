@@ -29,7 +29,7 @@ Write the **implementation-ready specification**.
 
 Express each acceptance criterion as a **Scenario / Given / When / Then** block
 (State → Action → Outcome). This turns vague intent into criteria an agent can
-build to without guessing, and feeds `/grill` and `--tdd` directly:
+build to without guessing, and feeds `/grill` and test-first mode directly:
 
 ```gherkin
 Scenario: <behavior name>

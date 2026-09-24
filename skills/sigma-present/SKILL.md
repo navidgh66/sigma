@@ -1,13 +1,12 @@
 ---
 name: sigma-present
 description: >
-  Export sigma markdown artifacts (research.md, spec.md, plans, verify results,
-  kanban board.md) as a polished, single self-contained HTML file — either an
-  interactive reveal.js slide DECK or a long-scroll animated REPORT page, with an
-  optional kanban snapshot. Use when the user wants to share, present, email, or
+  Export sigma markdown artifacts (research.md, spec.md, plans, tasks.md, verify
+  results) as a polished, single self-contained HTML file — either an
+  interactive reveal.js slide DECK or a long-scroll animated REPORT page. Use when the user wants to share, present, email, or
   hand off a sigma artifact as a standalone .html (or print it to PDF) rather
   than as raw markdown. Triggers: "turn this spec into slides", "export research
-  as a report", "make a deck from the board", "share these verify results".
+  as a report", "make a deck from the tasks", "share these verify results".
 origin: sigma
 ---
 
@@ -24,7 +23,7 @@ deterministic, citation-aware deck or report.
 ## When to use
 
 - The user has a sigma artifact (`research.md`, `proposals.md`, `architecture.md`,
-  `spec.md`, `tasks.md`, a plan, verify output, or `board.md`) and wants to
+  `spec.md`, `tasks.md`, a plan, or verify output) and wants to
   **share / present / email / archive** it as HTML or PDF.
 - They say "slides", "deck", "present", "report", "export", "share", "hand off".
 
@@ -34,10 +33,9 @@ deterministic, citation-aware deck or report.
 |---------|------|----------|
 | "slides", "deck", "present", "pitch", "talk" | **DECK** (reveal.js) | `templates/deck.reveal.html` |
 | "report", "page", "write-up", long narrative (research/spec/verify) | **REPORT** (scroll) | `templates/report.scroll.html` |
-| `board.md`, "kanban", "board snapshot", "status" | **KANBAN** | `templates/kanban.board.html` |
 
 Default: a narrative artifact (research/spec/plan/verify) → **REPORT** unless the
-user says slides/deck/present. `board.md` → **KANBAN**. A pitch/talk → **DECK**.
+user says slides/deck/present. A pitch/talk → **DECK**.
 
 ## Workflow
 
@@ -66,7 +64,7 @@ user says slides/deck/present. `board.md` → **KANBAN**. A pitch/talk → **DEC
 8. **Deliver.** Write `export.html` (or `export.deck.html` / `export.report.html`)
    next to the artifact. Tell the user the path and how to get a PDF:
    - DECK: open with `?print-pdf` appended, then browser Print.
-   - REPORT/KANBAN: browser Print (a `@media print` block disables motion).
+   - REPORT: browser Print (a `@media print` block disables motion).
 
 ## Output rules
 
@@ -80,7 +78,6 @@ user says slides/deck/present. `board.md` → **KANBAN**. A pitch/talk → **DEC
 
 - `templates/deck.reveal.html` — reveal.js single-file deck boilerplate.
 - `templates/report.scroll.html` — framework-free long-scroll report.
-- `templates/kanban.board.html` — column/card board snapshot.
 - `THEMES.md` — named CSS-variable palettes + font pairings.
 - `INGEST.md` — artifact → section mapping rules.
 

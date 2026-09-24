@@ -42,7 +42,6 @@ Hero `{{TITLE}}`/`{{LEDE}}` come from the H1 and the first paragraph.
 | `tasks.md` | REPORT | phases → numbered sections; tasks → checklist cards; **Chart.js bar of tasks-per-domain** |
 | plan (design doc) | REPORT | phases → sections; risk table → HTML table; build order → ordered list |
 | verify output | REPORT | PASS/FAIL summary hero + **Chart.js doughnut (pass rate)**; per-check cards color-coded by verdict; logic-evaluator findings as a separate block |
-| `board.md` / events | KANBAN | columns → flex/grid columns; cards → tickets with id+domain; **Chart.js doughnut of column counts**; status drives card border color |
 
 ## Charts
 
@@ -50,7 +49,6 @@ Use Chart.js (CDN, or inlined for offline). Pass the theme `--accent` palette
 into dataset colors. Typical charts:
 - tasks per domain → bar
 - verify pass/fail → doughnut
-- kanban column counts → doughnut (To Do / In Progress / Blocked / Done)
 
 ## Provenance
 

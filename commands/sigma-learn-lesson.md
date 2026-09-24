@@ -29,11 +29,12 @@ or invokes `/sigma-learn-lesson`.
    "tokenize corpus"). The skill title is `session lesson: <topic>`.
 3. **Check for contradictions** — scan `skills/**/SKILL.md` for an existing lesson
    with the SAME domain + same topic (the `session lesson:` / `verify failed:`
-   prefix is ignored when matching). If one exists and disagrees, do NOT delete or
-   overwrite it — add a `⚠ CONTRADICTION` marker and a line to
+   prefix is ignored when matching). If one exists and disagrees, keep it: never
+   delete or overwrite it. Add a `⚠ CONTRADICTION` marker and a line to
    `skills/CONTRADICTIONS.md`. Humans decide.
-4. **Write** `skills/<slug>/SKILL.md` where `<slug>` is the kebab-cased title,
-   using exactly this format (matches the loop's ratchet so recall finds it):
+4. **Write** `skills/<slug>/SKILL.md` where `<slug>` is the kebab-cased title (if
+   that directory already exists, use `<slug>-2`, `-3`, ...), using exactly this
+   format (matches the loop's ratchet so recall finds it):
 
    ```markdown
    ---
@@ -41,6 +42,7 @@ or invokes `/sigma-learn-lesson`.
    description: Avoid recurrence of: session lesson: <topic>
    metadata:
      domain: <domain>
+     created: <YYYY-MM-DD>
    ---
 
    # session lesson: <topic>
@@ -56,13 +58,14 @@ or invokes `/sigma-learn-lesson`.
 
 ## Rules
 
-- Use the EXACT format above — the `metadata: domain:` tag and the
-  `**Lesson (ratcheted):**` / `**How to apply:**` lines are what `skills_recall`
-  reads back. A lesson missing the domain tag will never be recalled.
+- Use the exact format above: the `metadata: domain:` / `created:` tags and the
+  `**Lesson (ratcheted):**` / `**How to apply:**` lines are what recall reads back.
+  A lesson missing the domain tag is never recalled; recall keeps the 5 newest per
+  domain by `created`.
 - One lesson per invocation; keep it specific and actionable.
 - Never delete or rewrite an existing lesson — flag contradictions for the human.
 
 ## Next
 
-→ the lesson is now recalled automatically on the next `sigma loop` cycle in that
-domain, and via the `sigma-lessons` skill in-session.
+→ the lesson is now recalled on the next `/loop` task in that domain, by
+`sigma review`, and via the `sigma-lessons` skill in-session.

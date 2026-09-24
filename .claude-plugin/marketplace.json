@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "sigma",
-      "description": "8-stage pipeline (research → … → loop), Hermes conductor, kanban board, per-domain logic-evaluator, and HTML artifact export. Pairs with the sigma CLI for the full execution engine.",
+      "description": "Spec-driven, loop-engineered pipeline (research → … → loop) with an in-session /loop (role agents, Stop-hook guard, test tamper guard), adversarial /grill, per-domain context engines, and lessons recalled by domain.",
       "version": "0.10.0",
       "author": {
         "name": "Navid Ghayazi"
