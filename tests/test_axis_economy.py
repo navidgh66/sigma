@@ -173,21 +173,3 @@ def test_unmeasured_zero_value_axis_does_not_raise_on_flag_check():
 
 
 # --- T2: record_cycle_steps stamps the effect flags -------------------------- #
-def test_record_cycle_steps_carries_effect_flags():
-    from cli.loop import CycleOutcome, record_cycle_steps
-
-    captured = []
-    outcome = CycleOutcome(
-        task_title="t", implemented=True, verified=True,
-        logic_ok=False, advised=True, e2e_ok=False, simplified=True, test_written=True,
-        domain="nlp",
-    )
-    record_cycle_steps([outcome], captured.append)
-    assert len(captured) == 1
-    step = captured[0]
-    assert step["role"] == "cycle"
-    assert step["logic_ok"] is False
-    assert step["advised"] is True
-    assert step["e2e_ok"] is False
-    assert step["simplified"] is True
-    assert step["test_written"] is True

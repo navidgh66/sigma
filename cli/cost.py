@@ -1,20 +1,19 @@
 """Pure logic for sigma's cost loop — estimate before, measure after, sharpen next.
 
-Heavy sigma ops (review's 3 axes, the profile walk, loop cycles, multi-model
-research) burn tokens. This module closes a loop around that cost, mirroring the
-lessons loop's philosophy:
+Heavy sigma ops (review's 3 axes, the profile walk, multi-model research) burn
+tokens. This module closes a loop around that cost:
 
   - estimate(op, inputs) → an advisory BEFORE the run: per-axis token estimate +
     a model-tier recommendation (cheap model for mechanical axes, strong model for
     reasoning axes), so the operator can steer the run;
   - record(...) → one append line for `sigma/costs.jsonl` AFTER the run (the caller
-    passes the timestamp — projection stays deterministic, like `events.Event.ts`);
+    passes the timestamp, so the projection stays deterministic);
   - calibrate(rows) → adjust the token-per-unit factor from recent est-vs-actual
     deltas, so the estimate sharpens over time;
   - report(rows) → trends, per-op spend, biggest sinks, routing suggestions.
 
 Fail-safe: a missing or garbage ledger falls back to static factors and never
-blocks the op (the inverse of a hard gate, like gate-defaults-WAKE). Pure: no
+blocks the op (the inverse of a hard gate). Pure: no
 subprocess, no clock; everything is injectable for tests.
 """
 
@@ -37,9 +36,7 @@ TIER_STRONG = "opus"
 _STATIC_TOKENS_PER_UNIT = {
     "review": 4000,    # per (axis × file) — 3 axes read the diff + profile
     "profile": 3000,   # per file walked
-    "loop": 6000,      # per cycle (implement + verify + logic)
     "research": 8000,  # per model (full brief + findings)
-    "eval": 3500,      # per unit (a SUT run or a grade)
 }
 _DEFAULT_TOKENS_PER_UNIT = 4000
 
@@ -91,36 +88,8 @@ def routing_for(op: str) -> Dict[str, str]:
         return dict(_AXIS_TIER)
     if op == "profile":
         return {"walk": TIER_MID}
-    if op == "loop":
-        return {
-            "implement": TIER_MID,
-            "verify": TIER_MID,
-            "logic": TIER_STRONG,
-            "advisor": TIER_STRONG,
-            "e2e": TIER_STRONG,
-        }
     if op == "research":
         return {"fan-out": TIER_MID, "synthesis": TIER_STRONG}
-    if op == "eval":
-        # The system-under-test can be any tier; the judge reasons → strong.
-        return {"sut": TIER_MID, "judge": TIER_STRONG}
-    if op == "hermes":
-        # Per-STAGE tiers for the hermes conductor (keys = pipeline.STAGE_NAMES,
-        # asserted in tests — update both together). Planning + adversarial
-        # stages produce the reasoning artifacts everything downstream trusts →
-        # strong; execution stages are mechanical against a finished spec → mid.
-        return {
-            "research": TIER_MID,
-            "propose": TIER_STRONG,
-            "blueprint": TIER_STRONG,
-            "grill-blueprint": TIER_STRONG,
-            "spec": TIER_STRONG,
-            "grill-spec": TIER_STRONG,
-            "tasks": TIER_STRONG,
-            "implement-task": TIER_MID,
-            "verify": TIER_MID,
-            "loop": TIER_MID,
-        }
     return {}
 
 
@@ -208,7 +177,7 @@ def build_record(
 
 
 def append_ledger(ledger: Path, row: dict) -> Path:
-    """Append one JSON row to the cost ledger (append-only, like events.jsonl)."""
+    """Append one JSON row to the cost ledger (append-only)."""
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with ledger.open("a") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")

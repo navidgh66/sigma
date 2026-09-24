@@ -146,7 +146,7 @@ esac
 printf "\n%s%s  sigma is installed.%s\n" "$C_GREEN" "$C_B" "$C_RST"
 printf "  %s•%s Finish setup (domains, API keys, RTK):  %ssigma onboard%s\n" "$C_CYAN" "$C_RST" "$C_B" "$C_RST"
 printf "  %s•%s Health check anytime:                    %ssigma doctor%s\n" "$C_CYAN" "$C_RST" "$C_B" "$C_RST"
-printf "  %s•%s In Claude Code:  type %s/research%s, %s/hermes%s, %s/board%s … (restart to load)\n" \
+printf "  %s•%s In Claude Code:  type %s/research%s, %s/craft%s, %s/loop%s … (restart to load)\n" \
   "$C_CYAN" "$C_RST" "$C_B" "$C_RST" "$C_B" "$C_RST" "$C_B" "$C_RST"
 printf "  %s☕ Tip:%s RTK (token saver) can be set up during %ssigma onboard%s\n" "$C_YEL" "$C_RST" "$C_B" "$C_RST"
 printf "\n  Verify:  %ssigma --version%s\n\n" "$C_B" "$C_RST"

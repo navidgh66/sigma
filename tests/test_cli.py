@@ -27,7 +27,6 @@ def test_version_subprocess():
 def test_help_lists_commands():
     res = run_cli("--help")
     assert "research" in res.stdout
-    assert "loop" in res.stdout
     assert "init" in res.stdout
 
 
@@ -89,68 +88,11 @@ def test_help_omits_retired_stages():
     # No retired stage wrapper may be a registered CLI subcommand.
     for stage in ("propose", "blueprint", "spec", "tasks", "implement-task", "verify"):
         assert stage not in commands, f"{stage} must not be a CLI subcommand"
-    # But the kept commands remain.
-    assert {"research", "loop", "hermes", "board", "weave"} <= commands
-
-
-def test_help_lists_hermes_and_board():
-    res = run_cli("--help")
-    assert "hermes" in res.stdout
-    assert "board" in res.stdout
-
-
-def test_parser_hermes_flags():
-    args = build_parser().parse_args(
-        ["hermes", "build it", "--topic", "demo", "--auto", "--terse"]
-    )
-    assert args.command == "hermes"
-    assert args.message == "build it"
-    assert args.auto is True
-    assert args.terse is True
-
-
-def test_parser_board_watch_flag():
-    args = build_parser().parse_args(["board", "--topic", "demo", "--watch"])
-    assert args.command == "board"
-    assert args.watch is True
-
-
-def test_parser_loop_routing_defaults():
-    # --route is a deprecated no-op (kept for backward compat); routing is on by
-    # default now, so the real switch is --no-route.
-    a = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--route"])
-    assert a.command == "loop"
-    assert a.route is True
-    assert a.no_route is False
-    b = build_parser().parse_args(["loop", "--topic", "demo"])
-    assert b.route is False
-    assert b.no_route is False
-    c = build_parser().parse_args(["loop", "--topic", "demo", "--no-route"])
-    assert c.no_route is True
-
-
-def test_parser_loop_per_role_model_overrides():
-    a = build_parser().parse_args([
-        "loop", "--topic", "demo",
-        "--model-implement", "haiku", "--model-verify", "sonnet",
-        "--model-logic", "opus", "--model-advisor", "fable",
-    ])
-    assert a.model_implement == "haiku"
-    assert a.model_verify == "sonnet"
-    assert a.model_logic == "opus"
-    assert a.model_advisor == "fable"
-
-
-def test_parser_loop_advisor_flags():
-    a = build_parser().parse_args(["loop", "--topic", "demo", "--advisor", "--advisor-rounds", "3"])
-    assert a.advisor is True
-    assert a.advisor_rounds == 3
-    # advisor defaults ON; --no-advisor opts out.
-    b = build_parser().parse_args(["loop", "--topic", "demo"])
-    assert b.advisor is True
-    assert b.advisor_rounds == 1
-    c = build_parser().parse_args(["loop", "--topic", "demo", "--no-advisor"])
-    assert c.advisor is False
+    # The in-session /loop replaced the CLI engine: these are gone too.
+    for gone in ("loop", "hermes", "board", "weave"):
+        assert gone not in commands, f"{gone} must not be a CLI subcommand"
+    # The kept commands remain.
+    assert {"research", "learn", "review", "profile", "doctor"} <= commands
 
 
 def test_parser_trajectory():
@@ -241,33 +183,6 @@ def test_help_lists_prune():
     assert "prune" in res.stdout
 
 
-def test_parser_gate_flags():
-    a = build_parser().parse_args(["loop", "--topic", "d", "--gate", "check.py"])
-    assert a.gate == "check.py"
-    b = build_parser().parse_args(["hermes", "go", "--topic", "d", "--gate", "g.sh"])
-    assert b.gate == "g.sh"
-    # default None
-    c = build_parser().parse_args(["loop", "--topic", "d"])
-    assert c.gate is None
-
-
-def test_parser_keep_awake_flags():
-    a = build_parser().parse_args(["hermes", "go", "--topic", "d", "--keep-awake"])
-    assert a.keep_awake is True
-    b = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--keep-awake"])
-    assert b.keep_awake is True
-    # default off
-    c = build_parser().parse_args(["loop", "--topic", "d"])
-    assert c.keep_awake is False
-
-
-def test_board_missing_workspace(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    res = run_cli("board", "--topic", "nope")
-    assert res.returncode == 1
-    assert "no spec workspace" in res.stdout
-
-
 # --------------------------------------------------------------------------- #
 # profile / review / cost subcommands
 # --------------------------------------------------------------------------- #
@@ -342,25 +257,6 @@ def test_cmd_session_context_points_to_artifacts(tmp_path):
 # --------------------------------------------------------------------------- #
 # loop --tdd / --team / --logic  and  research --web flags
 # --------------------------------------------------------------------------- #
-def test_parser_loop_tdd_team_logic_flags():
-    a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--tdd", "--team", "--logic"])
-    assert a.tdd is True and a.team is True and a.logic is True
-    # tdd/team stay opt-in; logic defaults ON (--no-logic opts out).
-    b = build_parser().parse_args(["loop", "--topic", "d"])
-    assert b.tdd is False and b.team is False and b.logic is True
-    c = build_parser().parse_args(["loop", "--topic", "d", "--no-logic"])
-    assert c.logic is False
-
-
-def test_parser_loop_all_flag():
-    a = build_parser().parse_args(["loop", "--topic", "d", "--all"])
-    assert a.all is True
-    # --all itself doesn't force tdd/team True at parse time (cmd_loop applies
-    # the flip); the parser default for tdd/team stays False until cmd_loop runs.
-    b = build_parser().parse_args(["loop", "--topic", "d"])
-    assert b.all is False
-
-
 def test_parser_learn_force_flag():
     a = build_parser().parse_args(["learn", "--force"])
     assert a.force is True
@@ -380,165 +276,6 @@ def test_parser_uninstall_flag():
     assert a.yes is True
     b = build_parser().parse_args(["uninstall"])
     assert b.yes is False
-
-
-def test_parser_loop_simplify_flag():
-    a = build_parser().parse_args(["loop", "--topic", "d", "--execute", "--simplify"])
-    assert a.simplify is True
-    # simplify defaults ON; --no-simplify opts out.
-    b = build_parser().parse_args(["loop", "--topic", "d"])
-    assert b.simplify is True
-    c = build_parser().parse_args(["loop", "--topic", "d", "--no-simplify"])
-    assert c.simplify is False
-
-
-def test_parser_loop_e2e_flag_defaults_on():
-    a = build_parser().parse_args(["loop", "--topic", "d"])
-    assert a.e2e is True
-    b = build_parser().parse_args(["loop", "--topic", "d", "--no-e2e"])
-    assert b.e2e is False
-
-
-def test_cmd_loop_all_flag_applies_flip(tmp_path, monkeypatch, capsys):
-    """--all is applied inside cmd_loop (tdd/team default False at parse time,
-    but must flip True once cmd_loop runs) — an in-process check with run_loop
-    monkeypatched so no real agent is ever invoked (cmd_loop has no direct
-    unit test elsewhere; this stays in-process instead of a subprocess so a
-    `claude` CLI present on the test machine can never make it hang)."""
-    from datetime import date
-
-    import cli.main as main_mod
-    from cli.paths import slugify
-
-    (tmp_path / ".git").mkdir()  # project_root() walks up looking for .git
-    monkeypatch.chdir(tmp_path)
-    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
-    ws.mkdir(parents=True)
-    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
-
-    captured = {}
-
-    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
-        captured.update(kwargs)
-        return []
-
-    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
-
-    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--all"])
-    main_mod.cmd_loop(args)
-
-    out = capsys.readouterr().out
-    assert "every axis on" in out
-    assert captured["make_test_writer"] is not None  # tdd
-    assert captured["team"] is True
-    assert captured["make_logic_checker"] is not None
-    assert captured["make_simplifier"] is not None
-    assert captured["make_advisor"] is not None
-    assert captured["make_e2e_runner"] is not None
-
-
-def test_codex_tdd_without_tdd_is_usage_error(tmp_path, monkeypatch, capsys):
-    """--codex-tdd requires --tdd; without it, cmd_loop errors before running anything."""
-    from datetime import date
-
-    import cli.main as main_mod
-    from cli.paths import slugify
-
-    (tmp_path / ".git").mkdir()
-    monkeypatch.chdir(tmp_path)
-    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
-    ws.mkdir(parents=True)
-    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
-
-    def fake_run_loop(*a, **k):
-        raise AssertionError("run_loop must not be called when --codex-tdd validation fails")
-
-    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
-
-    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--codex-tdd"])
-    result = main_mod.cmd_loop(args)
-
-    assert result == 1
-    out = capsys.readouterr().out
-    assert "--codex-tdd requires --tdd" in out
-
-
-def test_codex_tdd_with_all_flag_is_not_rejected(tmp_path, monkeypatch, capsys):
-    """--all implies --tdd, so --all --codex-tdd together must NOT be rejected
-    by the --codex-tdd/--tdd validation guard (regression for a validation-
-    ordering bug: the guard used to run before the --all flip applied)."""
-    from datetime import date
-
-    import cli.main as main_mod
-    from cli.paths import slugify
-
-    (tmp_path / ".git").mkdir()
-    monkeypatch.chdir(tmp_path)
-    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
-    ws.mkdir(parents=True)
-    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
-
-    captured = {}
-
-    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
-        captured.update(kwargs)
-        return []
-
-    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
-
-    args = build_parser().parse_args(
-        ["loop", "--topic", "demo", "--execute", "--all", "--codex-tdd"]
-    )
-    main_mod.cmd_loop(args)
-
-    assert "make_test_writer" in captured
-    assert captured["make_test_writer"] is not None
-
-
-def test_codex_flags_default_false():
-    args = build_parser().parse_args(["loop", "--topic", "t", "--execute"])
-    assert args.codex_verify is False
-    assert args.codex_tdd is False
-
-
-def test_codex_verify_flag_parses():
-    args = build_parser().parse_args(["loop", "--topic", "t", "--execute", "--codex-verify"])
-    assert args.codex_verify is True
-
-
-def test_codex_verify_wires_codex_backed_verifier(tmp_path, monkeypatch, capsys):
-    """--codex-verify swaps make_verifier to a codex-backed factory; implementer untouched."""
-    from datetime import date
-
-    import cli.main as main_mod
-    from cli.paths import slugify
-    from cli.runner import AgentRunner
-
-    (tmp_path / ".git").mkdir()
-    monkeypatch.chdir(tmp_path)
-    ws = tmp_path / "sigma" / "specs" / f"{date.today().isoformat()}-{slugify('demo')}"
-    ws.mkdir(parents=True)
-    (ws / "tasks.md").write_text("- [ ] T1 (nlp): pending task\n")
-
-    captured = {}
-
-    def fake_run_loop(tasks, ws, skills_dir, max_cycles, **kwargs):
-        captured.update(kwargs)
-        return []
-
-    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
-
-    args = build_parser().parse_args(["loop", "--topic", "demo", "--execute", "--codex-verify"])
-    main_mod.cmd_loop(args)
-
-    verifier = captured["make_verifier"]()
-    assert isinstance(verifier, AgentRunner)
-    assert verifier.executable == "codex"
-    assert verifier.argv_builder is not None
-    assert verifier.output_cleaner is not None
-
-    implementer = captured["make_implementer"]()
-    assert implementer.executable == "claude"
 
 
 def test_parser_research_web_flag():
@@ -582,38 +319,6 @@ def test_cmd_research_passes_a_synthesis_runner(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 # cmd_hermes wiring — per-stage model routing (+ --no-route opt-out)
 # --------------------------------------------------------------------------- #
-def test_cmd_hermes_routes_stages_by_default(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake_run_hermes(message, ws, **kwargs):
-        captured.update(kwargs)
-        from cli.hermes import HermesResult
-        return HermesResult(ok=True)
-
-    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
-    monkeypatch.setattr("cli.hermes.run_hermes", fake_run_hermes)
-    from cli.main import main
-    assert main(["hermes", "continue", "--topic", "t"]) == 0
-    routes = captured["stage_routes"]
-    assert routes["spec"] == "opus"
-    assert routes["implement-task"] == "sonnet"
-
-
-def test_cmd_hermes_no_route_passes_empty_routes(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake_run_hermes(message, ws, **kwargs):
-        captured.update(kwargs)
-        from cli.hermes import HermesResult
-        return HermesResult(ok=True)
-
-    monkeypatch.setattr("cli.main.spec_workspace", lambda topic: tmp_path)
-    monkeypatch.setattr("cli.hermes.run_hermes", fake_run_hermes)
-    from cli.main import main
-    assert main(["hermes", "continue", "--topic", "t", "--no-route"]) == 0
-    assert captured["stage_routes"] == {}
-
-
 def test_cmd_research_routes_synthesis_to_strong_tier(monkeypatch, tmp_path):
     captured = {}
 
@@ -659,49 +364,6 @@ def test_cmd_research_no_route_uses_default_synthesis(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------- #
 # cmd_loop telemetry — real measured tokens recorded into the cost ledger
 # --------------------------------------------------------------------------- #
-def test_cmd_loop_records_measured_tokens_to_ledger(monkeypatch, tmp_path):
-    import cli.main as main_mod
-
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "sigma.config.yml").write_text("name: t\ndomains: [nlp]\nmodels: [claude]\n")
-    ws = tmp_path / "sigma" / "specs" / "2026-01-01-t"
-    ws.mkdir(parents=True)
-    (ws / "tasks.md").write_text("- [ ] T1 (nlp): do thing\n")
-    monkeypatch.setattr(main_mod, "spec_workspace", lambda topic: ws)
-
-    captured = {}
-
-    def fake_run_loop(tasks, workspace, skills_dir, max_cycles, **kwargs):
-        # The implementer factory must produce telemetry-enabled runners, and
-        # its sink must feed the counting wrapper cmd_loop records from.
-        runner = kwargs["make_implementer"]()
-        captured["telemetry"] = runner.telemetry
-        runner.trajectory_sink({"role": "implementer", "ok": True,
-                                "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.02})
-        from cli.loop import CycleOutcome
-        return [CycleOutcome(task_title="do thing", implemented=True, verified=True)]
-
-    monkeypatch.setattr(main_mod, "run_loop", fake_run_loop)
-
-    ns = argparse.Namespace(
-        topic="t", execute=True, all=False, tdd=False, team=False, logic=False,
-        simplify=False, advisor=False, advisor_rounds=1, e2e=False,
-        keep_awake=False, gate=None, codex_verify=False, codex_tdd=False,
-        no_route=True, model_implement=None, model_verify=None, model_logic=None,
-        model_advisor=None,
-    )
-    rc = main_mod.cmd_loop(ns)
-    assert rc == 0
-    assert captured["telemetry"] is True
-
-    ledger = tmp_path / "sigma" / "costs.jsonl"
-    assert ledger.exists()
-    import json as _json
-    row = _json.loads(ledger.read_text().strip().splitlines()[-1])
-    assert row["op"] == "loop"
-    assert row["tokens"] == 150
-
-
 # --------------------------------------------------------------------------- #
 # eval --from-spec — spec→eval autogeneration
 # --------------------------------------------------------------------------- #

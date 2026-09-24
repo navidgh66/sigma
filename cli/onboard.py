@@ -97,8 +97,7 @@ def run_onboard(
     #     (interactive OAuth, opens a browser; ChatGPT subscription, no API key).
     #     Distinct from the OPENAI_API_KEY secret captured in step 4 above — codex
     #     exec doesn't use that key. No-ops when codex isn't installed or is
-    #     already logged in. Needed for `sigma research`'s gpt lane and
-    #     `sigma loop --codex-verify`/`--codex-tdd`.
+    #     already logged in. Needed for `sigma research`'s gpt lane.
     codex_changed = codex_login_mod.setup_codex_login(
         status_fn=codex_login_status_fn, confirm=confirm, which=which, spawn=spawn
     )

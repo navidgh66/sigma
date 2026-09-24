@@ -32,7 +32,7 @@ def test_topic_key_stable_on_punctuation():
 
 # --------------------------- find_contradictions --------------------------- #
 def _write_skill(skills_dir, slug, title, domain):
-    from cli.loop import render_skill
+    from cli.ratchet import render_skill
 
     d = skills_dir / slug
     d.mkdir(parents=True)

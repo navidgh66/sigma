@@ -19,7 +19,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from cli import secrets
 from cli.config import load_config
-from cli.events import read_events
 from cli.paths import sigma_home
 
 OK = "ok"
@@ -148,23 +147,25 @@ def check_config(root: Optional[Path] = None) -> Check:
 
 
 def check_workspaces(root: Optional[Path] = None) -> Check:
+    """Every `sigma/specs/*/loop-state.json` (written by /loop) must be a JSON object."""
+    import json
+
     specs = (root or Path.cwd()) / "sigma" / "specs"
     if not specs.exists():
         return Check("workspaces", OK, "no spec workspaces yet")
     corrupt: List[str] = []
-    raw_lines = 0
-    for ws in specs.iterdir():
-        ev_file = ws / "events.jsonl"
-        if not ev_file.exists():
-            continue
-        lines = [ln for ln in ev_file.read_text().splitlines() if ln.strip()]
-        raw_lines += len(lines)
-        parsed = read_events(ws)
-        if len(parsed) < len(lines):
-            corrupt.append(ws.name)
+    count = 0
+    for state_file in sorted(specs.glob("*/loop-state.json")):
+        count += 1
+        try:
+            ok = isinstance(json.loads(state_file.read_text()), dict)
+        except (OSError, ValueError):
+            ok = False
+        if not ok:
+            corrupt.append(state_file.parent.name)
     if corrupt:
-        return Check("workspaces", WARN, f"corrupt events in: {', '.join(corrupt)}")
-    return Check("workspaces", OK, f"{raw_lines} event(s) across workspaces")
+        return Check("workspaces", WARN, f"corrupt loop-state in: {', '.join(corrupt)}")
+    return Check("workspaces", OK, f"{count} loop state file(s) across workspaces")
 
 
 def check_rtk(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
@@ -265,8 +266,7 @@ def check_codex_login(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     if not st.get("installed"):
         return Check(
             "codex-login", WARN,
-            "codex CLI not found (optional — needed for research's gpt lane and "
-            "loop --codex-verify/--codex-tdd)",
+            "codex CLI not found (optional, needed for research's gpt lane)",
         )
     if not st.get("logged_in"):
         return Check(

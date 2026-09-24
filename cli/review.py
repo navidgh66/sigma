@@ -364,7 +364,7 @@ def build_axis_prompt(
 def ensure_distinct_axes(runners: Sequence[object]) -> None:
     """Guard: the three axis runners must be distinct instances (maker≠checker).
 
-    Mirrors `loop.execute_cycle`'s separation enforcement — raises ValueError if any
+    Maker≠checker separation, enforced: raises ValueError if any
     two axis runners are the same object, so self-review across axes is impossible.
     """
     seen: List[int] = []
