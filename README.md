@@ -43,6 +43,21 @@ research) plus setup and hygiene.
 
 ---
 
+## 🆕 What's new
+
+- **0.30.0** — research is **Claude + Codex** only (Gemini removed; old configs
+  that list it still load). Codex sign-in uses the **device-code flow**
+  (`codex login --device-auth`). `sigma doctor --update` now says clearly when
+  the CLI could not update, and shows the version actually on disk.
+- **0.29.0** — caveman removed; sigma no longer installs, checks or bundles it.
+- **0.28.0** — the in-session `/loop` (role agents, Stop-hook guard, test tamper
+  guard, capped lesson recall) replaced the old CLI loop engine; built on the
+  Opus 5.5 prompting guide.
+
+Full notes: [releases](https://github.com/navidgh66/sigma/releases).
+
+---
+
 ## ✨ Why sigma
 
 - **🔬 Multi-model research** — fan out a question to Claude + GPT (via codex) *in
@@ -130,7 +145,7 @@ pipeline with a closed learning loop on top.
 curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
 export PATH="$PATH:$HOME/.local/bin"
 
-# friendly first run (once per machine): pick domains, capture API keys, optional RTK / status line
+# friendly first run (once per machine): pick domains, API keys, Codex device sign-in, optional RTK / status line
 sigma onboard
 
 # bootstrap any repo (per repo): config + SessionStart hook + CLAUDE.local + codebase map + CLAUDE.md
@@ -155,10 +170,54 @@ Then, **inside Claude Code**, add the plugin and go:
 /spec   →   /grill   →   /tasks   →   /implement-task   →   /verify   →   /loop
 ```
 
-`sigma doctor` health-checks and repairs the install anytime; `sigma doctor
---update` refreshes both the CLI and the plugin in one shot. To remove sigma,
+`sigma doctor` health-checks and repairs the install anytime. To remove sigma,
 `sigma uninstall` reverses the installer (launcher + `~/.sigma` + the Claude
 plugin), confirm-gated and with a separate warning before deleting your API keys.
+
+### Codex sign-in (device code)
+
+`/research`'s GPT lane runs through the `codex` CLI on your ChatGPT subscription
+(no API key). sigma signs in with the device-code flow, which works on a laptop,
+over SSH and in cloud sessions alike:
+
+```bash
+codex login --device-auth    # prints a URL + one-time code; approve it in any browser
+codex login status           # → Logged in using ChatGPT
+```
+
+`sigma onboard` and `sigma doctor` offer to run it for you (confirm-gated).
+
+### Updating
+
+```bash
+sigma doctor --update        # git pull the CLI (~/.sigma) + update the Claude plugin
+sigma --version              # confirm the CLI version
+claude plugin list           # confirm the plugin version
+```
+
+Restart Claude Code afterwards so the new plugin loads. The CLI and the plugin are
+two separate installs; `doctor --update` refreshes both. If it reports
+`✗ CLI update failed`, you have local edits in `~/.sigma`:
+
+```bash
+git -C ~/.sigma stash && sigma doctor --update
+```
+
+### Cloud sessions (Claude Code on the web)
+
+Add sigma to your environment's setup script. The plugin gives you the slash
+commands and `/loop`; the CLI needs its own clone and a launcher on a PATH that
+non-interactive shells see:
+
+```bash
+claude plugin marketplace add navidgh66/sigma || true
+claude plugin install sigma@sigma || true
+claude plugin marketplace update sigma || true
+claude plugin update sigma@sigma || true
+[ -d "$HOME/.sigma/.git" ] && git -C "$HOME/.sigma" pull --ff-only -q || git clone -q https://github.com/navidgh66/sigma "$HOME/.sigma" || true
+python3 -m pip install -q pyyaml rich 2>/dev/null || python3 -m pip install -q --break-system-packages pyyaml rich || true
+printf '#!/usr/bin/env sh\nexec python3 "%s/.sigma/cli/main.py" "$@"\n' "$HOME" > /usr/local/bin/sigma && chmod +x /usr/local/bin/sigma
+```
 
 ---
 

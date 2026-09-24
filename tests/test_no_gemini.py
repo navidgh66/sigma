@@ -7,6 +7,15 @@ from cli import checks, config, models, secrets
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _without_changelog(text: str) -> str:
+    """Drop README's "What's new" block: it may name removed features by design."""
+    start = text.find("## 🆕 What's new")
+    if start == -1:
+        return text
+    end = text.find("\n---", start)
+    return text[:start] + (text[end:] if end != -1 else "")
+
+
 def test_no_gemini_adapter_default_or_key():
     assert "gemini" not in models.ADAPTERS
     assert config.DEFAULT_MODELS == ["claude", "gpt"]
@@ -32,7 +41,7 @@ def test_no_gemini_mentions_in_shipped_surfaces():
                 ROOT / "docs" / "PLAYGROUND.md", ROOT / "installer" / "setup.sh",
                 ROOT / ".claude-plugin" / "plugin.json"]
     for f in surfaces:
-        text = f.read_text().lower()
+        text = _without_changelog(f.read_text()).lower()
         if f.name == "config.py":
             text = text.replace('_retired_models = {"gemini"}', "")  # the one allowed mention
         assert "gemini" not in text, f.relative_to(ROOT)
