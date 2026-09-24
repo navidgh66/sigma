@@ -26,6 +26,9 @@ description: PASS/WARN/FAIL verifier for prompt-injection defense, output schema
 - **W5**: no abstention path — model not instructed to say "I don't know" / "not in context".
 - **W6**: per-request token/cost not logged -> no spend visibility or alerting.
 - **W7**: model output trusted as ground truth without a confidence/verification step on critical paths.
+- **W8**: prompt asks the model to write out its reasoning in the response (Claude 5 family:
+  `reasoning_extraction` refusal risk); use `effort` and summarized thinking blocks instead.
+- **W9**: `max_tokens` sized without room for thinking (thinking counts toward the limit).
 
 ## PASS
 - External/untrusted content delimited and clearly marked as data; privileged actions gated
