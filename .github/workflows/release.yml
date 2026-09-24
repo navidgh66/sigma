@@ -1,0 +1,49 @@
+# Manual release: run the tests, check version parity, then tag + publish the
+# GitHub release for the version in cli/__init__.py. Notes come from
+# docs/releases/v<version>.md when present. Re-running for a released version
+# is a no-op.
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Test
+        run: |
+          pip install -q pytest pyyaml rich
+          python -m pytest tests/ -q
+
+      - name: Read version
+        id: v
+        run: |
+          version=$(python -c 'import re; print(re.search(r"__version__ = \"([^\"]+)\"", open("cli/__init__.py").read()).group(1))')
+          plugin=$(python -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          if [ "$version" != "$plugin" ]; then echo "cli $version != plugin.json $plugin"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION is already released"; exit 0
+          fi
+          notes="docs/releases/v$VERSION.md"
+          if [ -f "$notes" ]; then
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "sigma $VERSION" --notes-file "$notes"
+          else
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "sigma $VERSION" --generate-notes
+          fi
