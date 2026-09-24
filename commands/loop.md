@@ -68,17 +68,27 @@ Parallel, only when the user asks ("in parallel", "as a team"):
 - Pick tasks that touch different files; tasks that share files run one after another.
 - Set `budget_seconds` (the user's figure, else 1800) and put `elapsed Ns / Bs` in each
   brief and in your own status lines.
-- Create each task's worktree yourself before dispatch, so the baseline exists first:
-  `git worktree add <root>/.worktrees/<id> -b sigma-loop/<id>`. That path is the
-  task's `<root>` for steps 2 to 7: snapshot there, then dispatch one
+- Worktrees start from the last commit, so parallel mode needs a clean baseline: if
+  `git status --porcelain` shows changes outside `sigma/`, run the tasks one after
+  another instead and say why (never commit the user's uncommitted work for them).
+- Use a run id `<run>` (the `started_at` time as `YYYYMMDDHHMMSS`) so names never
+  collide with an earlier run. Create each task's worktree yourself before dispatch,
+  so the baseline exists first:
+  `git worktree add <root>/.worktrees/<run>-<id> -b sigma-loop/<run>-<id>`. That path
+  is the task's `<root>` for steps 2 to 7: snapshot there, then dispatch one
   `sigma-implementer` per task in a single message, each told to work only inside its
   worktree path, and run the tamper check, `sigma-verifier` and `sigma-e2e` against
   that path.
-- Merge a passing task's branch back into the branch the loop started on
-  (`git merge sigma-loop/<id>`) before marking it `passed`, then remove its worktree.
-  On a merge conflict run `git merge --abort` so the next merge starts clean, leave the
-  worktree in place, set the task `blocked` with the conflict in `note`, and continue.
-  A failed task's worktree is removed (`git worktree remove --force`).
+- When a task passes its checks, commit inside its worktree
+  (`git -C <worktree> add -A && git -C <worktree> commit -m "sigma /loop <run>: <id> <title>"`),
+  then merge it into the branch the loop started on
+  (`git merge --no-ff sigma-loop/<run>-<id>`). Mark it `passed` only after the merge
+  succeeds and brought the commit in; then `git worktree remove <worktree>` and
+  `git branch -d sigma-loop/<run>-<id>`.
+- On a merge conflict run `git merge --abort` so the next merge starts clean, keep the
+  worktree and branch, set the task `blocked` with the conflict in `note`, and
+  continue. A failed task's worktree and branch are removed
+  (`git worktree remove --force`, `git branch -D`).
 - Wait for every dispatched agent before ending a turn.
 
 ## 3. Lessons (on a failed task)

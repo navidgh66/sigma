@@ -168,7 +168,9 @@ per independent task (`.worktrees/<id>`, branch `sigma-loop/<id>`) and snapshots
 there before dispatching the implementers in one message; checks run in that worktree; a
 passing branch is merged back, a conflict is aborted and the task marked `blocked`.
 (Changed from `isolation: worktree` after Codex review: the baseline must exist before
-dispatch.)
+dispatch.) Parallel mode requires a clean working tree (else it runs serially), names
+worktrees and branches with a run id, commits in the worktree before `git merge --no-ff`,
+and marks a task `passed` only once the merge integrated it.
 The lead sets `budget_seconds` (user-given or a default of 1800) and includes
 `elapsed Ns / Bs` in each subagent brief and in its own status lines (5.5: time signals
 for multiagent harnesses). Tasks that touch the same files run serially.

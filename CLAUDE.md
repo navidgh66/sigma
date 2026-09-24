@@ -118,9 +118,10 @@ tests/                   pytest; pure logic tested with fakes
   `sigma/` only at the project root. New test files are allowed. `snapshot` keeps
   copies in `<snapshot>.d/`; `restore` puts back edited/deleted originals so a failed
   task never leaks edited tests into the next baseline.
-- **Parallel `/loop`** creates worktrees itself (`git worktree add .worktrees/<id>`)
-  before dispatch, since the baseline snapshot must exist first; a merge conflict is
-  `git merge --abort`ed and the task marked `blocked`.
+- **Parallel `/loop`** needs a clean tree (else it runs serially), creates
+  `.worktrees/<run>-<id>` itself before dispatch (the baseline snapshot must exist
+  first), commits in the worktree, marks `passed` only after `git merge --no-ff`
+  integrates, and aborts a conflicting merge (task `blocked`).
 - **Lesson frontmatter** quotes `description` (it contains `: `, invalid as a plain
   YAML scalar); `created:` stays unquoted.
 - **Lessons never overwrite:** a same-titled lesson goes to `<slug>-2/` and flags a

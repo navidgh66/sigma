@@ -176,8 +176,9 @@ runs: a text-only end of turn is a report, not proof the work is done.
 
 - **Test-first** — say "TDD": `sigma-test-writer` (effort low) writes the failing
   test first, then the snapshot is retaken so that test is protected too.
-- **Parallel** — say "in parallel": the lead creates a git worktree per independent
-  task (`.worktrees/<id>`), snapshots its tests there, dispatches the implementers
+- **Parallel** — say "in parallel" (needs a clean working tree, else it runs
+  serially): the lead creates a git worktree per independent task
+  (`.worktrees/<run>-<id>`), snapshots its tests there, dispatches the implementers
   together, checks each in its own worktree and merges it back on pass (a conflict
   is aborted and the task marked `blocked`); it tracks `elapsed Ns / Bs` against a
   time budget.
