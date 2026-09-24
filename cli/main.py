@@ -261,7 +261,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         _print(f"  • install dir    {plan.install_dir}{secret}")
     if plan.has_claude_cli:
         _print("  • Claude plugin  sigma@sigma + marketplace")
-    _print("  (global RTK / caveman / statusline are left untouched — remove by hand if wanted)")
+    _print("  (global RTK / statusline are left untouched — remove by hand if wanted)")
 
     res = run_uninstall(plan, confirm=render.confirm, assume_yes=args.yes)
     for r in res.removed:

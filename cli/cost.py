@@ -249,6 +249,6 @@ def report(rows: List[dict]) -> str:
     lines += ["", "## Tips", "",
               "- Route mechanical axes to a cheap tier (`code`→haiku), reserve a "
               "strong tier for reasoning (`ml-logic`→opus).",
-              "- Enable RTK to cut token overhead on dev ops; caveman trims output.",
+              "- Enable RTK to cut token overhead on dev ops.",
               ""]
     return "\n".join(lines)

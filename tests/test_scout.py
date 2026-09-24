@@ -92,9 +92,9 @@ def test_rank_caps_hits_per_author():
 # --------------------------- dedup --------------------------- #
 def test_dedup_drops_already_vendored(tmp_path):
     skills = tmp_path / "skills"
-    (skills / "vendor" / "caveman").mkdir(parents=True)
+    (skills / "vendor" / "code-tour").mkdir(parents=True)
     hits = [
-        SkillHit("caveman", "x", "JuliusBrussee/caveman"),  # dir name match
+        SkillHit("code-tour", "x", "someone/code-tour"),  # dir name match
         SkillHit("Fresh Skill", "y", "someone/fresh"),
     ]
     out = dedup_against_bundle(hits, skills)

@@ -2,7 +2,7 @@
 
 Unlike CLAUDE.local.md (gitignored, always refreshed), CLAUDE.md is committed
 and shared, so writing to it requires explicit confirmation — mirrors the
-RTK/caveman/statusline confirm-gate shape.
+RTK/statusline confirm-gate shape.
 """
 
 from __future__ import annotations

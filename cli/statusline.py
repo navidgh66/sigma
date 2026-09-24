@@ -7,7 +7,7 @@ It integrates by writing a `statusLine` command block into the GLOBAL
 without explicit confirmation — `setup_statusline` is confirm-gated and idempotent
 (no-ops when a statusLine is already configured).
 
-Mirrors cli/caveman.py + cli/rtk.py: all process spawning and lookups are
+Mirrors cli/rtk.py: all process spawning and lookups are
 injectable, so tests never install anything or modify the real settings.json.
 """
 

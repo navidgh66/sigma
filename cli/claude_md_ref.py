@@ -2,7 +2,7 @@
 
 CLAUDE.md is committed/shared (unlike gitignored CLAUDE.local.md), so unlike
 `cli/claude_local.py`'s always-on refresh, writing here requires explicit
-confirmation — the same rule RTK/caveman/statusline/graphify follow for
+confirmation — the same rule RTK/statusline/graphify follow for
 anything touching shared or committed state (see cli/statusline.py).
 
 The reference is a single line: read ARCHITECTURE.md on demand (not loaded

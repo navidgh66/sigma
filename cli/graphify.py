@@ -13,7 +13,7 @@ uses for `claude`/`gemini`/`codex`/`rtk` — a subprocess, never an import — s
 `GRAPH_REPORT.md` into the learn agent's prompt, grounding ARCHITECTURE.md + the
 CodeTour in extracted structure. Everything here is fail-safe: graphify absent or a
 build failure degrades to a plain learn (never crashes), and the install is
-confirm-gated + idempotent (RTK/caveman shape). All lookups and spawns are injected
+confirm-gated + idempotent (RTK shape). All lookups and spawns are injected
 so tests never install anything or spawn a real process.
 """
 
@@ -152,7 +152,7 @@ def setup_graphify(
 
     - Already installed → no-op (returns False).
     - Otherwise → confirm, then install. The user must approve before anything is
-      installed (mirrors setup_rtk / setup_caveman).
+      installed (mirrors setup_rtk).
     """
     status_fn = status_fn or graphify_status
     confirm = confirm or (lambda msg: False)

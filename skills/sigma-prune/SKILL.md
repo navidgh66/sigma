@@ -49,8 +49,7 @@ reads + reversible write in `cli/prune_run.py`. This skill is the judgment layer
 ## Compose, don't duplicate
 Bundle-hygiene trio: `sigma-scout` grows the bundle, **sigma-prune trims it**,
 `sigma-cost` sizes the token cost of carrying it. Orthogonal to RTK (proxy token
-cut) and caveman (output terseness) — prune cuts *input/context* weight, the layer
-neither of those touches.
+cut): prune cuts *input/context* weight, a layer RTK doesn't touch.
 
 ## Flags
 `--check` (read-only CI gate, exit 1 on bloat), `--yes` (disable all prunable

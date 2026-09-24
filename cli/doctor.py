@@ -38,7 +38,7 @@ def _default_updater(
        the `claude` binary is absent.
 
     `spawn` / `which` are injectable so the flow is testable without touching the
-    host (mirrors caveman/rtk).
+    host (mirrors rtk).
     """
     import shutil
     import subprocess
@@ -52,7 +52,7 @@ def _default_updater(
     if (home / ".git").exists():
         spawn(["git", "-C", str(home), "pull", "--ff-only"])
 
-    # Plugin surface — only when the `claude` CLI is on PATH (mirror caveman/rtk).
+    # Plugin surface — only when the `claude` CLI is on PATH (mirror rtk).
     if which("claude"):
         spawn(["claude", "plugin", "marketplace", "update", "sigma"])
         spawn(["claude", "plugin", "update", "sigma@sigma"])

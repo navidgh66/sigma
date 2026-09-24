@@ -18,10 +18,8 @@ side that reads the same ledger (`sigma/costs.jsonl`) and advises.
 
 ## Boundaries (compose, don't duplicate)
 - **RTK** cuts token *overhead* at the proxy layer (transparent command rewriting).
-- **caveman** trims *output* verbosity.
 - **sigma-cost** estimates/measures/routes sigma's own *operations*. It may
-  *recommend* enabling RTK or caveman when it detects waste — it does not replace
-  them.
+  *recommend* enabling RTK when it detects waste; it does not replace it.
 
 ## Before a heavy op (estimate + route)
 1. Size the work in **units**: review = axes × changed files; profile = files

@@ -7,7 +7,7 @@ The installer (`installer/setup.sh`) creates four things:
   - the Claude Code marketplace  (sigma)
 
 Uninstall removes exactly those. It deliberately LEAVES shared global state —
-RTK, caveman, ccstatusline, the SessionStart hook — because those live in the
+RTK, ccstatusline, the SessionStart hook — because those live in the
 user's global ~/.claude/settings.json and may be wanted independently of sigma
 (reverse them by hand if desired).
 

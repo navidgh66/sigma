@@ -98,8 +98,7 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         confirm=lambda msg: True,                     # yes to rtk
         learn_fn=lambda root: None,                   # don't spawn a real learn agent
         rtk_status_fn=lambda: {"installed": True, "hook_active": False, "gain_ok": True},
-        # caveman + graphify already active → their steps no-op, isolating the rtk assertion.
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
+        # graphify already active → its step no-ops, isolating the rtk assertion.
         graphify_status_fn=lambda: {"installed": True},
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
@@ -108,51 +107,6 @@ def test_onboard_sets_up_rtk_on_confirm(tmp_path, monkeypatch):
         domains=["nlp"],
     )
     assert ["rtk", "init", "-g"] in spawned
-
-
-# --------------------------- caveman --------------------------- #
-def test_onboard_sets_up_caveman_on_confirm(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    spawned = []
-    onboard.run_onboard(
-        name="p",
-        domain_input=lambda: "",
-        secret_input=lambda key: "",
-        confirm=lambda msg: True,                     # yes to everything
-        learn_fn=lambda root: None,                   # don't spawn a real learn agent
-        rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
-        graphify_status_fn=lambda: {"installed": True},  # already installed → no-op
-        spawn=lambda argv: spawned.append(argv) or 0,
-        run_all=lambda **k: [],
-        which=lambda n: None,
-        use_rich=False,
-        domains=["nlp"],
-    )
-    # caveman install ran (marketplace add + plugin install).
-    assert any("marketplace" in a for a in spawned)
-    assert any("install" in a for a in spawned)
-
-
-def test_onboard_skips_caveman_when_declined(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    spawned = []
-    onboard.run_onboard(
-        name="p",
-        domain_input=lambda: "",
-        secret_input=lambda key: "",
-        confirm=lambda msg: False,
-        rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
-        spawn=lambda argv: spawned.append(argv) or 0,
-        run_all=lambda **k: [],
-        which=lambda n: None,
-        use_rich=False,
-        domains=["nlp"],
-    )
-    assert spawned == []
 
 
 def test_onboard_skips_rtk_when_declined(tmp_path, monkeypatch):
@@ -185,9 +139,8 @@ def test_onboard_signs_in_to_codex_on_confirm(tmp_path, monkeypatch):
         secret_input=lambda key: "",
         confirm=lambda msg: True,                     # yes to everything
         learn_fn=lambda root: None,                   # don't spawn a real learn agent
-        # rtk + caveman + graphify already satisfied → only codex-login acts.
+        # rtk + graphify already satisfied → only codex-login acts.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
         graphify_status_fn=lambda: {"installed": True},
         codex_login_status_fn=lambda: {"installed": True, "logged_in": False},
@@ -210,7 +163,6 @@ def test_onboard_skips_codex_login_when_declined(tmp_path, monkeypatch):
         secret_input=lambda key: "",
         confirm=lambda msg: False,
         rtk_status_fn=lambda: {"installed": False, "hook_active": False, "gain_ok": False},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False},
         codex_login_status_fn=lambda: {"installed": True, "logged_in": False},
         spawn=lambda argv: spawned.append(argv) or 0,
         run_all=lambda **k: [],
@@ -232,7 +184,6 @@ def test_onboard_codex_login_noop_when_already_logged_in(tmp_path, monkeypatch):
         confirm=lambda msg: True,
         learn_fn=lambda root: None,
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
         graphify_status_fn=lambda: {"installed": True},
         codex_login_status_fn=lambda: {"installed": True, "logged_in": True},
@@ -256,9 +207,8 @@ def test_onboard_installs_graphify_on_confirm(tmp_path, monkeypatch):
         secret_input=lambda key: "",
         confirm=lambda msg: True,
         learn_fn=lambda root: None,                   # don't spawn a real learn agent
-        # rtk + caveman + statusline already satisfied → only graphify acts.
+        # rtk + statusline already satisfied → only graphify acts.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
         graphify_status_fn=lambda: {"installed": False},
         spawn=lambda argv: spawned.append(argv) or 0,
@@ -302,12 +252,11 @@ def test_onboard_installs_graphify_hook(tmp_path, monkeypatch, capsys):
         secret_input=lambda key: "",
         confirm=lambda msg: True,
         learn_fn=lambda root: None,                   # don't spawn a real learn agent
-        # rtk + caveman + statusline + graphify install already satisfied → only the
+        # rtk + statusline + graphify install already satisfied → only the
         # hook step acts. graphify binary present + no .git hook in tmp_path → install.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
-        graphify_status_fn=lambda: {"installed": True},   # step 9 install no-ops
+        graphify_status_fn=lambda: {"installed": True},   # step 8 install no-ops
         spawn=lambda argv, cwd=None: spawned.append(argv) or 0,
         which=lambda n: "/bin/graphify" if n == "graphify" else None,
         run_all=lambda **k: [],
@@ -318,7 +267,7 @@ def test_onboard_installs_graphify_hook(tmp_path, monkeypatch, capsys):
     assert "graphify post-commit hook installed" in capsys.readouterr().out
 
 
-# --------------------------- learn artifacts (step 11) --------------------------- #
+# --------------------------- learn artifacts (step 10) --------------------------- #
 class _LearnRes:
     def __init__(self, ok=True, error=None):
         self.ok = ok
@@ -332,7 +281,6 @@ def _base_kwargs(tmp_path):
         domain_input=lambda: "",
         secret_input=lambda key: "",
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
         graphify_status_fn=lambda: {"installed": True},
         spawn=lambda argv: 0,
@@ -395,7 +343,6 @@ def test_onboard_adds_session_hook_on_confirm(tmp_path, monkeypatch):
         learn_fn=lambda root: None,                   # don't spawn a real learn agent
         # everything else already satisfied → isolate the session-hook step.
         rtk_status_fn=lambda: {"installed": True, "hook_active": True, "gain_ok": True},
-        caveman_status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True},
         statusline_status_fn=lambda: {"node_runtime": True, "configured": True},
         graphify_status_fn=lambda: {"installed": True},
         spawn=lambda argv: 0,

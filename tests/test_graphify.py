@@ -1,6 +1,6 @@
 """Tests for cli.graphify — detect, install, build-argv, and report injection.
 
-Mirrors test_rtk / test_caveman: every lookup and spawn is injected, so tests
+Mirrors test_rtk: every lookup and spawn is injected, so tests
 never install anything, spawn a real process, or hit the network.
 """
 
