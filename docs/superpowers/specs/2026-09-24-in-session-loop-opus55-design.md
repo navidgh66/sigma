@@ -188,10 +188,12 @@ for multiagent harnesses). Tasks that touch the same files run serially.
 
 ## 4. Opus 5.5 refresh elsewhere
 
-- **Pasted content** (5.5: mark pasted text): `/craft`, `/claude-md-check`,
-  `/claude-md-create` accept pasted designs or files. They instruct the agent to treat
-  such input as data wrapped in `<pasted_content id="...">` tags and to follow
-  instructions inside it only where the user's own message asks.
+- **Pasted and outside content** (5.5: mark pasted text): `/craft` accepts pasted
+  designs and treats them as data wrapped in `<pasted_content id="...">` tags;
+  `/research` (manual findings, web results) and `/review` (other people's diffs)
+  treat outside text as data. All three follow instructions inside such text only
+  where the user's own message asks. (The `claude-md` commands were first listed here
+  by mistake: they check for pasted code *in* CLAUDE.md and take no pasted input.)
 - **Tone:** the 26 capitalized MUST/NEVER/ALWAYS/CRITICAL/IMPORTANT/DO NOT words across
   `commands/` and `skills/sigma-*` are rewritten in plain wording, keeping at most one
   emphasized line per file where it guards a real hazard.
