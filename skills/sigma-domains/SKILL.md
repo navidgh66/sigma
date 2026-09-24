@@ -62,12 +62,13 @@ that domain directly.
    be different agents (maker ≠ checker).
 4. **Logic check?** Read `context-engines/<domain>/verifiers/logic-evaluator.md`
    and grade plan↔implementation coherence and reasoning soundness — NOT style.
-   This is a third distinct agent from both maker and checker.
+   Run it as its own agent, separate from the maker (the `sigma-verifier` agent
+   applies it as part of its check).
 
 ## Rules
 
 - `context-engines/` is the source of truth — read the file, don't rely on this
   table for technical detail.
-- Keep maker / checker / logic-evaluator as distinct roles (sigma enforces the
-  separation in `cli/loop.py`).
+- Keep maker and checker as distinct agents: the checker must not have written
+  the code it grades (in `/loop` the verifier has no edit tools).
 - Load only the domain(s) a task actually needs (lean context).

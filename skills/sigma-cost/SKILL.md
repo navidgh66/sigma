@@ -26,7 +26,7 @@ side that reads the same ledger (`sigma/costs.jsonl`) and advises.
    walked; research = models; a /loop run = tasks × (implementer + verifier).
 2. Estimate tokens: `units × tokens-per-unit`. Use the calibrated factor from
    `sigma/costs.jsonl` when present; otherwise the static fallback.
-3. **Route by reasoning load** (performance.md strategy):
+3. **Route by reasoning load**:
    - `code` axis, mechanical edits → **haiku** (cheap).
    - `system-logic`, orchestration → **sonnet**.
    - `ml-logic`, hardest reasoning → **opus**.

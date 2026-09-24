@@ -12,8 +12,11 @@ outputs: ["sigma/specs/{date}-{slug}/verify/{task_id}.md"]
 
 ## Behavior
 
-1. Load the task's domain `verifiers/`.
-2. Run the relevant checks for that domain, e.g.:
+1. Dispatch the `sigma-verifier` agent (fresh context, no edit tools) with the
+   task, its domain, its scenario(s) from spec.md and the changed files. It runs
+   steps 2-4 and returns `VERDICT: PASS|FAIL` with evidence.
+2. Load the task's domain `verifiers/`.
+3. Run the relevant checks for that domain, e.g.:
    - classic-ml / dl: data leakage, seed determinism, metric correctness
    - nlp: label-scheme + tokenizer/model alignment, eval determinism
    - rl: multi-seed reporting, reward correctness, reward-hacking
@@ -21,12 +24,12 @@ outputs: ["sigma/specs/{date}-{slug}/verify/{task_id}.md"]
    - mlops: train/serve skew, drift wiring, rollback thresholds
    - ai-agent / llm: eval coverage, tool-schema validity, injection defense
    - tests, types, linters as applicable
-3. **Scenario coverage check** — for each BDD scenario in the spec for this
+4. **Scenario coverage check** — for each BDD scenario in the spec for this
    task: does the implementation satisfy the Given / When / Then contract?
    A scenario with no passing test or evidence = FAIL.
-4. Write `verify/{task_id}.md`: PASS / FAIL per criterion + scenario coverage
+5. Write the verifier's findings to `verify/{task_id}.md`: PASS / FAIL per criterion + scenario coverage
    table + evidence.
-5. On FAIL → feed back to `/implement-task` (or `/loop` ratchets it).
+6. On FAIL → feed back to `/implement-task` (or `/loop` ratchets it).
 
 ## Eval axis — for generative / ML outputs (not just binary)
 

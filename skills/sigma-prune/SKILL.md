@@ -24,16 +24,16 @@ reads + reversible write in `cli/prune_run.py`. This skill is the judgment layer
   *lately* even if heavily used long ago).
 - **Ranked by REAL context weight.** A server's weight scales with its *distinct tool
   count* (schema width, observed across history), not a flat per-kind constant — a
-  100-tool server dwarfs a 2-tool one instead of ranking identical. Unknown tool count
+  100-tool server dwarfs a 2-tool one. Unknown tool count
   → conservative per-kind fallback.
 - **Rarely-used = low-confidence (opt-in).** `--idle-threshold N` also surfaces items
   used ≤N times, flagged `⚠ rarely used` — a judgment call for the human, never an
-  auto-disable. Default 0 = unused-only (unchanged).
+  auto-disable. Default 0 = unused-only.
 
 ## Two non-negotiable laws
 1. **Never prune on absent evidence.** No transcripts to scan → surface nothing.
    Missing usage data is treated as "used", not "unused" — the conservative default
-   (the inverse of guessing, mirroring gate-defaults-WAKE / verdict-defaults-FAIL).
+   (no data is never evidence that something is unused).
 2. **Reversible, never destructive.** Disable = flip `enabledPlugins[name]=false` via
    an immutable settings merge (every other key preserved, like statusline). The
    item stays installed on disk. Re-enable = flip it back. User-level MCP servers in

@@ -13,13 +13,12 @@ a Stop hook, skills, domain context-engines) backed by a thin CLI for parallel
 multi-model `research`, `review`/`profile`, `learn`, and setup + hygiene.
 Research-first, spec-driven, loop-engineered: `/loop` runs every open task to done
 in-session with distinct implementer/verifier agents, a test tamper guard, and a
-Stop hook that keeps the run going until tasks settle (Opus 5.5 unattended-run
-pattern). 662 pytest tests, ruff clean.
+Stop hook that keeps the run going until tasks settle. 665 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q                           # run all 662 tests (must stay green)
+python3 -m pytest tests/ -q                           # run all 665 tests (must stay green)
 python3 -m ruff check cli/ tests/ hooks/ scripts/      # lint (py39 target)
 python3 -m cli.main --help                            # CLI help
 
@@ -65,7 +64,7 @@ auto-applies only mechanical fixes and surfaces the rest. `/craft` drives
 - **Stop hook** (`hooks/loop_guard.py`, registered in `hooks/hooks.json`): blocks a
   stop while a running loop has open tasks and no blocker; ≤3 nudges without
   progress, then `stopped`; progress resets the count.
-- **Unattended paragraph** (the Opus 5.5 "four unwanted stops") lives in `loop.md`
+- **"When to stop, and when not to"** (the unattended-run section) lives in `loop.md`
   only; never in `implement-task.md` (human in the loop).
 
 ## Layout

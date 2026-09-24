@@ -97,19 +97,14 @@ Default: an ambiguous "document this" → **README**.
 - **PRESENTATION** — build the markdown draft per the composition contract
   above, then delegate to `sigma-present` for HTML/theming.
 
-## Anti-slop
+## Grounding
 
-- Don't invent features, flags, or config that aren't actually in the code.
-- Don't pad with emoji headers or marketing filler ("blazing fast",
-  "seamless", "revolutionary").
-- Every claim must trace to a real file, command, or commit — if you can't
-  point to the evidence, don't write the claim.
-- Don't copy the README verbatim into the API docs — they serve different
+- Every claim (feature, flag, config key, CHANGELOG entry) traces to a real file,
+  command or commit you can point to. Where the code says nothing, write
+  "undocumented" rather than guess what it means.
+- Write for the reader of that doc: plain and scannable, no marketing filler, and
+  no text copied between the README and the API docs, since they serve different
   readers.
-- Don't restate obvious directory names ("`src/` — source code").
-- Write "undocumented" rather than fabricate what a missing docstring means.
-- A CHANGELOG entry must map to a real commit hash/message — never invent one.
-- Keep READMEs scannable — don't pad length for its own sake.
 
 ## Files in this skill
 

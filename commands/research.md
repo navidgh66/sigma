@@ -9,8 +9,8 @@ outputs: ["sigma/specs/{date}-{slug}/research.md"]
 # /research
 
 Run **multi-perspective parallel research** on a topic and synthesize one cited
-document, using REAL model diversity and REAL search grounding — not personas
-roleplaying as other models.
+document, using real model diversity and real search grounding rather than
+personas roleplaying as other models.
 
 ## Behavior
 
@@ -23,19 +23,18 @@ roleplaying as other models.
    an external source (e.g. an ECC plugin) has installed it. If no such skill
    is available, fall back to the MCP search-tool dispatch in step 4 below
    plus this model's own reasoning — state explicitly which path was used, no
-   silent substitution. This step (when the skill is available) replaces
-   dispatching a "claude-researcher" persona subagent — that persona ran on
-   the SAME model already running this session, so it added no real
-   capability beyond a self-instruction.
+   silent substitution. Don't dispatch a Claude persona subagent for this lane:
+   it runs on the same model as this session and adds no independent
+   perspective.
 3. **Real GPT dispatch via Bash** — check CLI availability first (`which codex`
-   via the Bash tool). If found, invoke the REAL CLI as a subprocess:
+   via the Bash tool). If found, invoke the real CLI as a subprocess:
    ```
    codex exec --sandbox read-only --color never "<brief>"
    ```
-   using the brief + argv template described in `subagents/researchers/
-   gpt-researcher.md`. Clean the raw output using the same rules that file
-   describes (codex event-noise stripping, matching `cli/models.py`'s
-   `clean_output` logic). If codex is NOT found locally (or not signed in:
+   using the brief + argv template in
+   `${CLAUDE_PLUGIN_ROOT}/subagents/researchers/gpt-researcher.md`, and clean the
+   raw output with the rules that file describes (strip codex's session-metadata
+   and event lines). If codex is not found locally (or not signed in:
    `codex login --device-auth`), fall back to dispatching that persona as a
    Task subagent instead, but say so explicitly: "codex CLI not found locally —
    using Claude-side approximation, not real GPT." Never silently substitute
@@ -49,7 +48,7 @@ roleplaying as other models.
 5. **Manual findings** — check `sigma/specs/{date}-{slug}/manual/*.md` for
    any pre-completed findings a human dropped in before or during this run.
    Fold each file in as an additional source, same rules as everything else.
-6. **Synthesize**: cross-reference ALL returned findings (deep-research skill
+6. **Synthesize**: cross-reference all returned findings (deep-research skill
    output, real CLI dispatch output, persona-fallback output if used, MCP
    search-tool output, manual findings): dedupe overlapping claims, promote
    claims confirmed by 2+ sources, flag single-source claims as unverified,

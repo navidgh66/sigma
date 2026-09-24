@@ -48,7 +48,10 @@ for step in range(MAX_STEPS):                 # hard cap — never unbounded
 ```
 - Hard step cap + budget guard prevent runaway loops.
 - Detect stuck loops (same action repeated, no state change) and break/redirect.
-- Manage context: summarize or drop old turns before overflow; keep the task + recent steps.
+- Manage context before overflow with server-side compaction or context editing, or replace the
+  whole history with one summary. On Claude Opus 5.5, summarizing older turns while replaying
+  newer ones with their thinking blocks edits the conversation prefix and invalidates (or 400s)
+  those blocks.
 
 ## Unattended runs (Claude Opus 5.5)
 - A text-only end of turn (`stop_reason: "end_turn"`) is a report, not proof the task is done.

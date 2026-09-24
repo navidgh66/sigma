@@ -38,7 +38,8 @@ Scenario: <behavior name>
   Then <measurable, falsifiable outcome>
 ```
 
-Cover the happy path AND give edge cases their own **named** scenarios:
+Cover the happy path and give edge cases their own **named** scenarios. Two
+illustrative shapes (derive the real ones from this spec's own error paths):
 
 ```gherkin
 Scenario: null input rejected

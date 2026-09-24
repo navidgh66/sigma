@@ -17,9 +17,14 @@ description: PASS/WARN/FAIL verifier for prompt-injection defense, output schema
   to a third-party API.
 - **F5 unsanitized output to sink**: model output written to shell/SQL/HTML/eval without escaping
   (downstream injection: the model is an untrusted source too).
+- **F6 params that 400 on Claude Opus 5.5**: `temperature`/`top_p`/`top_k`, `thinking: {type:
+  "disabled"}` or `budget_tokens`, forced `tool_choice` (`any`/`tool`), or a trailing
+  assistant-turn prefill. Use `effort`, prompt steering under `tool_choice: auto`, and structured
+  outputs instead.
 
 ## WARN (justify or fix)
-- **W1**: no `response_format`/tool-schema constraint where one exists for the provider.
+- **W1**: no schema constraint where the provider has one (Claude: `output_config.format` or
+  `strict: true` tools; OpenAI: `response_format`).
 - **W2**: no timeout/retry-with-backoff on API calls.
 - **W3**: no prompt caching on a large stable prefix (cost left on the table).
 - **W4**: no eval/golden-set gate on prompt or model changes.

@@ -35,6 +35,14 @@ def test_deep_args_appended_only_when_deep():
     assert "-c" in deep and "tools.web_search=true" in deep
 
 
+def test_claude_deep_args_allow_web_tools_only_when_deep():
+    # -p mode can't ask for permission, so the web/deep lane must allow the web tools.
+    adapter = ADAPTERS["claude"]
+    assert "--allowedTools" not in adapter.build_argv("t", deep=False)
+    deep = adapter.build_argv("t", deep=True)
+    assert deep[-3:] == ["--allowedTools", "WebSearch", "WebFetch"]
+
+
 def test_gpt_adapter_sandbox_param_defaults_read_only():
     """Default sandbox is unchanged — byte-identical to pre-existing behavior."""
     adapter = ADAPTERS["gpt"]

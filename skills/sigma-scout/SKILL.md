@@ -25,11 +25,10 @@ review gate — the tool never silently mutates the bundle.
 ## Relevance bar (how candidates are judged)
 1. **Relevance FLOOR — pure noise is dropped, not just out-ranked.** A hit needs at
    least one *whole-token* domain-keyword match to clear the floor; a popular-but-
-   off-topic skill scoring only on the capped star bump never surfaces. (Scout used
-   to surface whatever it found up to the cap — the floor closes that hole.)
+   off-topic skill scoring only on the capped star bump never surfaces.
 2. **Token match, not substring.** Domain terms match on whole tokens, so `rag`
    credits "rag retrieval" but NOT "sto**rag**e"/"f**rag**ment", and `data` does not
-   match "meta**data**". Substring overlap inflated relevance on noise.
+   match "meta**data**".
 3. **Domain fit dominates; quality second.** Keyword overlap drives the score; stars +
    recency only break ties (the star bump is capped so popularity can't outrank fit).
 4. **Per-author diversity cap.** At most a few hits from one author surface, so a

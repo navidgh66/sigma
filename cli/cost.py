@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Model tiers, cheapest → strongest. Recommendation maps an axis's reasoning load
-# onto one of these (see performance.md's model-selection strategy).
+# onto one of these.
 TIER_CHEAP = "haiku"
 TIER_MID = "sonnet"
 TIER_STRONG = "opus"

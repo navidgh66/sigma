@@ -77,8 +77,7 @@ stop → emit final verdict + the human queue
 - **SURFACED** — hit a stop condition with findings remaining. Emit:
   - the human queue: each SURFACE finding + the exact decision needed
   - the per-round CRIT+HIGH trend (did it converge or stall?)
-  Never reported as READY — a surfaced loop is honest about what's unresolved
-  (skeptical, like `_verdict_pass`).
+  Never reported as READY: a surfaced loop is honest about what's unresolved.
 
 ## Rules
 

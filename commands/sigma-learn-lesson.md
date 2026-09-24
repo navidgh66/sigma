@@ -28,8 +28,8 @@ or invokes `/sigma-learn-lesson`.
 2. **Pick a topic** — a short noun phrase naming what the lesson is about (e.g.
    "tokenize corpus"). The skill title is `session lesson: <topic>`.
 3. **Check for contradictions** — scan `skills/**/SKILL.md` for an existing lesson
-   with the SAME domain + same topic (the `session lesson:` / `verify failed:`
-   prefix is ignored when matching). If one exists and disagrees, keep it: never
+   with the SAME domain + same topic (ignore a leading failure-mode prefix such as
+   `session lesson:`, `loop failed:`, `verify failed:` or `e2e failed:` when matching). If one exists and disagrees, keep it: never
    delete or overwrite it. Add a `⚠ CONTRADICTION` marker and a line to
    `skills/CONTRADICTIONS.md`. Humans decide.
 4. **Write** `skills/<slug>/SKILL.md` where `<slug>` is the kebab-cased title (if
