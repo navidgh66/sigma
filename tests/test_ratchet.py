@@ -54,3 +54,14 @@ def test_ratchet_never_overwrites_an_earlier_lesson(tmp_path):
     assert "lesson A" in first.read_text()
     assert second.parent.name == "loop-failed-tokenize-corpus-2"
     assert "CONTRADICTION" in second.read_text() and str(first.parent.name) in second.read_text()
+
+
+def test_rendered_frontmatter_is_valid_yaml():
+    import yaml
+
+    body = render_skill("loop failed: tokenize: corpus", "x", domain="nlp", created="2026-09-24")
+    front = body.split("---")[1]
+    meta = yaml.safe_load(front)
+    assert meta["description"] == "Avoid recurrence of: loop failed: tokenize: corpus"
+    assert meta["metadata"]["domain"] == "nlp"
+    assert str(meta["metadata"]["created"]) == "2026-09-24"  # YAML reads it as a date

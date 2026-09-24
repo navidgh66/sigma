@@ -24,7 +24,8 @@ Implement a single task with **only the relevant domain context** loaded.
    `sigma-implementer` agent). Search the codebase before assuming anything is
    missing (ripgrep-first).
 6. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <snapshot> --root <root>`.
-   Any path it prints is a pre-existing test that was edited or deleted: restore it
+   Any path it prints is a pre-existing test that was edited or deleted: put it back
+   with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" restore <snapshot> --root <root>`
    and fix the code instead. If you believe the test itself is wrong, say which one
    and why, and let the user decide.
 7. Write a short `impl/{task_id}.md` note: what changed, why, which scenarios
@@ -110,8 +111,10 @@ agent hallucinate on the next run; the docs are part of the deliverable.
 ## Multiple tasks in parallel ("team")
 
 `/implement-task` is single-task. To work several independent tasks at once
-(non-overlapping files), dispatch one `sigma-implementer` per task in a single
-message with `isolation: worktree` (same as `/loop`'s parallel mode).
+(non-overlapping files), give each its own worktree (`git worktree add
+<root>/.worktrees/<id> -b sigma-loop/<id>`), snapshot tests there, and dispatch one
+`sigma-implementer` per task in a single message, each told to work only in its
+worktree (same as `/loop`'s parallel mode).
 Serialize any tasks that share files. Each still gets its own `/verify`.
 
 ## Rules

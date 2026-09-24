@@ -153,7 +153,8 @@ Per task, with distinct agents from the plugin's `agents/`:
 2. **`sigma-implementer`** (effort medium) builds the task against its BDD scenario
    and up to 5 recalled lessons for its domain.
 3. **Tamper guard** — `scripts/test_guard.py check`: an edited or deleted
-   pre-existing test fails the attempt. New tests are fine.
+   pre-existing test fails the attempt and `restore` puts the originals back from
+   the snapshot's copies. New tests are fine.
 4. **`sigma-verifier`** (effort medium, no Edit/Write tools) runs the tests itself,
    quotes the evidence, and ends with `VERDICT: PASS` or `FAIL` (no verdict = FAIL).
 5. **`sigma-e2e`** (only for `[scenario: ...]` tasks) drives the scenario live:
@@ -175,9 +176,11 @@ runs: a text-only end of turn is a report, not proof the work is done.
 
 - **Test-first** — say "TDD": `sigma-test-writer` (effort low) writes the failing
   test first, then the snapshot is retaken so that test is protected too.
-- **Parallel** — say "in parallel": independent tasks go to implementers in
-  `isolation: worktree`, each checked in its own worktree and merged back on pass;
-  the lead tracks `elapsed Ns / Bs` against a time budget.
+- **Parallel** — say "in parallel": the lead creates a git worktree per independent
+  task (`.worktrees/<id>`), snapshots its tests there, dispatches the implementers
+  together, checks each in its own worktree and merges it back on pass (a conflict
+  is aborted and the task marked `blocked`); it tracks `elapsed Ns / Bs` against a
+  time budget.
 - **Time budget** — give one ("you have 30 minutes") and it lands in
   `budget_seconds`; the Stop hook's nudge carries `elapsed / budget`.
 

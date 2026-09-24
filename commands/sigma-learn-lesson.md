@@ -39,7 +39,7 @@ or invokes `/sigma-learn-lesson`.
    ```markdown
    ---
    name: session-lesson-<topic-slug>
-   description: Avoid recurrence of: session lesson: <topic>
+   description: "Avoid recurrence of: session lesson: <topic>"
    metadata:
      domain: <domain>
      created: <YYYY-MM-DD>

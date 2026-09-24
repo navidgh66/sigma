@@ -14,12 +14,12 @@ multi-model `research`, `review`/`profile`, `learn`, and setup + hygiene.
 Research-first, spec-driven, loop-engineered: `/loop` runs every open task to done
 in-session with distinct implementer/verifier agents, a test tamper guard, and a
 Stop hook that keeps the run going until tasks settle (Opus 5.5 unattended-run
-pattern). 670 pytest tests, ruff clean.
+pattern). 673 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q                           # run all 670 tests (must stay green)
+python3 -m pytest tests/ -q                           # run all 673 tests (must stay green)
 python3 -m ruff check cli/ tests/ hooks/ scripts/      # lint (py39 target)
 python3 -m cli.main --help                            # CLI help
 
@@ -115,7 +115,14 @@ tests/                   pytest; pure logic tested with fakes
 - **Agent frontmatter is YAML.** Unquoted `[x: y]` in a `description` breaks
   parsing (`tests/test_plugin_agents.py` catches it).
 - **Tamper guard** skips `.git`, `node_modules`, venvs, `dist`, `build` anywhere and
-  `sigma/` only at the project root. New test files are allowed.
+  `sigma/` only at the project root. New test files are allowed. `snapshot` keeps
+  copies in `<snapshot>.d/`; `restore` puts back edited/deleted originals so a failed
+  task never leaks edited tests into the next baseline.
+- **Parallel `/loop`** creates worktrees itself (`git worktree add .worktrees/<id>`)
+  before dispatch, since the baseline snapshot must exist first; a merge conflict is
+  `git merge --abort`ed and the task marked `blocked`.
+- **Lesson frontmatter** quotes `description` (it contains `: `, invalid as a plain
+  YAML scalar); `created:` stays unquoted.
 - **Lessons never overwrite:** a same-titled lesson goes to `<slug>-2/` and flags a
   contradiction in `skills/CONTRADICTIONS.md`; humans resolve.
 - **Recall excludes** lessons without `metadata.domain` and anything under

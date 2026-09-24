@@ -7,6 +7,7 @@ here) so rendering stays deterministic.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import List, Optional
@@ -20,7 +21,10 @@ def render_skill(
     failure_title: str, lesson: str, domain: Optional[str] = None, created: Optional[str] = None
 ) -> str:
     """Render a SKILL.md body that ratchets a failure into permanent knowledge."""
-    front = ["---", f"name: {_slug(failure_title)}", f"description: Avoid recurrence of: {failure_title}"]
+    # Quoted: the description contains ": " (and titles may too), which is invalid
+    # in a plain YAML scalar. A JSON string is a valid YAML double-quoted scalar.
+    description = json.dumps(f"Avoid recurrence of: {failure_title}", ensure_ascii=False)
+    front = ["---", f"name: {_slug(failure_title)}", f"description: {description}"]
     meta = []
     if domain:
         meta.append(f"  domain: {domain}")

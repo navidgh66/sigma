@@ -100,6 +100,9 @@ updates the file).
 5. **Tamper guard:** if the implementer changed any protected test file, or deleted/
    edited any pre-existing test file, the attempt fails with reason "implementer edited
    tests: <paths>". New test files the implementer adds are allowed.
+   The snapshot keeps copies of every test file; on a tamper failure (and before a task
+   is marked `failed`) the lead restores the originals, so edited tests never leak into
+   the next task's baseline. (Added after Codex review.)
 6. Dispatch `sigma-verifier` (fresh context, the diff + task + scenario + domain
    verifier and logic-evaluator checklists). Skeptical parse: no `VERDICT: PASS` line
    means FAIL.
@@ -160,8 +163,12 @@ dispatched agents before the turn can end.
 
 ### 3.5 Parallel mode (opt-in)
 
-Only when the user asks ("in parallel", "as a team"). Independent tasks (no shared
-files) are dispatched to `sigma-implementer` in one message with `isolation: worktree`.
+Only when the user asks ("in parallel", "as a team"). The lead creates one git worktree
+per independent task (`.worktrees/<id>`, branch `sigma-loop/<id>`) and snapshots its tests
+there before dispatching the implementers in one message; checks run in that worktree; a
+passing branch is merged back, a conflict is aborted and the task marked `blocked`.
+(Changed from `isolation: worktree` after Codex review: the baseline must exist before
+dispatch.)
 The lead sets `budget_seconds` (user-given or a default of 1800) and includes
 `elapsed Ns / Bs` in each subagent brief and in its own status lines (5.5: time signals
 for multiagent harnesses). Tasks that touch the same files run serially.

@@ -45,7 +45,8 @@ def test_loop_command_wires_guards_and_unattended_paragraph():
     loop = (ROOT / "commands" / "loop.md").read_text()
     for needle in ["loop-state.json", "test_guard.py", "--root <root>", "sigma-implementer",
                    "sigma-verifier", "sigma-e2e", "sigma-test-writer", "blocker",
-                   "ends your turn", "- [x]", "merged back", "-2/"]:
+                   "ends your turn", "- [x]", "git merge --abort", "-2/", "restore",
+                   "git worktree add"]:
         assert needle in loop, needle
     assert "ends your turn" not in (ROOT / "commands" / "implement-task.md").read_text()
 

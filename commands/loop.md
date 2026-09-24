@@ -39,7 +39,7 @@ Say one line of intent before each task, and a one-line result after it.
 
 1. Set the task `in_progress`. Recall up to 5 lessons for its domain (the `sigma-lessons`
    skill, newest first).
-2. Snapshot the tests:
+2. Snapshot the tests (hashes plus backup copies in `<snapshot>.d/`):
    `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" snapshot <workspace>/.test-snapshot-<id>.json --root <root>`
 3. Test-first, only if the user asked for TDD: dispatch `sigma-test-writer`, then take
    the snapshot again so its new test is protected too.
@@ -49,7 +49,9 @@ Say one line of intent before each task, and a one-line result after it.
 5. Tamper check:
    `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <workspace>/.test-snapshot-<id>.json --root <root>`
    Exit 1 means the implementer edited or deleted existing tests: the attempt fails with
-   the listed paths as the reason (the verifier is skipped).
+   the listed paths as the reason (the verifier is skipped). Put the originals back
+   before anything else runs:
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" restore <workspace>/.test-snapshot-<id>.json --root <root>`
 6. Dispatch `sigma-verifier` (fresh context) with the task, domain, scenario, the changed
    files, and the lessons. No `VERDICT: PASS` line means FAIL.
 7. If verify passed and the task has a scenario: dispatch `sigma-e2e` with the scenario.
@@ -57,21 +59,26 @@ Say one line of intent before each task, and a one-line result after it.
    do not fail the attempt for it. No verdict line means ERROR.
 8. Pass: status `passed`, and tick the task's line in `tasks.md` (`- [ ]` to `- [x]`)
    so a later run does not redo it. Fail: `attempts += 1`; if `attempts < 3`, retry from step 4
-   with the failure findings; otherwise status `failed` and ratchet a lesson (below),
-   then move to the next task.
+   with the failure findings; otherwise run the `restore` command above (so no edited
+   test leaks into the next task's baseline), set status `failed`, ratchet a lesson
+   (below), and move to the next task.
 
 Parallel, only when the user asks ("in parallel", "as a team"):
 
 - Pick tasks that touch different files; tasks that share files run one after another.
 - Set `budget_seconds` (the user's figure, else 1800) and put `elapsed Ns / Bs` in each
   brief and in your own status lines.
-- Dispatch one `sigma-implementer` per task in a single message with
-  `isolation: worktree`. Each worktree is that task's `<root>` for steps 2 to 7: take
-  the snapshot there before dispatch, and run the tamper check, `sigma-verifier` and
-  `sigma-e2e` against that worktree path.
-- A passing task's worktree branch is merged back into the branch the loop started on
-  before it is marked `passed`. A merge conflict: leave the worktree in place, set the
-  task `blocked` with the conflict in `note`, and continue with the others.
+- Create each task's worktree yourself before dispatch, so the baseline exists first:
+  `git worktree add <root>/.worktrees/<id> -b sigma-loop/<id>`. That path is the
+  task's `<root>` for steps 2 to 7: snapshot there, then dispatch one
+  `sigma-implementer` per task in a single message, each told to work only inside its
+  worktree path, and run the tamper check, `sigma-verifier` and `sigma-e2e` against
+  that path.
+- Merge a passing task's branch back into the branch the loop started on
+  (`git merge sigma-loop/<id>`) before marking it `passed`, then remove its worktree.
+  On a merge conflict run `git merge --abort` so the next merge starts clean, leave the
+  worktree in place, set the task `blocked` with the conflict in `note`, and continue.
+  A failed task's worktree is removed (`git worktree remove --force`).
 - Wait for every dispatched agent before ending a turn.
 
 ## 3. Lessons (on a failed task)
@@ -85,7 +92,7 @@ First check for an existing lesson on the same topic in the same domain (the way
 ```markdown
 ---
 name: <slug of "loop failed: <task title>">
-description: Avoid recurrence of: loop failed: <task title>
+description: "Avoid recurrence of: loop failed: <task title>"
 metadata:
   domain: <domain>
   created: <YYYY-MM-DD>
@@ -103,7 +110,8 @@ metadata:
 ## 4. Finish
 
 When no task is `open` or `in_progress`: set `status` to `done`, delete the
-`.test-snapshot-*.json` files, and give the recap: passed, failed (with the reason),
+`.test-snapshot-*.json` files and their `.d/` backups, and give the recap: passed,
+failed (with the reason), blocked (with what blocks them, including kept worktrees),
 lessons written, tasks left out by the cap. Suggest `/simplify` for a cleanup pass and
 `/review` before merging.
 
