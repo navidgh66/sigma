@@ -17,7 +17,7 @@ description: PASS/WARN/FAIL verifier for prompt-injection defense, output schema
   to a third-party API.
 - **F5 unsanitized output to sink**: model output written to shell/SQL/HTML/eval without escaping
   (downstream injection: the model is an untrusted source too).
-- **F6 params that 400 on Claude Opus 5.5**: `temperature`/`top_p`/`top_k`, `thinking: {type:
+- **F6 params that 400 on Claude Opus 5.5**: non-default `temperature`/`top_p`/`top_k`, `thinking: {type:
   "disabled"}` or `budget_tokens`, forced `tool_choice` (`any`/`tool`), or a trailing
   assistant-turn prefill. Use `effort`, prompt steering under `tool_choice: auto`, and structured
   outputs instead.
