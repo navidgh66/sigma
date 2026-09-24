@@ -16,6 +16,9 @@ description: PASS/WARN/FAIL verifier for tool schema validity, eval coverage, an
 - **F5 no eval suite**: changes to agent behavior with no automated eval to catch regressions.
 - **F6 prompt-injection unguarded**: tool outputs / retrieved content flow into the model with no
   defense, and no eval case tests injection resistance.
+- **F7 end of turn treated as done**: the loop stops on `stop_reason: "end_turn"` with no checklist
+  or completion check (a progress report ends the run halfway), or it auto-continues with no cap
+  (a stuck run never ends). Want: checklist-driven completion + 2-3 capped continuations.
 
 ## WARN (justify or fix)
 - **W1**: overlapping/ambiguous tools likely to be mis-selected.
@@ -29,7 +32,8 @@ description: PASS/WARN/FAIL verifier for tool schema validity, eval coverage, an
 ## PASS
 - Every tool schema valid, typed, with bounds/enums; matches its handler; args validated server-side.
 - Destructive actions gated by independent confirmation/evaluator (maker/checker separated).
-- Loop has step cap + budget guard + stuck detection.
+- Loop has step cap + budget guard + stuck detection; completion comes from a checklist or
+  completion check, not from `end_turn`.
 - Eval suite covers happy/edge/error/multi-step/adversarial, tagged, isolated, with end-state checks.
 - Prompt-injection defense present and tested by eval cases.
 - Tool outputs truncated; errors actionable.

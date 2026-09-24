@@ -38,8 +38,7 @@ scratch/
 sigma/reviews/
 sigma/profile/
 sigma/costs.jsonl
-sigma/evals/*/report.md
-sigma/specs/*/trajectory.jsonl
+sigma/specs/*/.test-snapshot-*.json
 sigma/claude-md-check.md
 sigma/docs-check.md
 CLAUDE.local.md

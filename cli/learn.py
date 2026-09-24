@@ -29,9 +29,13 @@ from typing import Callable, List, Optional
 
 from cli.codetour import validate_tour
 from cli.graphify import build_extract_argv, graphify_status, report_block
-from cli.paths import slugify
+from cli.paths import sigma_home, slugify
 from cli.runner import AgentRunner, write_artifact
-from cli.skill_map import vendor_dir
+
+
+def vendor_dir() -> Path:
+    """Vendored-skills directory inside the sigma install."""
+    return sigma_home() / "skills" / "vendor"
 
 # Sentinel that separates the architecture map from the tour JSON block in the
 # agent's output. The agent is instructed to emit exactly this structure.
@@ -124,7 +128,7 @@ def _inject_learn_skills(prompt: str, vendor: Path) -> str:
     """Prepend the learn skills' bodies. They live top-level under skills/vendor/.
 
     LEARN_SKILLS aren't pipeline stages, so we read them directly from
-    skills/vendor/<slug>/SKILL.md rather than through skill_map's stage mapping.
+    skills/vendor/<slug>/SKILL.md.
     """
     blocks: List[str] = []
     for slug in LEARN_SKILLS:

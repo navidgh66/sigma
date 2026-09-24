@@ -27,7 +27,7 @@ This is the third leg of a trio; know which one you are:
   `CLAUDE.md` for a developer joining the project. Audience: the next
   contributor working ON the code.
 - **`sigma-present`** — transforms an EXISTING sigma pipeline artifact
-  (`research.md`, `spec.md`, `tasks.md`, `board.md`, verify output) into HTML.
+  (`research.md`, `spec.md`, `tasks.md`, verify output) into HTML.
   It never generates fresh documentation content — it only re-renders what
   another stage already wrote.
 - **`sigma-docs` (this skill)** — generates FRESH documentation FROM the

@@ -1,6 +1,6 @@
 ---
 name: code-simplifier
-description: Use when refining already-verified code to fight AI slop — over-abstraction, dead code, duplication, needless cleverness — while preserving behaviour exactly. Powers `sigma loop --simplify`. The simplifier is a DISTINCT agent from the implementer; cleanup is re-verified, never a gate.
+description: Use when refining already-verified code to fight AI slop — over-abstraction, dead code, duplication, needless cleverness — while preserving behaviour exactly. Pairs with Claude Code's built-in /simplify, which /loop suggests after a run. The simplifier is a distinct agent from the implementer; cleanup is re-verified, never a gate.
 ---
 
 # Code Simplifier (anti-slop cleanup)

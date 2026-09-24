@@ -173,20 +173,21 @@ def test_config_fail_unknown_domain(tmp_path):
 
 
 # --------------------------- workspaces --------------------------- #
-def test_workspaces_ok_when_events_parse(tmp_path):
-    ws = tmp_path / "sigma" / "specs" / "2026-06-18-demo"
-    ws.mkdir(parents=True)
-    (ws / "events.jsonl").write_text('{"task":"T1","stage":"spec","status":"done"}\n')
-    c = checks.check_workspaces(root=tmp_path)
-    assert c.status == OK
+def test_workspaces_ok_when_no_specs(tmp_path):
+    assert checks.check_workspaces(root=tmp_path).status == OK
 
 
-def test_workspaces_warn_on_corrupt_events(tmp_path):
-    ws = tmp_path / "sigma" / "specs" / "2026-06-18-demo"
+def test_workspaces_validates_loop_state(tmp_path):
+    ws = tmp_path / "sigma" / "specs" / "2026-09-24-x"
     ws.mkdir(parents=True)
-    (ws / "events.jsonl").write_text("NOT JSON\n")
+    (ws / "loop-state.json").write_text('{"status": "done", "tasks": []}')
     c = checks.check_workspaces(root=tmp_path)
-    assert c.status == WARN
+    assert c.status == OK and "1 loop state" in c.detail
+    (ws / "loop-state.json").write_text("{broken")
+    c = checks.check_workspaces(root=tmp_path)
+    assert c.status == WARN and "2026-09-24-x" in c.detail
+    (ws / "loop-state.json").write_text("[]")  # valid JSON, wrong shape
+    assert checks.check_workspaces(root=tmp_path).status == WARN
 
 
 # --------------------------- rtk --------------------------- #

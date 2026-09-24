@@ -56,22 +56,6 @@ def test_gpt_adapter_sandbox_param_overridable():
     assert "read-only" not in argv
 
 
-def test_codex_argv_builder_read_only():
-    from cli.models import codex_argv_builder
-
-    build = codex_argv_builder("read-only")
-    argv = build("do the thing", None)
-    assert argv == ["codex", "exec", "--sandbox", "read-only", "--color", "never", "do the thing"]
-
-
-def test_codex_argv_builder_workspace_write():
-    from cli.models import codex_argv_builder
-
-    build = codex_argv_builder("workspace-write")
-    argv = build("write a test", "some-model-alias-ignored")
-    assert argv == ["codex", "exec", "--sandbox", "workspace-write", "--color", "never", "write a test"]
-
-
 def test_clean_output_claude_passthrough():
     assert clean_output("claude", "  findings  ") == "findings"
 
@@ -235,6 +219,6 @@ def test_build_argv_without_alias_is_unchanged():
 
 
 def test_build_argv_gpt_ignores_model_alias():
-    # codex has no alias-passthrough --model contract (same law as
-    # codex_argv_builder): the alias is dropped, argv unchanged.
+    # codex has no alias-passthrough --model contract: the alias is dropped,
+    # argv unchanged.
     assert ADAPTERS["gpt"].build_argv("hi", model_alias="opus") == ADAPTERS["gpt"].build_argv("hi")

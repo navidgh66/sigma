@@ -19,6 +19,7 @@ from __future__ import annotations
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -26,8 +27,8 @@ from cli import review as rv
 from cli.cost import build_record, estimate, ledger_path, read_ledger
 from cli.domains_index import context_engines_dir
 from cli.graph_impact import impact_for, load_graph, render_impact_section
-from cli.loop import ratchet_to_skills
 from cli.profile_manifest import profile_path, staleness
+from cli.ratchet import ratchet_to_skills
 from cli.runner import AgentRunner
 from cli.skills_recall import recall_lessons, render_recall_block
 
@@ -289,7 +290,7 @@ def _ratchet_blocking(
                 domain = inferred[0]
         title = f"review finding: {f.message.strip()[:80]}"
         lesson = f"[{f.severity}/{f.axis}] {f.file or '-'}: {f.message.strip()}"
-        paths.append(ratchet_to_skills(skills_dir, title, lesson, domain))
+        paths.append(ratchet_to_skills(skills_dir, title, lesson, domain, created=date.today().isoformat()))
     return paths
 
 

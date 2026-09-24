@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-951%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-673%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -31,9 +31,10 @@ happens — from classic ML and deep learning to NLP, RL, data engineering, MLOp
 LLM engineering, and AI-agent harness design.
 
 It's **plugin-first**: every pipeline stage is a native slash command, the domain
-knowledge and the learning layer are native skills. A thin CLI handles only what
-Claude Code can't do in a single session — real parallel multi-model research,
-autonomous hands-off runs, a live kanban board, and setup.
+knowledge and the learning layer are native skills, and the loop runs in your
+session with its own role agents and a Stop-hook guard. A thin CLI handles only
+what Claude Code can't do in a single session (real parallel multi-model
+research) plus setup and hygiene.
 
 > "You shouldn't be prompting coding agents anymore. You should be designing
 > loops that prompt your agents."
@@ -54,54 +55,31 @@ autonomous hands-off runs, a live kanban board, and setup.
   blueprint and the spec *before* any code exists. `/grill-loop` auto-drives
   grill → triage → edit → re-grill (mechanical fixes auto-applied, judgment calls
   surfaced). A logic flaw caught here costs a sentence, not a rewrite.
-- **🔁 Closed learning loop** — failures ratchet into `skills/` **and are recalled
-  by domain on the next run**. The loop doesn't just record mistakes; it stops
-  repeating them.
-- **🧑‍🔧 Maker ≠ checker, enforced** — implementer, verifier, and the optional
-  logic-evaluator are always *distinct* agents. Separation is a `ValueError`, not
-  a guideline.
-- **🤖 Autonomous when you want it** — `sigma loop --execute` runs maker→checker
-  cycles with the **correctness axes ON by default**: a logic-evaluator axis
-  (`--no-logic` opts out), a post-pass simplify cleanup (`--no-simplify`), an
-  advisor that escalates a fail to a distinct opus-tier agent for a correction
-  plan (`--no-advisor`), and a live-scenario gate that drives each task's mapped
-  BDD scenario against the running app — a real behavioral FAIL blocks the
-  cycle, an unreachable-app ERROR doesn't (`--no-e2e`). Also **routed by model
-  tier by default** (mechanical roles → sonnet, logic → opus; `--no-route` opts
-  out). `--tdd` (writes the failing test first) and `--team` (independent tasks
-  in parallel, each in its own **real git worktree**, merged back on pass,
-  conflicts surfaced — never auto-resolved) stay opt-in — they change the
-  execution model, not just add a check. `--codex-verify`/`--codex-tdd` swap the
-  verifier/test-writer role to the `codex` CLI instead of `claude` for a genuine
-  cross-provider maker≠checker check — opt-in, and deliberately excluded from
-  `--all` (needs a second CLI + its own auth). `--all` turns on every axis including
-  those two. `hermes --auto` chains whole stages until a human gate — and routes
-  each stage by tier (planning/grill stages → the strong model, execution stages
-  → the mid tier; `--no-route` opts out). `sigma research`'s cross-referencing
-  synthesis pass runs on the strong tier by default too. The verify + logic
-  checkers receive each task's mapped BDD scenario as acceptance criteria, not
-  just the task title.
+- **🔁 A loop that finishes** — `/loop` runs every open task to done in your
+  session. Each task gets a distinct `sigma-implementer` and a read-only
+  `sigma-verifier` that must run the tests itself and quote the evidence. A
+  plugin **Stop hook** reads `loop-state.json` and sends the session back to work
+  while tasks are open and nothing blocks them (at most 3 nudges without
+  progress), because a text-only end of turn is a report, not proof the work is
+  done (the Opus 5.5 guide's unattended-run pattern).
+- **🧑‍🔧 Maker ≠ checker, by tool permission** — the verifier and e2e agents have no
+  Edit/Write tools, and a **test tamper guard** fails any attempt that edits or
+  deletes a pre-existing test. Agents edit tests to pass when merely told not to;
+  sigma checks it structurally.
+- **🧪 Proven live, not just covered** — tasks tagged `[scenario: ...]` get a
+  `sigma-e2e` agent that drives the spec's BDD scenario against the running app
+  (PASS/FAIL/ERROR; an unreachable app is ERROR, never a scored FAIL).
+- **🔁 Closed, capped learning loop** — a task that fails its retries ratchets a
+  lesson into `skills/`; the next run recalls the **5 newest** for that domain.
+  Small on purpose: big skill libraries measurably make agents pick the wrong one.
 - **🛠️ Bring your own design** — already have a design, plan, or big spec?
-  `/craft` is the in-session back-half conductor: hand it the artifact and it
-  drives `spec → grill → tasks → loop` to verified code, skipping the
-  `research → propose → blueprint` front half (`hermes --auto` covers that from a
-  blank start). Same human gates: grill BLOCK, spec approval, verify fail.
+  `/craft` drives `spec → grill → tasks → loop` to verified code, skipping the
+  `research → propose → blueprint` front half. Same human gates: grill BLOCK,
+  spec approval, a failed task.
 - **🎛️ Lean context** — only the domain a task needs is loaded, surfaced
   in-session by the `sigma-domains` skill. `sigma prune` cuts loaded-but-unused
-  MCP servers + plugins that tax every turn.
-- **📊 Measured, not guessed** — agent runs parse `claude --output-format json`
-  result envelopes, so trajectories carry **real** token/cost usage and the cost
-  ledger calibrates from actuals. `sigma lessons` correlates recalled lessons
-  with real cycle outcomes (working / not-working / archive candidates —
-  reversible archive, never a delete). `sigma docs-check` gates version parity
-  and stale test-count claims across README/CLAUDE.md/PLAYGROUND. `sigma eval
-  --from-spec` turns a spec's BDD scenarios into a standing eval set. `sigma
-  trajectory --economy` goes one level finer than the run total: it joins each
-  loop axis's **real** token spend with whether that axis actually produced value
-  this run (the logic axis caught a fail the checker missed, the advisor rescued a
-  cycle, …), ranks them by tokens-per-value-event, and surfaces an
-  idle-but-expensive axis as a prune candidate — surfaced, never auto-disabled,
-  and unmeasured axes are labeled, never estimated.
+  MCP servers + plugins that tax every turn; `sigma docs-check` keeps version and
+  test-count claims honest across the docs.
 - **🗺️ Graph-grounded onboarding** — `sigma learn` builds a real dependency graph
   of the repo (via graphify) and grounds its `ARCHITECTURE.md` + CodeTour in
   *extracted* structure, not an eyeball read.
@@ -120,20 +98,24 @@ the playbooks the field already converged on:
   to verify its work", show-evidence-don't-assert, and the adversarial **`/grill`**
   gate. ([building-effective-agents](https://www.anthropic.com/research/building-effective-agents))
 - **Google — agentic SDLC / "factory model"** → the developer's output is the
-  assembly line, not the widget; spec-driven stages, intelligent model-tier
+  assembly line, not the widget; spec-driven stages, model-tier and effort
   routing, and treating token burn as tracked OpEx (the **cost loop**).
 - **Loop engineering** → design loops that prompt agents instead of hand-prompting;
   failures **ratchet** into reusable skills and are recalled on the next run (the
   closed learning loop).
-- **TDD & verification literature** → the optional **`--tdd`** axis (failing test
-  first, RED→GREEN), the **`verification-before-completion`** discipline, and the
+- **TDD & verification literature** → the optional test-first mode (a distinct
+  `sigma-test-writer` writes the failing test, RED→GREEN), the **`verification-before-completion`** discipline, and the
   evidence that *decomposed, independent* checks beat holistic self-review — which
   is why grill scores per-axis and verify uses a distinct agent.
-- **Eval-first practice ("set the bar at the eval, not the demo")** → `sigma eval`
-  runs eval sets with an LM judge that is always a *distinct* agent from the
-  system under test, gated at a pass-rate threshold.
-- **Anti-slop refactoring practice** → the **`--simplify`** pass mirrors the
-  bundled `/simplify` four-axis cleanup, behaviour-preserving and re-verified.
+- **Anthropic — *Prompting Claude Opus 5.5*** → the in-session `/loop`: a
+  checklist the model updates, text-only turn ends treated as reports, capped
+  automatic continuations, the named early stops to avoid, per-role `effort`
+  instead of "think harder" lines, evidence instead of written-out reasoning, and
+  marking pasted text. ([guide](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5))
+- **2025-26 agent research** → tests protected from the implementer (agents edit
+  tests even when told not to), checkers that must run code, and a small capped
+  lesson recall (large skill libraries and long context files cost more than they
+  help).
 
 What's original here is the *integration*: one portable, plugin-first harness that
 wires these into a single research → spec → grill → implement → verify → loop
@@ -202,8 +184,9 @@ plugin), confirm-gated and with a separate warning before deleting your API keys
       ↓
 /verify          domain checks + BDD scenario coverage (separate checker agent)
       ↓
-/loop            autonomous: discover → implement → verify → ratchet failures
-                 (--e2e adds a live scenario gate per task)
+/loop            every open task to done: implementer → tamper guard → verifier
+                 (→ e2e if tagged), capped retries, lessons on failure; a Stop
+                 hook keeps it going until tasks settle
 
 /craft           bring your own design → drives spec → grill → tasks → loop
                  (the back half, in-session; enters mid-pipeline from an artifact)
@@ -211,15 +194,14 @@ plugin), confirm-gated and with a separate warning before deleting your API keys
 
 `/e2e` runs every BDD scenario in `spec.md` live against the running app —
 PASS/FAIL/ERROR per scenario, ratcheting only real FAILs. Callable any time
-after `/spec`, and wired into `/implement-task` (per-task) and `sigma loop
---e2e` (per-task gate) so a scenario "covered" by code is also proven to work.
+after `/spec`, and wired into `/implement-task` and `/loop` (per-task, through
+the `sigma-e2e` agent) so a scenario "covered" by code is also proven to work.
 
 `/grill` is a gate, not a numbered stage — skeptical, maker ≠ griller, **BLOCKs on
-a CRITICAL/HIGH logic flaw** (human may override). In the autonomous `hermes
---auto` chain the two gates run as stages and halt at a `grill-blocked` human gate.
+a CRITICAL/HIGH logic flaw** (human may override). `/craft` stops at the same gate.
 
-Any time, `/weave` folds the stage artifacts into one shareable `chain.html`
-(+ a machine-readable `chain.json`).
+To share an artifact, the `sigma-present` skill turns it into a single-file HTML
+deck or report.
 
 ---
 
@@ -249,28 +231,26 @@ in-session, plus setup:
 
 ```bash
 sigma research "topic" --deep   # exhaustive web-grounded multi-model brief + real synthesis + optional Firecrawl search tier (scrapes top-3 result pages for full content, not just snippets)
-sigma loop --topic <t> --execute --all   # autonomous, parallel, test-first, self-correcting, live-scenario-gated (logic/simplify/advisor/e2e are ON by default even without --all)
-sigma hermes "build it" --topic <t> --auto              # chain stages to a human gate
-sigma board --topic <t> --watch                         # live kanban over agent progress
-sigma weave --topic <t>                                 # artifacts → chain.html + chain.json
 sigma review <PR#|url>                                  # 3-axis team-change review (+ graph-impact section when a graphify graph exists)
+sigma profile                                           # codebase logic invariants → profile (grounds review)
+sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
 sigma claude-md-check                                   # check CLAUDE.md + CLAUDE.local.md against best-practice research
 sigma claude-md-create --target repo                    # scaffold a best-practice-shaped CLAUDE.md (capped ~200 lines)
-sigma profile                                           # codebase logic invariants → profile
-sigma learn                                             # codebase map → ARCHITECTURE.md + .tour (graph-grounded)
+sigma docs-check --check                                # version parity + stale test-count claims across the docs
 sigma scout                                             # discover relevant skills on skillsmp.com → install on approval
 sigma prune                                             # cut loaded-but-unused MCP/plugins → reversible disable
-sigma trajectory --topic <t> --efficiency               # real cycle pass rate + escalation rate (measured, not estimated)
-sigma trajectory --topic <t> --economy                  # per-axis token economy: tokens-per-value-event, idle-axis prune candidates
+sigma cost                                              # sigma's own heavy-op cost ledger
 sigma usage                                             # real Claude Code token/cache/cost via ccusage (wraps `npx ccusage@latest`)
 sigma doctor --update                                   # refresh CLI + plugin, then health-check
 ```
 
 **Two ways to run, by design:**
-- **Plugin (primary)** — stages run *in-session* as slash commands; they load the
-  domain context and stay steerable. This is where the work happens.
-- **CLI (escape hatch)** — parallel `research`, autonomous `loop`/`hermes`, live
-  `board`/`weave`, and setup (`onboard`/`doctor`). For when you want to walk away.
+- **Plugin (primary)** — stages and `/loop` run *in-session* as slash commands and
+  role agents; they load the domain context and stay steerable.
+- **CLI** — parallel `research`, `review`/`profile`, and setup + hygiene
+  (`onboard`/`doctor`/`learn`/`scout`/`prune`/`docs-check`). The old autonomous
+  CLI engine (`loop`, `hermes`, `board`, `weave`) was retired in 0.28.0; `/loop`
+  replaces it.
 
 ---
 
@@ -344,7 +324,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 | Skill | Does |
 |-------|------|
 | `sigma-domains` | loads the right domain context-engine for the task |
-| `sigma-lessons` | recalls past ratcheted lessons by domain |
+| `sigma-lessons` | recalls the 5 newest ratcheted lessons for a domain |
 | `sigma-grilling` | the adversarial grilling rubric (powers `/grill`) |
 | `sigma-grill-loop` | the bounded auto-grill loop (powers `/grill-loop`) |
 | `sigma-present` | exports an artifact to a single-file HTML deck / report |
@@ -362,22 +342,27 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 - **Maker ≠ checker** — the agent that builds never grades itself.
 - **Skeptical by default** — a missing `VERDICT: PASS` is a FAIL; a missing grill
   `VERDICT: READY` is a BLOCK. Silence is never a pass.
+- **Evidence over claims** — checkers run the tests and quote the output; a text
+  report is never proof the work is done.
 - **Reuse-first** — a laziness ladder (YAGNI → reuse → stdlib → native → installed
   → one-liner → only then new code) before any line is written.
-- **YAGNI** — no dashboards or telemetry until the single-user core proves out.
+- **YAGNI** — every harness piece encodes an assumption about what the model can't
+  do; when a newer model makes one unnecessary, remove it (0.28.0 cut ~3,800
+  lines this way).
 
 ---
 
 ## 📦 What's inside
 
-- **951 pytest tests, ruff-clean** — pure logic (config, routing, parsing, board
-  projection, cost, graph/scout/prune, git worktrees, BDD scenario parsing) is
-  separated from subprocess execution and fully tested with fakes (worktree/merge
-  logic is tested against real temp git repos). No real agent, network, or
-  settings file is touched in the CLI-behavior test suite.
-- **Plugin-first** — `commands/*.md` are native slash commands; `skills/*` are
-  native skills; `.claude-plugin/` makes it a one-command marketplace install.
-- **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime.
+- **673 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
+  lesson ratchet + recall, the Stop-hook decision, the tamper guard, cost,
+  graph/scout/prune) is separated from subprocess execution and tested with fakes.
+  No real agent, network, or settings file is touched by the suite.
+- **Plugin-first** — `commands/*.md` are native slash commands; `agents/*.md` are
+  the `/loop` role agents; `hooks/hooks.json` registers the loop guard; `skills/*`
+  are native skills; `.claude-plugin/` makes it a one-command marketplace install.
+- **Dependency-light** — standard library first; `pyyaml` + `rich` at runtime; the
+  hook and tamper guard are stdlib-only scripts.
 - **Python 3.9 target** — runs on the version you already have.
 
 ---

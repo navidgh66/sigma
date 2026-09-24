@@ -23,7 +23,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
 # Timeouts (seconds): quick is a from-memory pass; deep does live web research.
 QUICK_TIMEOUT = 300
@@ -53,7 +53,6 @@ class ModelAdapter:
     # Extra argv (template: {model}) injected right after the executable when a
     # model_alias is passed. Empty for adapters with no alias-passthrough
     # --model contract (gemini, codex) — the alias is then ignored, mirroring
-    # codex_argv_builder's law.
     model_args: List[str] = field(default_factory=list)
 
     def available(self) -> bool:
@@ -102,27 +101,11 @@ ADAPTERS: Dict[str, ModelAdapter] = {
         executable="codex",
         # `codex exec` runs non-interactively, subscription-backed (ChatGPT login).
         # {sandbox} defaults to read-only via build_argv; the loop's codex-backed
-        # test-writer role passes "workspace-write" instead (see codex_argv_builder).
-        arg_template=["{exe}", "exec", "--sandbox", "{sandbox}", "--color", "never", "{prompt}"],
+            arg_template=["{exe}", "exec", "--sandbox", "{sandbox}", "--color", "never", "{prompt}"],
         # Enable Codex's built-in web_search tool for deep research.
         deep_args=["-c", "tools.web_search=true"],
     ),
 }
-
-
-def codex_argv_builder(sandbox: str) -> Callable[[str, Optional[str]], List[str]]:
-    """Build an `AgentRunner.argv_builder`-shaped callable for a codex-backed role.
-
-    `model` is accepted (to match AgentRunner's argv_builder signature) but
-    ignored — codex's CLI has no alias-passthrough `--model` contract like
-    claude's, so forcing a sigma model-tier alias through it would silently
-    break if the alias isn't a real codex model name.
-    """
-
-    def build(prompt: str, model: Optional[str]) -> List[str]:
-        return ADAPTERS["gpt"].build_argv(prompt, sandbox=sandbox)
-
-    return build
 
 
 def available_models(requested: List[str]) -> List[str]:

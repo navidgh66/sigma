@@ -39,5 +39,5 @@ Decompose the spec into a **task breakdown** routed by domain.
 
 ## Next
 
-→ `/implement-task <id>` or `/loop` (pass `--e2e` to gate cycles on each
-task's mapped scenario running live)
+→ `/implement-task <id>`, or `/loop` to run every task to done (tasks with a
+`[scenario: ...]` tag get the live e2e check)

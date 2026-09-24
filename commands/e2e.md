@@ -27,13 +27,13 @@ code, actually driving it.
    - `FAIL` — ran to completion, Then's assertion was false. A real behavior
      bug.
    - `ERROR` — could not complete Given/When (app unreachable, tool crash,
-     timeout). Inconclusive — NOT a behavior verdict.
+     timeout). Inconclusive, not a behavior verdict.
 5. Write `sigma/specs/{date}-{slug}/e2e-report.md`: one row per scenario —
    name | verdict | evidence (screenshot ref / response body / stdout
    excerpt) — plus an overall summary.
 6. **Ratchet**: every `FAIL` (never `ERROR` — no lesson from absent evidence)
    writes a lesson via the exact `/sigma-learn-lesson` format (domain-tagged),
-   so `sigma loop --e2e` and `/implement-task` recall it next time.
+   so `/loop` and `/implement-task` recall it next time.
 
 ## Report format
 

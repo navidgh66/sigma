@@ -16,15 +16,16 @@ expect. Work top to bottom for a full walkthrough, or jump to a section.
 $ curl -fsSL https://raw.githubusercontent.com/navidgh66/sigma/main/installer/setup.sh | sh
 $ export PATH="$PATH:$HOME/.local/bin"
 $ sigma --help
-→ usage: sigma [-h] [--version] {init,research,propose,blueprint,spec,tasks,
-  implement-task,verify,loop,hermes,board,launch}
+→ usage: sigma [-h] [--version] {init,research,doctor,onboard,learn,session-context,
+  uninstall,setup-repo,scout,prune,profile,review,claude-md-check,docs-check,
+  claude-md-create,cost,usage}
 
 # from a clone, without installing:
 $ python3 -m cli.main --help
 
 # dev checks (must stay green)
-$ python3 -m pytest tests/ -q          # 951 passed
-$ python3 -m ruff check cli/ tests/    # All checks passed!
+$ python3 -m pytest tests/ -q          # all pass
+$ python3 -m ruff check cli/ tests/ hooks/ scripts/    # All checks passed!
 ```
 
 ### Or install as a Claude Code plugin (slash commands + skills)
@@ -35,13 +36,13 @@ $ python3 -m ruff check cli/ tests/    # All checks passed!
 ```
 
 → **sigma is plugin-first.** Every stage is a native slash command — `/research
-/propose /blueprint /spec /tasks /implement-task /verify /loop /hermes /board
-/weave /sigma-learn-lesson` — and `sigma-present`, `sigma-domains`, `sigma-lessons`
-are native skills. The pipeline **stages run in-session** (they load the domain
+/propose /blueprint /grill /spec /tasks /implement-task /verify /loop /craft /e2e
+/sigma-learn-lesson` — the role agents live in `agents/`, the loop guard in
+`hooks/`, and `sigma-present`, `sigma-domains`, `sigma-lessons` are native skills.
+The pipeline **stages and the loop run in-session** (they load the domain
 context-engine and are steerable).
-The `sigma` CLI keeps only what Claude Code can't do in-session: parallel
-`research`, the autonomous escape hatch (`loop`/`hermes`), `board`/`weave`, and
-setup. The per-stage CLI wrappers were retired.
+The `sigma` CLI keeps only what Claude Code can't do in-session (parallel
+`research`), review/profile, and setup + hygiene.
 
 ---
 
@@ -68,17 +69,16 @@ Local override: drop a `sigma.config.local.yml` next to it — deep-merged on lo
 
 ---
 
-## 2. The pipeline (8 stages)
+## 2. The pipeline
 
 ```
-research → propose → blueprint → spec → tasks → implement-task → verify → loop
+research → propose → blueprint →[grill]→ spec →[grill]→ tasks → implement-task → verify → loop
 ```
 
 Each stage reads the **prior** stage's artifact as context and writes its own.
 Run a stage **in-session** as a slash command (`/spec`, `/tasks`, …) — it loads
 the matching domain context-engine via the `sigma-domains` skill. (`sigma
-research` stays a CLI command for real parallel fan-out; `sigma loop`/`hermes`
-drive stages autonomously from the CLI.)
+research` stays a CLI command for real parallel fan-out.)
 
 ### 2a. `sigma research` — multi-model, cited
 
@@ -116,317 +116,89 @@ artifact and loads the right domain context-engine (`sigma-domains` skill):
 /spec             # architecture.md → spec.md
 /tasks            # spec.md → tasks.md  (domain-routed checklist)
 /implement-task   # tasks.md → impl/
-/verify           # spec.md (+ full chain via chain.json) → verify/
+/verify           # spec.md (+ the other workspace artifacts) → verify/
 ```
 
-Run them in the session for the topic's workspace. To drive the same stages
-**autonomously** from the terminal, use `sigma hermes`/`sigma loop` (below) —
-they call the stage library internally. (The old per-stage `sigma spec …`
-wrappers were retired; `claude -p` as an amnesiac subprocess was strictly
-weaker than running `/spec` in-session.)
+Run them in the session for the topic's workspace. `/craft` chains the back half
+(`spec → grill → tasks → loop`) from a design you bring.
 
-`tasks.md` lines look like this (parsed by the loop + board):
+`tasks.md` lines look like this (read by `/loop`):
 
 ```markdown
 - [ ] T1 (nlp): tokenize corpus
 - [x] T2 (mlops): register model
-- [ ] T3 (rl): eval policy
+- [ ] T3 (rl) [scenario: policy beats baseline]: eval policy
 ```
 
 ---
 
-## 3. `sigma loop` — autonomous maker→checker cycles
+## 3. `/loop` — the in-session loop
 
-Discovers incomplete tasks, runs an **implementer** then a distinct **checker**
-per task, ratchets failures into `skills/`.
+`/loop` runs every open task in `tasks.md` to done in your Claude Code session.
 
-```bash
-# Plan only (safe default) — shows what it WOULD do, runs nothing.
-$ sigma loop --topic "$T"
-→ sigma loop — 2 pending / 3 total
-    max_cycles: 20  (sequential cycles, one workspace)
-    • T1 [nlp] tokenize corpus
-      cycle=sigma-loop-t1 maker≠checker=True
-  (plan only — pass --execute to run maker→checker cycles)
-
-# Execute real cycles.
-$ sigma loop --topic "$T" --execute
-→ ✓ ran 2 cycle(s): 1 passed, 1 failed
-    ✓ tokenize corpus
-    ✗ eval policy
-      ratcheted → skills/verify-failed-eval-policy/SKILL.md
+```
+/loop
+→ wrote sigma/specs/2026-09-24-sentiment-clf/loop-state.json (3 tasks)
+  T1 (nlp) tokenize corpus: implementing…
+  T1 passed (verifier: 14 tests passed, quoted)
+  T2 (mlops) register model: tamper guard flagged tests/test_registry.py, retrying
+  T2 passed on attempt 2
+  T3 (rl) eval policy: e2e FAIL after 3 attempts → failed, lesson ratcheted
+  recap: 2 passed, 1 failed (skills/loop-failed-eval-policy/SKILL.md)
 ```
 
-**Rules enforced:**
-- Maker ≠ checker — passing the same runner instance raises `ValueError`.
-- Verdict parsing is skeptical — a checker reply missing `VERDICT: PASS` = FAIL.
-- A failed cycle writes a `SKILL.md` lesson AND that lesson is **recalled** into
-  future cycles in the same domain (the closed loop — see §4c).
+Per task, with distinct agents from the plugin's `agents/`:
 
-**Keep the Mac awake** for a long run (macOS only — wraps `caffeinate`):
+1. **Snapshot tests** — `scripts/test_guard.py snapshot` hashes every test file.
+2. **`sigma-implementer`** (effort medium) builds the task against its BDD scenario
+   and up to 5 recalled lessons for its domain.
+3. **Tamper guard** — `scripts/test_guard.py check`: an edited or deleted
+   pre-existing test fails the attempt and `restore` puts the originals back from
+   the snapshot's copies. New tests are fine.
+4. **`sigma-verifier`** (effort medium, no Edit/Write tools) runs the tests itself,
+   quotes the evidence, and ends with `VERDICT: PASS` or `FAIL` (no verdict = FAIL).
+5. **`sigma-e2e`** (only for `[scenario: ...]` tasks) drives the scenario live:
+   PASS / FAIL / ERROR, where ERROR (app unreachable) never fails the attempt.
+6. Pass → the task is ticked in `tasks.md`. Fail → up to 2 retries with the
+   verifier's findings, then `failed` + a ratcheted lesson.
 
-```bash
-$ sigma loop --topic "$T" --execute --keep-awake
-→   ☕ keep-awake on (caffeinate)
-  ... cycles run without the display/idle sleep timer kicking in ...
-```
+### 3a. Why it doesn't stop halfway — the Stop hook
 
-→ No-ops cleanly off macOS or if `caffeinate` is missing, so it's always safe to
-pass. caffeinate is torn down when the run ends (even on error).
+`loop-state.json` is the checklist. The plugin's `hooks/loop_guard.py` runs on
+every Stop: while a running loop has open tasks and no `blocker`, it sends the
+session back ("Your loop still has open tasks: T3 (…). Continue with them. If one
+is blocked, set `blocker` …"). It allows the stop after 3 nudges without progress
+(status `stopped`), when a blocker is recorded, or when every task is settled, and
+it fails open on any error. This is the Opus 5.5 guide's advice for unattended
+runs: a text-only end of turn is a report, not proof the work is done.
 
-### 3a. TDD mode — `--tdd` (test-first cycles)
+### 3b. Modes
 
-A distinct **test-writer** agent pens a FAILING test (RED) *before* the
-implementer exists; the implementer's prompt is then prefixed with that test and
-told to make it pass without weakening it (GREEN). One agent codes, another tests,
-a third checks — all enforced distinct.
+- **Test-first** — say "TDD": `sigma-test-writer` (effort low) writes the failing
+  test first, then the snapshot is retaken so that test is protected too.
+- **Parallel** — say "in parallel" (needs a clean working tree, else it runs
+  serially): the lead creates a git worktree per independent task
+  (`.worktrees/<run>-<id>`), snapshots its tests there, dispatches the implementers
+  together, checks each in its own worktree and merges it back on pass (a conflict
+  is aborted and the task marked `blocked`); it tracks `elapsed Ns / Bs` against a
+  time budget.
+- **Time budget** — give one ("you have 30 minutes") and it lands in
+  `budget_seconds`; the Stop hook's nudge carries `elapsed / budget`.
 
-```bash
-$ sigma loop --topic "$T" --execute --tdd
-→   🧪 TDD mode: a distinct agent writes a failing test before each implementer
-  ✓ tokenize corpus
-    test-first: ✓ written
-```
+### 3c. Lessons — capped, newest first, contradiction-safe
 
-→ If test-writing fails, the cycle aborts (nothing to build against) and ratchets
-the failure — the implementer never runs. Test artifacts land in `tests/`.
-
-### 3b. Team mode — `--team` (parallel tasks)
-
-Independent tasks run **concurrently**, each its own full cycle. The past-lessons
-recall snapshot is pre-built before fan-out, so parallel threads only read it
-(race-free, deterministic). Result order matches task order.
-
-```bash
-$ sigma loop --topic "$T" --execute --team
-→   👥 team mode: independent tasks run in parallel
-  ✓ tokenize corpus
-  ✓ train agent
-
-# Compose: parallel tasks, each test-first, triple-checked.
-$ sigma loop --topic "$T" --execute --team --tdd --logic
-```
-
-→ `--logic` adds the logic-evaluator axis (next section). Combine any of
-`--team --tdd --logic` freely.
-
----
-
-## 4. Logic-evaluator — the second verify axis
-
-Every domain ships `context-engines/<domain>/verifiers/logic-evaluator.md`. It
-grades **reasoning + plan↔implementation coherence**, NOT code style — a clean
-implementation of the *wrong logic* FAILS.
-
-- It runs as an optional **third distinct agent** in a loop cycle.
-- A cycle passes only when **both** the code-quality verifier AND the logic
-  evaluator return `VERDICT: PASS`.
-- Separation enforced: the logic checker must differ from maker and checker
-  (`ValueError` otherwise).
-
-Inspect one:
-
-```bash
-$ sed -n '1,20p' context-engines/rl/verifiers/logic-evaluator.md
-→ # Logic Evaluator: RL
-  ... MDP framing, reward design, algorithm fit, eval validity ...
-  End with: VERDICT: PASS  or  VERDICT: FAIL
-```
-
-In code (how the loop wires it), see `run_loop(..., make_logic_checker=...)` in
-`cli/loop.py`. NLP and RL evaluators are deep; the other 7 are lean.
-
----
-
-## 4a. wakeAgent gate — skip work, spend zero tokens
-
-A cheap pre-check before a loop run or hermes hop. Your gate script prints
-`{"wakeAgent": true|false}`; false = nothing to do = skip (no agents, no tokens).
-
-```bash
-# a gate that only wakes when the inbox has files
-$ cat check-inbox.sh
-#!/bin/sh
-[ -n "$(ls ~/research/inbox/*.md 2>/dev/null)" ] \
-  && echo '{"wakeAgent": true}' || echo '{"wakeAgent": false}'
-
-$ sigma loop --topic "$T" --execute --gate ./check-inbox.sh
-→ sigma loop — 1 pending / 1 total
-  gate: nothing to do — skipped (0 tokens)
-
-$ sigma hermes "continue" --topic "$T" --gate ./check-inbox.sh
-→ stops before the hop if the gate says skip
-```
-
-→ **Fail-safe:** a missing / erroring / unparseable gate defaults to WAKE — a
-broken gate never silently blocks the pipeline. Gating is opt-in (`--gate`).
-
-## 4b. Contradiction flagging — lessons that disagree
-
-When the loop ratchets a new lesson that conflicts with an existing one (same
-domain + same topic), it flags rather than piles up silently.
-
-```bash
-$ sigma loop --topic "$T" --execute
-→ ✗ tokenize corpus
-    ratcheted → skills/verify-failed-tokenize-corpus/SKILL.md
-    ⚠ contradiction flagged → skills/CONTRADICTIONS.md
-```
-
-→ The new SKILL.md gets a `⚠ CONTRADICTION` marker; `skills/CONTRADICTIONS.md`
-logs the conflict. Never auto-resolved, never deleted — you decide.
-
----
-
-## 4c. The closed learning loop — lessons recalled, not just recorded
-
-Writing a lesson is only half the loop. sigma also **reads lessons back**: before
-each loop cycle it loads the past lessons for that task's domain and prepends them
-to the implementer + checker prompts — so a mistake made once is fed forward as
-"avoid repeating this."
-
-```bash
-$ sigma loop --topic "$T" --execute
-→   recalled past lessons for domain 'nlp'      # injected into the nlp cycle
-    ✓ tokenize corpus                            # maker saw prior nlp lessons
-```
-
-- **Selection is by domain** — a lesson tagged `domain: nlp` is recalled for nlp
-  tasks. Skills without a `domain:` (vendor, sigma-present, sigma-domains) are
-  never recalled.
-- **Fed to maker + checker, not the logic evaluator** (it grades reasoning, not
-  domain patterns). No lessons → prompts unchanged (fail-safe).
-- **In-session:** the `sigma-lessons` skill does the same recall when you work
-  via slash commands instead of the CLI loop.
+A failed task writes `skills/<slug>/SKILL.md` with `metadata: domain:` and
+`created:`. Recall (in `/loop`, `sigma review` and the `sigma-lessons` skill)
+takes the **5 newest** for the domain. A second lesson on the same topic never
+overwrites the first: it lands in `<slug>-2/` with a `⚠ CONTRADICTION` marker and
+a line in `skills/CONTRADICTIONS.md`, for you to resolve.
 
 ### `/sigma-learn-lesson` — capture a lesson outside the loop
-
-You don't need a loop failure to teach sigma. In Claude Code, after a mistake:
 
 ```
 /sigma-learn-lesson
 → agent reviews this session, extracts the mistake + lesson + domain,
   writes skills/<slug>/SKILL.md (same format + contradiction check as the loop)
-```
-
-That lesson is then recalled on the next run in its domain, exactly like a
-loop-born one. Same store, same format, one recall path.
-
----
-
-## 4d. `sigma weave` — weave artifacts into one HTML chain
-
-Turn the per-stage markdown artifacts into a single self-contained page (human
-view) plus a machine manifest.
-
-```bash
-$ sigma weave --topic "$T"
-→ ✓ wrote .../chain.json        # machine manifest (pure, deterministic)
-  ✓ wrote .../chain.html        # one navigable page, all stages cross-linked
-    ✓ chain.html valid
-```
-
-- **Derived, never authoritative** — markdown stays the source of truth; deleting
-  `chain.html`/`chain.json` never affects the pipeline.
-- `chain.json` is written FIRST and is agent-independent (exists even if the HTML
-  agent run fails).
-- The **verify stage** reads `chain.json` to review against the WHOLE chain, not
-  just `spec.md` (falls back to `spec.md` if no manifest — fail-safe).
-- In-session: the `sigma-present` skill exports a single artifact; `weave` chains
-  them all.
-
----
-
-## 5. Hermes — the optional conductor
-
-Talk plain language; Hermes routes to the right stage and runs it. **Additive** —
-standalone `sigma <stage>` still works exactly as before.
-
-### 5a. Single-step (default) — one hop, then stop
-
-```bash
-$ sigma hermes "continue" --topic "$T"
-→ σ hermes — topic='...' mode=single-step
-    • ran propose            # state-driven: research.md exists → next is propose
-  ✓ hermes ran 1 stage(s)
-```
-
-→ Routing is **state-driven** by default (inspects which artifacts exist — zero
-model cost). Emits an event + a line to `hermes-log.md`.
-
-### 5b. Intent override — jump around
-
-```bash
-$ sigma hermes "skip ahead to verify" --topic "$T"
-→ • ran verify            # "skip"/"verify" signals an override → 1 model call to classify
-```
-
-→ Override is triggered by jump words ("redo", "skip", "go back", "again") or an
-explicit stage name. Unparseable classification falls back to the state stage.
-
-### 5c. `--auto` — chain until a human gate
-
-```bash
-$ sigma hermes "build the whole thing" --topic fresh-idea --auto
-→ • ran research
-  • ran propose
-  • ran blueprint
-  • ran spec
-  → stopped at gate: spec-approval     # pauses for human review
-```
-
-→ Auto chains stages, pausing at **human gates** (spec-approval, verify-failed),
-on a stage failure, or at the hop budget (`max_hops`, default 12).
-
-### 5d. `--terse` — compressed output
-
-```bash
-$ sigma hermes "continue" --topic "$T" --terse
-→ injects the bundled caveman skill so stage output is ~75% smaller.
-```
-
-### 5e. `--keep-awake` — don't let the Mac sleep
-
-```bash
-$ sigma hermes "build the whole thing" --topic fresh-idea --auto --keep-awake
-→   ☕ keep-awake on (caffeinate)
-  ... a long auto chain runs without the Mac sleeping ...
-```
-
-→ macOS only; wraps `caffeinate`. No-ops elsewhere. Same flag on `sigma loop`.
-
-**Stage → skill injection** (`cli/skill_map.py`): propose/blueprint→brainstorming,
-spec→writing-plans, implement-task→TDD, verify→systematic-debugging +
-verification-before-completion, `--terse`→caveman.
-
----
-
-## 6. `sigma board` — kanban
-
-Pure projection over `tasks.md` + `events.jsonl`. Hermes/loop append events; the
-board never mutates state.
-
-```bash
-# Static snapshot.
-$ sigma board --topic "$T"
-→ ╭── To Do (0) ──╮╭ In Progress (1)╮╭── Blocked (1) ─╮╭─── Done (1) ───╮
-  │ —             ││ T1 tokenize    ││ T3 eval policy ││ T2 register    │
-  │               ││ corpus (nlp)   ││ (rl)           ││ model (mlops)  │
-  ╰───────────────╯╰────────────────╯╰────────────────╯╰────────────────╯
-
-# Live — redraws as agents progress (Ctrl-C to stop).
-$ sigma board --topic "$T" --watch
-```
-
-→ Columns: **To Do / In Progress / Blocked / Done**. A task moves by its latest
-event (`in_progress`, `failed`→Blocked, `done`); a `- [x]` checkbox alone counts
-as Done. Missing workspace → `✗ no spec workspace ...` and exit 1.
-
-Event shape in `events.jsonl` (one JSON object per line):
-
-```json
-{"task":"T1","stage":"implement-task","status":"in_progress","ts":"2026-06-17T10:00:00"}
-{"task":"T3","stage":"verify","status":"failed","verdict":"FAIL","ts":"2026-06-17T10:05:00"}
 ```
 
 ---
@@ -448,7 +220,8 @@ $ find skills/vendor -name SKILL.md
 
 - **Standalone:** invoke any of these directly in Claude Code (e.g. the
   brainstorming skill) independent of sigma.
-- **Via Hermes:** auto-injected per stage (section 5).
+- **Via `sigma learn`:** `codebase-onboarding` + `code-tour` are injected into the
+  learn agent's prompt.
 - These are unmodified upstream copies — don't edit in place; re-vendor (see
   `skills/vendor/README.md` for provenance + refresh steps).
 
@@ -464,12 +237,11 @@ Invoke the skill in Claude Code with an artifact in mind. Three modes:
 |---------|------|--------|
 | "turn this spec into slides" | DECK (reveal.js) | one `.html`, fragments, speaker notes, `?print-pdf` |
 | "export the research as a report" | REPORT (scroll) | long-scroll page, scroll-driven motion |
-| "make a deck from the board" | KANBAN | column/card snapshot + Chart.js doughnut |
 
 ```bash
 # templates the skill emits from:
 $ ls skills/sigma-present/templates/
-→ deck.reveal.html  report.scroll.html  kanban.board.html
+→ deck.reveal.html  report.scroll.html
 $ ls skills/sigma-present/
 → SKILL.md  THEMES.md  INGEST.md  templates/
 ```
@@ -477,17 +249,7 @@ $ ls skills/sigma-present/
 Built in: 5 named themes (`THEMES.md`), artifact→section mapping (`INGEST.md`),
 `prefers-reduced-motion` guard, IntersectionObserver fallback for the report
 mode, citations + a "Generated by sigma" provenance footer, and PDF export
-(deck: open with `?print-pdf`; report/kanban: browser Print).
-
----
-
-## 9. `sigma launch` & default
-
-```bash
-$ sigma launch              # open Claude Code with sigma context loaded
-$ sigma launch --no-launch  # print context, don't spawn claude
-$ sigma                     # no subcommand → same as launch (prints context)
-```
+(deck: open with `?print-pdf`; report: browser Print).
 
 ---
 
@@ -530,18 +292,16 @@ plugin manifest, config validity, workspace/events integrity, and RTK status
 
 ---
 
-## 10. End-to-end example (cold start → board)
+## 10. End-to-end example (cold start → working code)
 
 ```bash
 $ sigma init --name demo --domains nlp,rl
-$ sigma hermes "research and draft a spec for a sentiment classifier" \
-      --topic sentiment-clf --auto
-→ runs research → propose → blueprint → spec, stops at spec-approval gate
-# in Claude Code: /tasks                      # human-approved: break into tasks
-$ sigma board --topic sentiment-clf          # see the task columns
-$ sigma loop  --topic sentiment-clf --execute   # maker→checker (+ logic axis)
-$ sigma board --topic sentiment-clf --watch  # watch cycles land live
-# then, in Claude Code: invoke sigma-present to export spec.md as a deck.
+$ sigma research "sentiment classifier for support tickets" --web
+# in Claude Code:
+/propose → /blueprint → /grill → /spec → /grill → /tasks
+/loop                     # every task to done; the Stop hook keeps it going
+/review                   # 3-axis review before merging
+# then invoke sigma-present to export spec.md as a deck.
 ```
 
 ---
@@ -704,33 +464,30 @@ recent transcripts for actual usage, and ranks the **loaded-but-unused** heavies
 | `sigma research "<t>"` | multi-model cited research (real parallel CLI fan-out) |
 | `sigma research "<t>" --web` / `--deep` | quick / exhaustive web-grounded research |
 | `/propose` … `/verify` (in Claude Code) | run a pipeline stage in-session (loads domain context) |
-| `/sigma-learn-lesson` (in Claude Code) | capture a lesson from this session → ratcheted skill |
-| `sigma loop --topic <t>` | plan cycles (safe) |
-| `sigma loop --topic <t> --execute` | run maker→checker (+logic) cycles |
-| `... --tdd` / `--team` / `--logic` | test-first / parallel tasks / add logic axis (combine) |
+| `/grill`, `/grill-loop` | adversarial gate on blueprint/spec; bounded auto-fix loop |
+| `/craft` | bring a design → spec → grill → tasks → loop |
+| `/loop` | run every open task to done (role agents, Stop-hook guard, tamper guard) |
+| `/e2e` | run spec.md's BDD scenarios live |
+| `/sigma-learn-lesson` | capture a lesson from this session → ratcheted skill |
 | `sigma profile` | walk codebase → logic-profile.md (grounds review) |
 | `sigma review [PR\|a..b]` | three-axis review (code/ml-logic/system-logic) |
 | `sigma review --check` | CI gate: exit 1 on CRITICAL/HIGH or inconclusive axis |
 | `sigma cost` | token-cost ledger for heavy ops |
+| `sigma usage` | real Claude Code token/cache/cost via ccusage |
 | `sigma learn` | codebase map → ARCHITECTURE.md + .tour (graphify-grounded if installed) |
 | `sigma learn --no-graph` | skip the knowledge-graph build |
 | `sigma scout` | discover relevant skills on skillsmp.com → install on approval |
 | `sigma scout --vendor` / `--recent` | clone into the sigma bundle / sort by newest |
 | `sigma prune` | surface loaded-but-unused MCP/plugins → reversible disable |
 | `sigma prune --check` | CI gate: exit 1 if prunable context bloat exists |
-| `... --keep-awake` | (loop/hermes) prevent Mac sleep during the run |
-| `... --gate <script>` | (loop/hermes) skip work if wakeAgent says nothing to do |
-| `sigma hermes "<msg>" --topic <t>` | conductor: route + run one stage |
-| `sigma hermes "<msg>" --topic <t> --auto` | chain to a human gate |
-| `sigma hermes "<msg>" --topic <t> --terse` | compressed output |
-| `sigma board --topic <t>` | kanban snapshot |
-| `sigma board --topic <t> --watch` | live kanban |
-| `sigma weave --topic <t>` | weave artifacts → chain.html + chain.json |
+| `sigma docs-check --check` | version parity + stale test-count claims |
+| `sigma claude-md-check` / `claude-md-create` | grade / scaffold CLAUDE.md |
 | `sigma onboard` | first-run setup: domains, API keys, RTK, caveman, statusline, graphify |
+| `sigma setup-repo` | per-repo bootstrap: config + hook + CLAUDE.local + map |
 | `sigma doctor` | diagnose + confirm-gated fixes |
 | `sigma doctor --check` | read-only health (CI gate, exit 1 on fail) |
 | `sigma doctor --yes` / `--update` | auto-fix / pull+re-vendor then check |
-| `sigma launch` | open Claude Code with context |
+| `sigma` | no subcommand → print help |
 
 See [`CLAUDE.md`](../CLAUDE.md) for layout + gotchas and the
 [`README`](../README.md) for the design rationale.

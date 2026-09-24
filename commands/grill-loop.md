@@ -24,8 +24,8 @@ This is `/loop`'s maker→checker discipline applied to a **spec instead of code
 - **Editor subagent** (the maker) — revises the artifact against findings.
 - **Griller subagent** (the checker) — re-grills, per `sigma-grilling`.
 
-A single agent that both edits and grades games its own test (same separation
-`execute_cycle` enforces via `ValueError`).
+A single agent that both edits and grades games its own test (the same separation
+`/loop` keeps between its implementer and its read-only verifier).
 
 ## Autonomy — mechanical-only auto, gate the rest
 

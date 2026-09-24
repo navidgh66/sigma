@@ -81,8 +81,8 @@ Age of Vibe Coding*).
 ### 9. Cross-artifact traceability (chain check, not single-doc)
 - Every requirement maps to ≥1 downstream task; every task traces back to a requirement.
 - Flag zero-coverage requirements (will silently not get built) + orphaned tasks
-  (built but unmotivated → scope creep). Use the chain context (`chain.json`) when grilling
-  a spec that already has `tasks.md`.
+  (built but unmotivated → scope creep). Read the workspace's `architecture.md`,
+  `spec.md` and `tasks.md` together when grilling a spec that already has tasks.
 
 ### 10. Constitution (MUST invariants — higher-order gate)
 - A persistent set of project MUST-principles the artifact may NOT violate, independent
@@ -133,7 +133,7 @@ VERDICT: READY  or  VERDICT: BLOCK
 
 Derivation (mechanical): any axis FAIL with a CRITICAL/HIGH finding → overall **BLOCK**.
 READY only when no axis carries a CRITICAL/HIGH. The final `VERDICT:` line is what the gate
-parses (`hermes._grill_ready`) — AXIS/FINDING lines never substitute for it.
+reads (`/craft` and `/grill-loop` stop on BLOCK); AXIS/FINDING lines never substitute for it.
 
 Severity guide:
 - **CRITICAL** — a flaw that, if built, breaks correctness or safety (leakage,

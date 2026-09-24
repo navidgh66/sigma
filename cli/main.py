@@ -8,7 +8,6 @@ See README.md and CLAUDE.md for the design and layout.
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,14 +19,6 @@ if __package__ in (None, ""):
 
 from cli import __version__
 from cli.config import SigmaConfig, config_path, load_config, write_config
-from cli.loop import (
-    append_loop_log,
-    incomplete_tasks,
-    parse_tasks,
-    plan_cycle,
-    record_cycle_steps,
-    run_loop,
-)
 from cli.models import available_models
 from cli.paths import DOMAINS, sigma_home, spec_workspace
 from cli.research import claude_synthesis_runner, research, routed_synthesis_runner
@@ -119,276 +110,6 @@ def cmd_research(args: argparse.Namespace) -> int:
     )
     _print(f"✓ wrote {out}")
     _print("→ next: /propose")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# loop
-# --------------------------------------------------------------------------- #
-def cmd_loop(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    ws = spec_workspace(args.topic)
-    tasks_file = ws / "tasks.md"
-    if not tasks_file.exists():
-        _print(f"✗ no tasks.md at {tasks_file}. Run /tasks first.")
-        return 1
-    tasks = parse_tasks(tasks_file.read_text())
-    pending = incomplete_tasks(tasks)
-    _print(f"sigma loop — {len(pending)} pending / {len(tasks)} total")
-    _print(f"  max_cycles: {cfg.loop.max_cycles}  (sequential cycles, one workspace)")
-    if not pending:
-        _print("✓ all tasks complete")
-        return 0
-
-    if not args.execute:
-        # Plan-only (default, safe): show what the loop would do.
-        shown = 0
-        for t in pending:
-            if shown >= cfg.loop.max_cycles:
-                _print(f"  … {len(pending) - shown} more (capped at max_cycles)")
-                break
-            plan = plan_cycle(t)
-            _print(f"  • {t.id or '-'} [{plan.implementer_domain}] {t.title}")
-            _print(f"    cycle={plan.worktree_name} maker≠checker={plan.valid_maker_checker()}")
-            shown += 1
-        append_loop_log(ws, f"planned {min(len(pending), cfg.loop.max_cycles)} cycle(s)")
-        _print("  (plan only — pass --execute to run maker→checker cycles)")
-        return 0
-
-    # Execute: real maker→checker cycles with distinct agents.
-    if args.codex_tdd and not (args.tdd or args.all):
-        _print("✗ --codex-tdd requires --tdd (the test-writer role only exists in TDD mode)")
-        return 1
-
-    from cli.cost import routing_for
-    from cli.keepawake import keep_awake
-    from cli.models import clean_output, codex_argv_builder
-    from cli.paths import project_root
-    from cli.runner import AgentRunner
-    from cli.trajectory import make_sink
-
-    skills_dir = sigma_home() / "skills"
-    # --all is shorthand for turning on every axis, including the two that stay
-    # opt-in otherwise (tdd, team change the execution MODEL, not just add a
-    # check — bigger behavior shift than the default-on correctness axes below).
-    if args.all:
-        args.tdd = True
-        args.team = True
-        args.logic = True
-        args.simplify = True
-        args.advisor = True
-        args.e2e = True
-        _print("  🎛️  --all: every axis on (tdd, team, logic, simplify, advisor, e2e)")
-    if args.keep_awake:
-        _print("  ☕ keep-awake on (caffeinate)")
-    if args.tdd:
-        _print("  🧪 TDD mode: a distinct agent writes a failing test before each implementer")
-    if args.team:
-        _print("  👥 team mode: independent tasks run in parallel")
-        _print(f"  🌳 worktree isolation: {'on' if cfg.loop.worktrees else 'off (sigma.config.yml)'}")
-    if args.logic:
-        _print("  🧠 logic mode: a distinct logic-evaluator axis gates the cycle (--no-logic to disable)")
-    if args.simplify:
-        _print("  🧹 simplify mode: a distinct agent cleans up slop after each pass (re-verified) "
-                "(--no-simplify to disable)")
-    if args.e2e:
-        _print("  🌐 e2e mode: a distinct agent drives each task's mapped BDD scenario live "
-                "(FAIL blocks, ERROR doesn't) (--no-e2e to disable)")
-    if args.advisor:
-        _print(f"  🛟 advisor mode: on a verify/logic/e2e fail, a distinct advisor drafts a fix "
-                f"(max {args.advisor_rounds} round(s); reverts on exhaustion) (--no-advisor to disable)")
-    if args.codex_verify:
-        _print("  🐙 codex-verify: verifier runs via codex (cross-provider maker≠checker)")
-    if args.codex_tdd:
-        _print("  🐙 codex-tdd: test-writer runs via codex")
-
-    # Trajectory capture: every agent run appends a step to the workspace
-    # (best-effort observability, never breaks a run). The counting wrapper
-    # also accumulates THIS run's real measured tokens (from claude
-    # --output-format json envelopes) for the cost-ledger record below.
-    from cli.trajectory import counting_sink
-
-    sink, run_usage = counting_sink(make_sink(ws, ts=_now_iso()))
-
-    # Intelligent model routing is ON BY DEFAULT: mechanical roles (implement,
-    # verify) → mid tier, reasoning roles (logic) → strong tier. --no-route
-    # reproduces the old unrouted behavior byte-for-byte (model=None everywhere,
-    # no --model injected into the agent argv). Per-role --model-* flags override
-    # a single role's tier regardless of routing state. test-writer/simplifier
-    # deliberately alias verify's/implement's tier (no dedicated routing key —
-    # they are mechanical roles, same tier as the axis they extend).
-    routes = {} if args.no_route else routing_for("loop")
-    if args.model_implement:
-        routes["implement"] = args.model_implement
-    if args.model_verify:
-        routes["verify"] = args.model_verify
-    if args.model_logic:
-        routes["logic"] = args.model_logic
-    if args.no_route:
-        _print("  🧭 routing: off (--no-route) — CLI default model for every role")
-    else:
-        _print(f"  🧭 routing: implement/verify→{routes['implement']}, logic→{routes['logic']}")
-
-    # Advisor's model tier resolves INDEPENDENTLY of the routing dict above —
-    # escalation's whole point is a stronger model, so it must not silently drop
-    # to the base model just because --no-route was passed. Default: opus.
-    advisor_model = args.model_advisor or routes.get("advisor") or "opus"
-
-    # Parse spec.md's BDD scenarios ONCE up front (spec_scenarios is a plain
-    # list passed to every cycle — execute_cycle never re-reads the file).
-    # Parsed regardless of --e2e: the verify + logic prompts use a task's
-    # mapped scenario as acceptance-criteria context even when the live e2e
-    # axis is off. Missing spec.md → empty list (fail-safe: verify prompts
-    # stay unchanged and every task's e2e step simply skips).
-    from cli.scenarios import parse_scenarios
-
-    spec_scenarios = []
-    spec_file = ws / "spec.md"
-    if spec_file.exists():
-        spec_scenarios = parse_scenarios(spec_file.read_text())
-    elif args.e2e:
-        _print(f"  ⚠ --e2e given but no spec.md at {spec_file} — every task's e2e step will skip")
-
-    def _make(role_tier: Optional[str]):
-        return AgentRunner(model=role_tier, trajectory_sink=sink, telemetry=True)
-
-    def _make_codex(sandbox: str):
-        return AgentRunner(
-            executable="codex",
-            argv_builder=codex_argv_builder(sandbox),
-            output_cleaner=lambda raw: clean_output("gpt", raw),
-            trajectory_sink=sink,
-        )
-
-    with keep_awake(enabled=args.keep_awake):
-        outcomes = run_loop(
-            tasks,
-            ws,
-            skills_dir,
-            cfg.loop.max_cycles,
-            make_implementer=lambda: _make(routes.get("implement")),
-            make_verifier=(lambda: _make_codex("read-only")) if args.codex_verify else (lambda: _make(routes.get("verify"))),
-            make_logic_checker=(lambda: _make(routes.get("logic"))) if args.logic else None,
-            make_test_writer=(
-                (lambda: _make_codex("workspace-write")) if (args.tdd and args.codex_tdd)
-                else ((lambda: _make(routes.get("verify"))) if args.tdd else None)
-            ),
-            make_simplifier=(lambda: _make(routes.get("implement"))) if args.simplify else None,
-            make_advisor=(lambda: _make(advisor_model)) if args.advisor else None,
-            advisor_rounds=args.advisor_rounds,
-            make_e2e_runner=(lambda: _make(routes.get("e2e"))) if args.e2e else None,
-            spec_scenarios=spec_scenarios,
-            team=args.team,
-            worktrees=cfg.loop.worktrees,
-            project_root=project_root(),
-            gate=args.gate,
-        )
-    if not outcomes and args.gate:
-        _print("  gate: nothing to do — skipped (0 tokens)")
-        return 0
-    # Record one "cycle" trajectory step per completed outcome — the real,
-    # measured pass/fail signal `sigma trajectory --efficiency` reports on.
-    record_cycle_steps(outcomes, sink)
-    # Real-usage ledger record: telemetry measured actual tokens for this run →
-    # append them so cost.calibrate() sharpens from actuals, not static factors.
-    # Zero tokens (telemetry unavailable/unparsed) → no row, never a fake actual.
-    if run_usage["tokens"] > 0:
-        from cli.cost import append_ledger, build_record, ledger_path
-
-        append_ledger(
-            ledger_path(project_root()),
-            build_record("loop", units=max(len(outcomes), 1),
-                         tokens=run_usage["tokens"], ts=_now_iso()),
-        )
-        cost_note = f" (~${run_usage['cost_usd']:.2f})" if run_usage["cost_usd"] > 0 else ""
-        _print(f"  📊 measured: {run_usage['tokens']:,} tokens{cost_note} → sigma/costs.jsonl")
-    passed = sum(1 for o in outcomes if o.verified)
-    _print(f"✓ ran {len(outcomes)} cycle(s): {passed} passed, {len(outcomes) - passed} failed")
-    for o in outcomes:
-        mark = "✓" if o.verified else "✗"
-        _print(f"  {mark} {o.task_title}")
-        if o.test_written is not None:
-            _print(f"    test-first: {'✓ written' if o.test_written else '✗ failed'}")
-        if o.regression_test:
-            _print(f"    regression test pinned → {o.regression_test}")
-        if o.simplified is not None:
-            _print(f"    simplify: {'✓ applied (re-verified)' if o.simplified else '✗ skipped/reverted'}")
-        if o.e2e_ok is not None:
-            _print(f"    e2e: {'✓ passed' if o.e2e_ok else '✗ failed (blocked)'}")
-        if o.advised is not None:
-            rounds = o.advisor_rounds_used or 0
-            _print(f"    advisor: {'✓ rescued in ' + str(rounds) + ' round(s)' if o.advised else '✗ exhausted (' + str(rounds) + ' round(s)) — reverted'}")
-        if o.merge_conflict:
-            _print(f"    ⚠ merge conflict — branch left at {o.merge_conflict} for manual resolution")
-        if o.ratcheted_skill:
-            _print(f"    ratcheted → {o.ratcheted_skill}")
-        if o.contradiction:
-            _print(f"    ⚠ contradiction flagged → {o.contradiction}")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# hermes (conductor: route plain language → run stage(s))
-# --------------------------------------------------------------------------- #
-def cmd_hermes(args: argparse.Namespace) -> int:
-    from cli.hermes import run_hermes
-    from cli.keepawake import keep_awake
-    from cli.runner import AgentRunner
-    from cli.trajectory import make_sink
-
-    ws = spec_workspace(args.topic)
-    ws.mkdir(parents=True, exist_ok=True)
-    mode = "auto" if args.auto else "single-step"
-    _print(f"σ hermes — topic={args.topic!r} mode={mode}{' terse' if args.terse else ''}")
-    if args.keep_awake:
-        _print("  ☕ keep-awake on (caffeinate)")
-    sink = make_sink(ws, ts=_now_iso())
-    from cli.cost import routing_for
-
-    routes = {} if args.no_route else routing_for("hermes")
-    if args.no_route:
-        _print("  🧭 routing: off (--no-route) — CLI default model for every stage")
-    else:
-        strong = routes.get("spec", "opus")
-        mid = routes.get("implement-task", "sonnet")
-        _print(f"  🧭 routing: planning/grill stages→{strong}, execution stages→{mid}")
-    with keep_awake(enabled=args.keep_awake):
-        result = run_hermes(
-            args.message,
-            ws,
-            auto=args.auto,
-            terse=args.terse,
-            make_runner=lambda model=None: AgentRunner(model=model, trajectory_sink=sink, telemetry=True),
-            now=_now_iso(),
-            gate=args.gate,
-            stage_routes=routes,
-        )
-    for stage in result.stages_run:
-        _print(f"  • ran {stage}")
-    if result.gate:
-        _print(f"→ stopped at gate: {result.gate}")
-    if not result.ok:
-        _print("✗ hermes stopped on failure")
-        return 1
-    _print(f"✓ hermes ran {len(result.stages_run)} stage(s)")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# board (kanban projection over tasks + events)
-# --------------------------------------------------------------------------- #
-def cmd_board(args: argparse.Namespace) -> int:
-    from cli import board
-
-    ws = spec_workspace(args.topic)
-    if not ws.exists():
-        _print(f"✗ no spec workspace at {ws}. Run a stage or hermes first.")
-        return 1
-    if args.watch:
-        _print(f"σ board — watching {ws} (Ctrl-C to stop)")
-        board.render_live(ws)
-    else:
-        board.render_static(ws)
     return 0
 
 
@@ -671,38 +392,6 @@ def cmd_prune(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# weave (weave stage artifacts → chain.html + chain.json)
-# --------------------------------------------------------------------------- #
-def cmd_weave(args: argparse.Namespace) -> int:
-    from cli.weave import run_weave
-
-    ws = spec_workspace(args.topic)
-    if not args.dry_run and not ws.exists():
-        _print(f"✗ no spec workspace at {ws}. Run a stage first.")
-        return 1
-    _print(f"σ weave — topic={args.topic!r}")
-    res = run_weave(ws, topic=args.topic, slug=ws.name, dry_run=args.dry_run)
-    if args.dry_run:
-        _print("--- invocation (dry run) ---")
-        _print(res.prompt)
-        return 0
-    if res.manifest_path:
-        _print(f"✓ wrote {res.manifest_path}")
-    if not res.ok:
-        _print(f"✗ weave failed: {res.error}")
-        return 1
-    if res.html_path:
-        _print(f"✓ wrote {res.html_path}")
-        if res.html_problems:
-            _print(f"  ⚠ {len(res.html_problems)} HTML issue(s):")
-            for p in res.html_problems:
-                _print(f"    - {p}")
-        else:
-            _print("  ✓ chain.html valid")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
 # profile (walk codebase → logic-profile.md grounding for review)
 # --------------------------------------------------------------------------- #
 def cmd_profile(args: argparse.Namespace) -> int:
@@ -856,177 +545,6 @@ def cmd_claude_md_create(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# eval (run an eval set, LM-judge each case, gate at a threshold)
-# --------------------------------------------------------------------------- #
-def cmd_eval(args: argparse.Namespace) -> int:
-    from cli.cost import routing_for
-    from cli.eval_run import eval_set_path, run_eval
-    from cli.paths import project_root
-    from cli.runner import AgentRunner
-    from cli.trajectory import make_sink
-
-    root = project_root()
-
-    # spec→eval bridge: --from-spec renders the topic's BDD scenarios into an
-    # eval set (derived — spec.md stays the source of truth) and stops there.
-    if args.from_spec:
-        from cli.scenarios import parse_scenarios, render_eval_set
-
-        ws = spec_workspace(args.from_spec)
-        spec_file = ws / "spec.md"
-        if not spec_file.exists():
-            _print(f"✗ no spec.md at {spec_file}. Run /spec first.")
-            return 1
-        scenarios = parse_scenarios(spec_file.read_text())
-        if not scenarios:
-            _print("✗ spec.md has no Scenario/Given/When/Then blocks — nothing to generate")
-            return 1
-        set_name = args.set or ws.name
-        out = eval_set_path(root, set_name)
-        if out.exists() and not args.force:
-            _print(f"✗ {out} already exists — pass --force to regenerate")
-            return 1
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(render_eval_set(args.from_spec, scenarios))
-        _print(f"✓ wrote {out} ({len(scenarios)} case(s) from spec scenarios)")
-        _print(f"→ next: sigma eval --set {set_name}")
-        return 0
-
-    if not args.set:
-        _print("✗ --set is required (or --from-spec <topic> to generate one)")
-        return 1
-    name = args.set
-    _print(f"σ eval — set={name!r} threshold={args.threshold}")
-    if not eval_set_path(root, name).exists():
-        _print(f"✗ no eval set at {eval_set_path(root, name)}")
-        _print("  create sigma/evals/<name>.md (see commands/eval.md for the format)")
-        return 1
-
-    # Trajectory sink lives in the eval set's report dir.
-    ws = root / "sigma" / "evals" / name
-    sink = make_sink(ws, ts=_now_iso())
-    routes = routing_for("eval") if args.route else {}
-    if args.route:
-        _print(f"  🧭 routing: sut→{routes['sut']}, judge→{routes['judge']}")
-
-    artifact = Path(args.artifact).expanduser() if args.artifact else None
-    res = run_eval(
-        name,
-        root,
-        make_sut=lambda: AgentRunner(model=routes.get("sut"), trajectory_sink=sink, telemetry=True),
-        make_grader=lambda: AgentRunner(model=routes.get("judge"), trajectory_sink=sink, telemetry=True),
-        threshold=args.threshold,
-        artifact=artifact,
-        ts=_now_iso(),
-    )
-    if res.skipped_reason:
-        _print(f"  {res.skipped_reason}")
-        return 0
-    if not res.ok:
-        _print(f"✗ eval failed: {res.error}")
-        return 1
-    if res.report_path:
-        _print(f"✓ wrote {res.report_path}")
-    decision = res.gate
-    if decision is not None:
-        mark = "✅ PASS" if decision.passed else "❌ FAIL"
-        _print(f"  verdict: {mark} — {decision.reason}")
-    if args.check and decision is not None and not decision.passed:
-        return 1
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# trajectory (observe what agents actually did in a workspace)
-# --------------------------------------------------------------------------- #
-def cmd_trajectory(args: argparse.Namespace) -> int:
-    from cli.trajectory import efficiency_report, read_steps, summarize
-
-    ws = spec_workspace(args.topic)
-    if not ws.exists():
-        _print(f"✗ no spec workspace at {ws}. Run a loop or hermes first.")
-        return 1
-    steps = read_steps(ws)
-    if getattr(args, "economy", False):
-        from cli.axis_economy import build_economy
-
-        economy = build_economy(steps)
-        if args.json:
-            import json
-            from dataclasses import asdict
-
-            _print(json.dumps(asdict(economy), sort_keys=True))
-        else:
-            _print(economy.render())
-        return 0
-    if args.efficiency:
-        _print(efficiency_report(steps))
-        return 0
-    summary = summarize(steps)
-    if args.json:
-        import json
-        from dataclasses import asdict
-
-        _print(json.dumps(asdict(summary), sort_keys=True))
-    else:
-        _print(summary.render())
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# lessons (lesson-efficacy report + reversible archive of unused lessons)
-# --------------------------------------------------------------------------- #
-def cmd_lessons(args: argparse.Namespace) -> int:
-    from cli import render
-    from cli.lessons import archive_lesson, efficacy, list_domain_lessons, render_report
-    from cli.paths import project_root
-    from cli.trajectory import read_steps
-
-    # Evidence scope: by default aggregate EVERY spec workspace's trajectory —
-    # lessons are global (sigma_home()/skills), so judging them on one topic's
-    # runs would offer to archive a lesson that other topics recall constantly
-    # (violates never-act-on-absent-evidence). --topic restricts deliberately.
-    if args.topic:
-        workspaces = [spec_workspace(args.topic)]
-        if not workspaces[0].exists():
-            _print(f"✗ no spec workspace at {workspaces[0]}. Run a loop first.")
-            return 1
-    else:
-        specs_root = project_root() / "sigma" / "specs"
-        workspaces = sorted(d for d in specs_root.glob("*") if d.is_dir()) if specs_root.exists() else []
-        if not workspaces:
-            _print(f"✗ no spec workspaces under {specs_root}. Run a loop first.")
-            return 1
-    steps = []
-    for ws in workspaces:
-        steps.extend(read_steps(ws))
-    _print(f"σ lessons — evidence from {len(workspaces)} workspace(s)")
-    skills_dir = sigma_home() / "skills"
-    report = efficacy(steps, list_domain_lessons(skills_dir))
-    _print(render_report(report))
-
-    if not args.archive:
-        return 0
-    if not report.has_recall_evidence:
-        _print("\n(--archive) no recall evidence — nothing is archived on absent evidence")
-        return 0
-    if not report.no_evidence:
-        _print("\n(--archive) no archive candidates")
-        return 0
-    archived = 0
-    for stats in report.no_evidence:
-        if render.confirm(f"Archive lesson '{stats.slug}' → skills/archive/? (reversible)"):
-            dest = archive_lesson(skills_dir, stats.slug)
-            if dest is not None:
-                _print(f"  ✓ archived → {dest}")
-                archived += 1
-            else:
-                _print(f"  ✗ could not archive '{stats.slug}' (missing or target exists)")
-    _print(f"✓ archived {archived} lesson(s)")
-    return 0
-
-
-# --------------------------------------------------------------------------- #
 # cost (report the cost ledger)
 # --------------------------------------------------------------------------- #
 def cmd_cost(args: argparse.Namespace) -> int:
@@ -1061,33 +579,6 @@ def cmd_usage(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# launch (default: open Claude Code with sigma context)
-# --------------------------------------------------------------------------- #
-def cmd_launch(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    _print("σ sigma")
-    _print(f"  project: {cfg.name}")
-    _print(f"  domains: {', '.join(cfg.domains)}")
-    if not shutil.which("claude"):
-        _print("✗ claude CLI not found. Install Claude Code.")
-        return 1
-    if args.no_launch:
-        return 0
-    return _run_claude(None)
-
-
-def _run_claude(prompt: Optional[str]) -> int:
-    argv = ["claude"]
-    if prompt is not None:
-        argv += ["-p", prompt]
-    try:
-        return subprocess.call(argv)
-    except FileNotFoundError:
-        _print("✗ claude CLI not found.")
-        return 1
-
-
-# --------------------------------------------------------------------------- #
 # parser
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
@@ -1111,75 +602,6 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--no-route", action="store_true",
                     help="disable synthesis model routing (default: synthesis→strong tier)")
     pr.set_defaults(func=cmd_research)
-
-    pl = sub.add_parser("loop", help="Autonomous loop planner/executor")
-    pl.add_argument("--topic", required=True)
-    pl.add_argument("--execute", action="store_true", help="run maker→checker cycles (default: plan only)")
-    pl.add_argument("--all", action="store_true",
-                    help="turn on every axis: tdd, team, logic, simplify, advisor, e2e")
-    pl.add_argument("--tdd", action="store_true",
-                    help="TDD: a distinct agent writes a failing test before the implementer "
-                         "(opt-in; also turned on by --all)")
-    pl.add_argument("--team", action="store_true",
-                    help="run independent tasks in parallel (each its own cycle) "
-                         "(opt-in; also turned on by --all)")
-    pl.add_argument("--logic", dest="logic", action="store_true", default=True,
-                    help="the logic-evaluator axis: cycle passes only if logic also passes "
-                         "(default ON; see --no-logic)")
-    pl.add_argument("--no-logic", dest="logic", action="store_false",
-                    help="disable the logic-evaluator axis")
-    pl.add_argument("--simplify", dest="simplify", action="store_true", default=True,
-                    help="after each pass, a distinct agent cleans up AI slop (re-verified to "
-                         "preserve behaviour) (default ON; see --no-simplify)")
-    pl.add_argument("--no-simplify", dest="simplify", action="store_false",
-                    help="disable the post-pass simplify cleanup")
-    pl.add_argument("--route", action="store_true",
-                    help="deprecated, no-op: routing is now on by default (see --no-route)")
-    pl.add_argument("--no-route", action="store_true",
-                    help="disable model routing; run every role on the CLI's default model")
-    pl.add_argument("--model-implement", help="override the model alias for the implementer role")
-    pl.add_argument("--model-verify", help="override the model alias for the verifier role")
-    pl.add_argument("--model-logic", help="override the model alias for the logic-evaluator role")
-    pl.add_argument("--model-advisor", help="override the model alias for the advisor role (default: opus)")
-    pl.add_argument("--advisor", dest="advisor", action="store_true", default=True,
-                    help="on a verify/logic/e2e fail, a distinct advisor drafts a correction plan and "
-                         "the implementer retries (re-verified; reverts to the original on exhaustion) "
-                         "(default ON; see --no-advisor)")
-    pl.add_argument("--no-advisor", dest="advisor", action="store_false",
-                    help="disable the advisor escalation")
-    pl.add_argument("--advisor-rounds", type=int, default=1,
-                    help="max advisor→retry→re-verify rounds per cycle before ratcheting (default 1)")
-    pl.add_argument("--e2e", dest="e2e", action="store_true", default=True,
-                    help="drive each task's mapped BDD scenario live (Given/When/Then) after "
-                         "verify+logic pass; a real behavioral FAIL blocks the cycle, an ERROR "
-                         "(app unreachable) does not (default ON; see --no-e2e)")
-    pl.add_argument("--no-e2e", dest="e2e", action="store_false",
-                    help="disable the live e2e scenario gate")
-    pl.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
-    pl.add_argument("--gate", help="wakeAgent script: skip the run if it reports nothing to do")
-    pl.add_argument("--codex-verify", action="store_true",
-                     help="run the verifier role via the codex CLI instead of claude "
-                          "(genuine cross-provider maker≠checker)")
-    pl.add_argument("--codex-tdd", action="store_true",
-                     help="run the TDD test-writer role via the codex CLI instead of claude "
-                          "(requires --tdd)")
-    pl.set_defaults(func=cmd_loop)
-
-    ph = sub.add_parser("hermes", help="Conductor: route plain language to a stage and run it")
-    ph.add_argument("message", help="what you want, in plain language")
-    ph.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-    ph.add_argument("--auto", action="store_true", help="run the full chain, pausing only at human gates")
-    ph.add_argument("--terse", action="store_true", help="compress output (caveman skill)")
-    ph.add_argument("--keep-awake", action="store_true", help="prevent Mac sleep during the run (caffeinate)")
-    ph.add_argument("--gate", help="wakeAgent script: skip a hop if it reports nothing to do")
-    ph.add_argument("--no-route", action="store_true",
-                    help="disable per-stage model routing (default: planning/grill→strong, execution→mid)")
-    ph.set_defaults(func=cmd_hermes)
-
-    pb = sub.add_parser("board", help="Kanban board over tasks + events")
-    pb.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-    pb.add_argument("--watch", action="store_true", help="live redraw as agents progress")
-    pb.set_defaults(func=cmd_board)
 
     pd = sub.add_parser("doctor", help="Diagnose (and optionally repair) the sigma install")
     pd.add_argument("--check", action="store_true", help="read-only; exit 1 if anything fails")
@@ -1237,11 +659,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="also surface items used ≤N times as low-confidence candidates (default 0 = unused only)")
     pprune.set_defaults(func=cmd_prune)
 
-    pw = sub.add_parser("weave", help="Weave stage artifacts → chain.html + chain.json")
-    pw.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-    pw.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
-    pw.set_defaults(func=cmd_weave)
-
     pprofile = sub.add_parser("profile", help="Walk the codebase → logic-profile.md (grounds review)")
     pprofile.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     pprofile.set_defaults(func=cmd_profile)
@@ -1270,14 +687,6 @@ def build_parser() -> argparse.ArgumentParser:
     pcmcr.add_argument("--dry-run", action="store_true", help="print the invocation, do not run claude")
     pcmcr.set_defaults(func=cmd_claude_md_create)
 
-    plessons = sub.add_parser("lessons",
-                              help="Lesson-efficacy report (working / not-working / no-evidence)")
-    plessons.add_argument("--topic",
-                          help="restrict evidence to one topic's workspace (default: aggregate ALL workspaces)")
-    plessons.add_argument("--archive", action="store_true",
-                          help="offer to move never-recalled lessons to skills/archive/ (confirm-gated, reversible)")
-    plessons.set_defaults(func=cmd_lessons)
-
     pcost = sub.add_parser("cost", help="Report sigma's token-cost ledger")
     pcost.set_defaults(func=cmd_cost)
 
@@ -1294,34 +703,6 @@ def build_parser() -> argparse.ArgumentParser:
     # listing) still shows `usage` with its passthrough-args hint.
     pu.add_argument("usage_args", nargs=argparse.REMAINDER, help="passthrough args for ccusage")
     pu.set_defaults(func=cmd_usage)
-
-    ptraj = sub.add_parser("trajectory", help="Observe agent steps recorded in a workspace")
-    ptraj.add_argument("--topic", required=True, help="topic/slug locating the workspace")
-    ptraj.add_argument("--json", action="store_true", help="emit the summary as JSON")
-    ptraj.add_argument("--efficiency", action="store_true",
-                        help="report cycle pass rate + escalation rate (real, measured signals)")
-    ptraj.add_argument("--economy", action="store_true",
-                        help="per-axis token economy: tokens-per-value-event, idle-axis prune candidates")
-    ptraj.set_defaults(func=cmd_trajectory)
-
-    peval = sub.add_parser("eval", help="Run an eval set, LM-judge each case, gate at a threshold")
-    peval.add_argument("--set", help="eval set name (sigma/evals/<name>.md)")
-    peval.add_argument("--from-spec", dest="from_spec",
-                       help="generate the eval set from a topic's spec.md BDD scenarios, then exit")
-    peval.add_argument("--force", action="store_true",
-                       help="with --from-spec: overwrite an existing generated set")
-    peval.add_argument("--threshold", type=float, default=0.8,
-                       help="pass-rate bar the gate requires (default 0.8)")
-    peval.add_argument("--artifact",
-                       help="grade an existing file's text against each case (skip the SUT run)")
-    peval.add_argument("--route", action="store_true",
-                       help="intelligent model routing: judge→strong tier")
-    peval.add_argument("--check", action="store_true", help="exit 1 if the eval gate FAILs (CI)")
-    peval.set_defaults(func=cmd_eval)
-
-    plaunch = sub.add_parser("launch", help="Open Claude Code with sigma context")
-    plaunch.add_argument("--no-launch", action="store_true", help="print context, do not launch")
-    plaunch.set_defaults(func=cmd_launch)
 
     return p
 
@@ -1345,8 +726,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
-        # Default action: launch.
-        return cmd_launch(argparse.Namespace(no_launch=True))
+        parser.print_help()
+        return 0
     return args.func(args)
 
 

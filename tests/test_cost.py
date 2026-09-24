@@ -41,11 +41,6 @@ def test_routing_review_axes():
     assert routes["ml-logic"] == TIER_STRONG
 
 
-def test_loop_routing_includes_e2e_at_strong_tier():
-    routes = routing_for("loop")
-    assert routes["e2e"] == TIER_STRONG
-
-
 def test_calibrate_from_ledger():
     rows = [
         {"op": "review", "units": 2, "tokens": 1000},
@@ -149,8 +144,8 @@ def test_report_skips_zero_token_rows_from_run_count():
 
 def test_routing_for_other_ops():
     assert routing_for("profile") == {"walk": "sonnet"}
-    assert "logic" in routing_for("loop")
-    assert routing_for("loop")["advisor"] == "opus"
+    assert routing_for("loop") == {}
+    assert routing_for("hermes") == {}
     assert routing_for("research") == {"fan-out": "sonnet", "synthesis": "opus"}
     assert routing_for("unknown-op") == {}
 
@@ -168,15 +163,3 @@ def test_estimate_render_includes_routing():
     assert "code→" in line
 
 
-def test_routing_for_hermes_routes_planning_strong_execution_mid():
-    routes = routing_for("hermes")
-    for stage in ("propose", "blueprint", "grill-blueprint", "spec", "grill-spec", "tasks"):
-        assert routes[stage] == TIER_STRONG, stage
-    for stage in ("research", "implement-task", "verify", "loop"):
-        assert routes[stage] == TIER_MID, stage
-
-
-def test_routing_for_hermes_covers_every_pipeline_stage():
-    from cli.pipeline import STAGE_NAMES
-
-    assert set(routing_for("hermes")) == set(STAGE_NAMES)

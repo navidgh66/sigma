@@ -50,10 +50,34 @@ for step in range(MAX_STEPS):                 # hard cap — never unbounded
 - Detect stuck loops (same action repeated, no state change) and break/redirect.
 - Manage context: summarize or drop old turns before overflow; keep the task + recent steps.
 
+## Unattended runs (Claude Opus 5.5)
+- A text-only end of turn (`stop_reason: "end_turn"`) is a report, not proof the task is done.
+  Keep the task's parts in a checklist the model updates (a to-do tool or a JSON file). If a turn
+  ends with open items and no stated blocker, send a short user message naming them:
+  "Your task list still has open items: ... Continue with them. If one is blocked, say what is
+  blocking it."
+- Cap automatic continuations at 2-3 on the same task so a stuck run ends and can be reviewed.
+  Optionally let a small model check a stated completion condition at each end of turn and send
+  its reason back as the next user message.
+- Name the early stops you do not want (a summary that announces the next step with no tool call,
+  an offer to continue, a list of non-blocking decisions, "a good place to report") and the ones
+  you do (nothing can move without the user; a risky action needs confirmation). Add that
+  instruction at the start of the session: editing the system prompt mid-run invalidates
+  preserved thinking.
+- A still-running subagent or background command means the task is not done: wait for it and
+  return its output as the next message.
+- Time signals for agent teams: append `elapsed 340s / 1200s` to each message the harness sends
+  back. The model paces itself inside the budget; set it above the target and keep your own hard
+  timeout (the budget is advisory).
+- Progress updates arrive as thinking blocks between tool calls; set `thinking.display: "updates"`
+  (beta header `anthropic-beta: thinking-display-updates-2026-08-18`) to show them. If a turn stays silent for ~5 tool steps, append a short reminder, at most 2-3.
+- Source: https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5
+
 ## Pitfalls
 - Dumping raw tool output into context -> blows the window, buries signal.
 - Overlapping/ambiguous tools -> model dithers and mis-selects.
 - No step/budget cap -> infinite loops, runaway cost.
+- Treating `end_turn` as done -> the run quits halfway after a progress report.
 - Inconsistent observation formats -> model can't learn the pattern.
 - Errors as opaque tracebacks -> model can't recover.
 
@@ -62,4 +86,5 @@ for step in range(MAX_STEPS):                 # hard cap — never unbounded
 - [ ] Observations truncated, consistent, LLM-readable
 - [ ] Errors actionable with recovery hints
 - [ ] Hard step cap + budget guard + stuck-loop detection
+- [ ] Completion from a checklist, not from `end_turn`; continuations capped at 2-3
 - [ ] Context-window management strategy

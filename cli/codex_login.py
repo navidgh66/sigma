@@ -1,6 +1,6 @@
 """Detect and prompt ChatGPT sign-in for the codex CLI.
 
-`codex exec` (research's gpt lane, `sigma loop --codex-verify`/`--codex-tdd`) is
+`codex exec` (research's gpt lane) is
 subscription-backed via `codex login` (opens a browser, no API key). Because
 that's an interactive OAuth flow, sigma never runs it without confirmation —
 `setup_codex_login` is confirm-gated and idempotent (no-ops when already logged
@@ -80,8 +80,8 @@ def setup_codex_login(
         return False
 
     if not confirm(
-        "Sign in to Codex now (opens browser, ChatGPT subscription — needed for "
-        "sigma loop --codex-verify/--codex-tdd)?"
+        "Sign in to Codex now (opens browser, ChatGPT subscription; used by "
+        "sigma research's gpt lane)?"
     ):
         return False
 

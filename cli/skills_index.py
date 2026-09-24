@@ -21,6 +21,8 @@ _NOISE_PREFIXES = (
     "verify failed:",
     "implement failed:",
     "logic failed:",
+    "loop failed:",
+    "e2e failed:",
     "session lesson:",
 )
 
@@ -41,25 +43,28 @@ def topic_key(title: str) -> str:
 
 
 def parse_skill_meta(skill_md: Path) -> Dict[str, Optional[str]]:
-    """Extract {domain, topic} from a ratcheted SKILL.md.
+    """Extract {domain, topic, created} from a ratcheted SKILL.md.
 
-    domain comes from the `metadata:\\n  domain:` frontmatter; topic from the
+    domain and created come from the `metadata:` frontmatter; topic from the
     `# <title>` heading (run through topic_key).
     """
     domain: Optional[str] = None
     topic: Optional[str] = None
+    created: Optional[str] = None
     try:
         text = skill_md.read_text()
     except OSError:
-        return {"domain": None, "topic": None}
+        return {"domain": None, "topic": None, "created": None}
 
     for line in text.splitlines():
         s = line.strip()
         if s.startswith("domain:"):
             domain = s.split(":", 1)[1].strip() or None
+        elif created is None and s.startswith("created:"):
+            created = s.split(":", 1)[1].strip() or None
         elif topic is None and s.startswith("# "):
             topic = topic_key(s[2:])
-    return {"domain": domain, "topic": topic}
+    return {"domain": domain, "topic": topic, "created": created}
 
 
 def find_contradictions(skills_dir: Path, domain: Optional[str], topic: str) -> List[Path]:

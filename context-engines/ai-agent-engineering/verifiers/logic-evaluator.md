@@ -17,6 +17,7 @@ what the spec/plan actually asked for.
    different one? Flag silent scope drift.
 2. **Logical soundness of the AI Agent Engineering approach.**
    - **Control-flow logic:** does the agent loop terminate? Are tool-call decisions sound, or can it loop/stall?
+   - **Completion condition:** is "done" stated and checked against the task list, or inferred from a text-only end of turn? Are automatic continuations capped?
    - **Tool/observation design:** do tools and their results give the agent what it needs to make the intended decision?
    - **State & memory coherence:** is context managed so the agent reasons over the right information without leakage/bloat?
    - **Failure handling:** are error/timeouts/refusals handled, or does the plan assume happy-path only?

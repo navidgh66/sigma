@@ -65,7 +65,6 @@ Warm off-white, ink-black, sober. Long reports meant to be printed to PDF.
 | spec.md, architecture.md | Swiss Modern |
 | plan, tasks.md | Editorial Light |
 | verify results | Terminal / Data |
-| board.md (kanban) | Editorial Light or Terminal |
 | pitch / exec deck | Dark Luxe |
 
 Wire `--accent` into Chart.js dataset colors so charts match the page. Keep
