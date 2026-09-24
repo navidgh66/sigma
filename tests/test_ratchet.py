@@ -44,3 +44,13 @@ def test_ratchet_no_contradiction_different_topic(tmp_path):
     out2 = ratchet_to_skills(skills, "verify failed: train classifier", "B", "nlp")
     assert "CONTRADICTION" not in out2.read_text()
     assert not (skills / "CONTRADICTIONS.md").exists()
+
+
+def test_ratchet_never_overwrites_an_earlier_lesson(tmp_path):
+    skills = tmp_path / "skills"
+    first = ratchet_to_skills(skills, "loop failed: tokenize corpus", "lesson A", "nlp")
+    second = ratchet_to_skills(skills, "loop failed: tokenize corpus", "lesson B", "nlp")
+    assert first != second
+    assert "lesson A" in first.read_text()
+    assert second.parent.name == "loop-failed-tokenize-corpus-2"
+    assert "CONTRADICTION" in second.read_text() and str(first.parent.name) in second.read_text()

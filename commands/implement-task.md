@@ -17,12 +17,13 @@ Implement a single task with **only the relevant domain context** loaded.
 3. Read the task's **BDD scenarios** from the spec (Scenario / Given / When /
    Then). These are the behavioral contract — implement to satisfy each
    State → Action → Outcome, not just the acceptance criteria title.
-4. Snapshot the existing tests:
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" snapshot <workspace>/.test-snapshot-<task_id>.json`
+4. Snapshot the existing tests (`<root>` is `git rev-parse --show-toplevel`, else the
+   current directory):
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" snapshot <workspace>/.test-snapshot-<task_id>.json --root <root>`
 5. Implement to deliver every scenario (directly, or by dispatching the
    `sigma-implementer` agent). Search the codebase before assuming anything is
    missing (ripgrep-first).
-6. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <snapshot>`.
+6. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <snapshot> --root <root>`.
    Any path it prints is a pre-existing test that was edited or deleted: restore it
    and fix the code instead. If you believe the test itself is wrong, say which one
    and why, and let the user decide.

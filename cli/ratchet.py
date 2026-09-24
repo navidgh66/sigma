@@ -72,7 +72,14 @@ def ratchet_to_skills(
     """
     from cli.skills_index import find_contradictions, topic_key
 
-    target = skills_dir / _slug(failure_title)
+    # Never overwrite an earlier lesson: a same-titled one gets a -2, -3 ... suffix,
+    # so the older lesson survives as evidence for the contradiction flag below.
+    slug = _slug(failure_title)
+    target = skills_dir / slug
+    n = 2
+    while (target / "SKILL.md").exists():
+        target = skills_dir / f"{slug}-{n}"
+        n += 1
     target.mkdir(parents=True, exist_ok=True)
     out = target / "SKILL.md"
 

@@ -13,8 +13,9 @@ every task has passed or failed, or something genuinely needs the user.
 
 ## 1. Start
 
-1. Find the workspace (`sigma/specs/{date}-{slug}/`, newest unless the user names one).
-   Read `tasks.md` and `spec.md`.
+1. Find the project root (`git rev-parse --show-toplevel`, else the current directory;
+   call it `<root>`) and the workspace (`<root>/sigma/specs/{date}-{slug}/`, newest
+   unless the user names one). Read `tasks.md` and `spec.md`.
 2. Write `loop-state.json` in the workspace (JSON, so it is not rewritten casually):
 
    ```json
@@ -39,14 +40,14 @@ Say one line of intent before each task, and a one-line result after it.
 1. Set the task `in_progress`. Recall up to 5 lessons for its domain (the `sigma-lessons`
    skill, newest first).
 2. Snapshot the tests:
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" snapshot <workspace>/.test-snapshot-<id>.json`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" snapshot <workspace>/.test-snapshot-<id>.json --root <root>`
 3. Test-first, only if the user asked for TDD: dispatch `sigma-test-writer`, then take
    the snapshot again so its new test is protected too.
 4. Dispatch `sigma-implementer` with: the task line, domain, the scenario text from
    spec.md, the failing test path (TDD), the lessons, and the verifier's findings from
    the previous attempt if this is a retry. Point it at `ARCHITECTURE.md` if present.
 5. Tamper check:
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <workspace>/.test-snapshot-<id>.json`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/test_guard.py" check <workspace>/.test-snapshot-<id>.json --root <root>`
    Exit 1 means the implementer edited or deleted existing tests: the attempt fails with
    the listed paths as the reason (the verifier is skipped).
 6. Dispatch `sigma-verifier` (fresh context) with the task, domain, scenario, the changed
@@ -54,20 +55,32 @@ Say one line of intent before each task, and a one-line result after it.
 7. If verify passed and the task has a scenario: dispatch `sigma-e2e` with the scenario.
    FAIL fails the attempt. ERROR is an environment problem: note it on the task and
    do not fail the attempt for it. No verdict line means ERROR.
-8. Pass: status `passed`. Fail: `attempts += 1`; if `attempts < 3`, retry from step 4
+8. Pass: status `passed`, and tick the task's line in `tasks.md` (`- [ ]` to `- [x]`)
+   so a later run does not redo it. Fail: `attempts += 1`; if `attempts < 3`, retry from step 4
    with the failure findings; otherwise status `failed` and ratchet a lesson (below),
    then move to the next task.
 
-Parallel, only when the user asks ("in parallel", "as a team"): dispatch
-`sigma-implementer` for tasks that touch different files in one message with
-`isolation: worktree`, set `budget_seconds` (the user's figure, else 1800), and put
-`elapsed Ns / Bs` in each brief and in your own status lines. Tasks that share files run
-one after another. Wait for every dispatched agent before ending a turn.
+Parallel, only when the user asks ("in parallel", "as a team"):
+
+- Pick tasks that touch different files; tasks that share files run one after another.
+- Set `budget_seconds` (the user's figure, else 1800) and put `elapsed Ns / Bs` in each
+  brief and in your own status lines.
+- Dispatch one `sigma-implementer` per task in a single message with
+  `isolation: worktree`. Each worktree is that task's `<root>` for steps 2 to 7: take
+  the snapshot there before dispatch, and run the tamper check, `sigma-verifier` and
+  `sigma-e2e` against that worktree path.
+- A passing task's worktree branch is merged back into the branch the loop started on
+  before it is marked `passed`. A merge conflict: leave the worktree in place, set the
+  task `blocked` with the conflict in `note`, and continue with the others.
+- Wait for every dispatched agent before ending a turn.
 
 ## 3. Lessons (on a failed task)
 
-Write `skills/<slug>/SKILL.md` in the ratchet format, then check for a contradiction the
-way `/sigma-learn-lesson` does:
+First check for an existing lesson on the same topic in the same domain (the way
+`/sigma-learn-lesson` does). Never overwrite one: if `skills/<slug>/` already exists, use
+`skills/<slug>-2/` (then `-3`, ...), add a `> ⚠ CONTRADICTION: may conflict with
+<existing path>` line to the new lesson, and append the pair to
+`skills/CONTRADICTIONS.md`. Then write the lesson in the ratchet format:
 
 ```markdown
 ---
