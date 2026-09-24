@@ -1,6 +1,6 @@
 """`sigma setup-repo` — one-shot per-repo bootstrap.
 
-Globals (API keys, RTK, caveman, ccstatusline, graphify) are once-per-machine and
+Globals (API keys, RTK, ccstatusline, graphify) are once-per-machine and
 live in `sigma onboard`. THIS command is purely repo-local: it makes any repo
 "sigma-ready" with its five important artifacts, in order:
 

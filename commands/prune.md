@@ -35,7 +35,7 @@ descriptions into **every** Claude context — a recurring token tax. Prune find
 
 ## Compose, don't duplicate
 Distinct layer of bundle hygiene: `scout` *grows* the bundle, **prune *trims* it**,
-`sigma-cost` *sizes* the token cost, RTK cuts proxy overhead, caveman trims output.
+`sigma-cost` *sizes* the token cost, RTK cuts proxy overhead.
 
 ## Next
 → disable the dead weight · restart Claude Code · re-enable any plugin later by

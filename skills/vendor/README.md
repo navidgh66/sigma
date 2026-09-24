@@ -16,7 +16,6 @@ These are unmodified copies. Do not edit them here; update upstream and re-vendo
 | `superpowers/systematic-debugging` | claude-plugins-official / superpowers | 6.0.0 | upstream |
 | `superpowers/verification-before-completion` | claude-plugins-official / superpowers | 6.0.0 | upstream |
 | `superpowers/using-git-worktrees` | claude-plugins-official / superpowers | 6.1.1 | upstream |
-| `caveman` | caveman marketplace | (vendored) | upstream |
 
 Scripts and internal test fixtures from the upstream skills are intentionally
 omitted; only the skill instructions and reference docs are vendored.

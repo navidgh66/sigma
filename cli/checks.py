@@ -200,34 +200,6 @@ def check_rtk(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     return Check("rtk", OK, "RTK installed + activated for Claude")
 
 
-def check_caveman(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
-    """Caveman terse-output mode: plugin installed? SessionStart hook active?"""
-    if status_fn is None:
-        from cli.caveman import caveman_status
-
-        status_fn = caveman_status
-    st = status_fn()
-
-    def _fix() -> bool:
-        from cli.caveman import setup_caveman
-
-        return setup_caveman(status_fn=status_fn, confirm=lambda _msg: True)
-
-    if not st.get("claude_cli"):
-        return Check("caveman", WARN, "no `claude` CLI — can't install the caveman plugin")
-    if not st.get("installed"):
-        return Check(
-            "caveman", WARN, "caveman not installed (optional ~75% token saver)",
-            fix=("install caveman plugin for Claude", _fix),
-        )
-    if not st.get("hook_active"):
-        return Check(
-            "caveman", WARN, "caveman installed but its session hook is not active",
-            fix=("re-install caveman to register its hook", _fix),
-        )
-    return Check("caveman", OK, "caveman installed + active for Claude")
-
-
 def check_graphify(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     """graphify codebase knowledge-graph engine: installed (for `sigma learn`)?"""
     if status_fn is None:
@@ -358,7 +330,6 @@ def run_all(
     root: Optional[Path] = None,
     which: Optional[Callable] = None,
     rtk_status_fn: Optional[Callable] = None,
-    caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
     graphify_status_fn: Optional[Callable] = None,
     usage_which: Optional[Callable] = None,
@@ -384,7 +355,6 @@ def run_all(
         check_config(root=root),
         check_workspaces(root=root),
         check_rtk(status_fn=rtk_status_fn),
-        check_caveman(status_fn=caveman_status_fn),
         check_statusline(status_fn=statusline_status_fn),
         check_graphify(status_fn=graphify_status_fn),
         check_graphify_hook(root=root),

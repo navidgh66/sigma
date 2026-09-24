@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-673%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-660%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -137,8 +137,8 @@ sigma onboard
 sigma setup-repo            # add --no-learn / --no-claude-md to skip either agent step
 ```
 
-`sigma onboard` is the once-per-machine setup (keys, codex sign-in, RTK, caveman,
-status line, graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
+`sigma onboard` is the once-per-machine setup (keys, codex sign-in, RTK, status
+line, graphify). `sigma setup-repo` is the per-repo bootstrap — run it in each project to
 give it the five local artifacts (`sigma.config.yml`, the SessionStart hook,
 `CLAUDE.local.md`, the `ARCHITECTURE.md` + CodeTour map, and CLAUDE.md — scaffolded
 if missing, checked against best-practice research if present) so Claude reads
@@ -315,7 +315,7 @@ loaded-but-unused heaviest-first. Disabling is **reversible** (flips
 uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 > Hygiene trio: **scout grows** the bundle, **prune trims** it, **`sigma cost`
-> sizes** it — orthogonal to RTK (proxy tokens) and caveman (output terseness).
+> sizes** it — orthogonal to RTK (proxy tokens).
 
 ---
 
@@ -354,7 +354,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **673 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
+- **660 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
   lesson ratchet + recall, the Stop-hook decision, the tamper guard, cost,
   graph/scout/prune) is separated from subprocess execution and tested with fakes.
   No real agent, network, or settings file is touched by the suite.

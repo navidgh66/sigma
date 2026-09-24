@@ -14,12 +14,12 @@ multi-model `research`, `review`/`profile`, `learn`, and setup + hygiene.
 Research-first, spec-driven, loop-engineered: `/loop` runs every open task to done
 in-session with distinct implementer/verifier agents, a test tamper guard, and a
 Stop hook that keeps the run going until tasks settle (Opus 5.5 unattended-run
-pattern). 673 pytest tests, ruff clean.
+pattern). 660 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q                           # run all 673 tests (must stay green)
+python3 -m pytest tests/ -q                           # run all 660 tests (must stay green)
 python3 -m ruff check cli/ tests/ hooks/ scripts/      # lint (py39 target)
 python3 -m cli.main --help                            # CLI help
 
@@ -81,7 +81,7 @@ cli/learn.py, graphify.py, codetour.py, session_*.py, claude_local.py, claude_md
 cli/review*.py, profile_*.py, graph_impact.py, domains_index.py
 cli/scout*.py, prune*.py, docs_check*.py, claude_md_*.py, cost.py, usage.py
 cli/config.py, paths.py, checks.py, doctor.py, onboard.py, setup_repo.py, uninstall.py
-cli/secrets.py, rtk.py, caveman.py, statusline.py, codex_login.py, render.py
+cli/secrets.py, rtk.py, statusline.py, codex_login.py, render.py
 agents/                  role subagents for /loop and /implement-task
 hooks/                   hooks.json + loop_guard.py (stdlib, no cli.* imports)
 scripts/test_guard.py    tamper guard (stdlib, no cli.* imports)
@@ -140,7 +140,7 @@ tests/                   pytest; pure logic tested with fakes
   with `-`.
 - **graphify is shelled out, never imported** (it needs py3.10; sigma stays 3.9).
   No graph → the learn prompt and review report are byte-identical to before.
-- **Confirm-gated shared state:** RTK, caveman, statusline, graphify hook, codex
+- **Confirm-gated shared state:** RTK, statusline, graphify hook, codex
   login, the SessionStart hook, and the CLAUDE.md ARCHITECTURE reference all ask
   first; `CLAUDE.local.md` refreshes silently (gitignored).
 - **Review gate:** FAILs on any CRITICAL/HIGH finding or an inconclusive axis;

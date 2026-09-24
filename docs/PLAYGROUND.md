@@ -215,7 +215,7 @@ $ find skills/vendor -name SKILL.md
   skills/vendor/superpowers/test-driven-development/SKILL.md
   skills/vendor/superpowers/systematic-debugging/SKILL.md
   skills/vendor/superpowers/verification-before-completion/SKILL.md
-  skills/vendor/caveman/SKILL.md
+  skills/vendor/code-tour/SKILL.md
 ```
 
 - **Standalone:** invoke any of these directly in Claude Code (e.g. the
@@ -369,7 +369,7 @@ $ sigma cost
 Heavy ops (review/profile/loop/research) estimate cost up front (with per-axis
 model-tier routing — cheap model for `code`, strong for `ml-logic`) and record
 actual spend into `sigma/costs.jsonl`. Calibrates over time. The `sigma-cost` skill
-surfaces the same advice in-session; composes with RTK/caveman, never duplicates.
+surfaces the same advice in-session; composes with RTK, never duplicates.
 
 > Plugin: `/profile` and `/review` are the in-session slash-command equivalents.
 
@@ -450,7 +450,7 @@ recent transcripts for actual usage, and ranks the **loaded-but-unused** heavies
 - **Never prunes on absent evidence** — no transcripts → surfaces nothing (an item with
   unknown usage is treated as *used*).
 - Distinct hygiene layer: **scout grows** the bundle, **prune trims** it, **`sigma cost`
-  sizes** it. Orthogonal to RTK (proxy tokens) + caveman (output terseness).
+  sizes** it. Orthogonal to RTK (proxy tokens).
 
 > Plugin: `/learn`, `/scout`, `/prune` are the in-session slash-command equivalents.
 
@@ -482,7 +482,7 @@ recent transcripts for actual usage, and ranks the **loaded-but-unused** heavies
 | `sigma prune --check` | CI gate: exit 1 if prunable context bloat exists |
 | `sigma docs-check --check` | version parity + stale test-count claims |
 | `sigma claude-md-check` / `claude-md-create` | grade / scaffold CLAUDE.md |
-| `sigma onboard` | first-run setup: domains, API keys, RTK, caveman, statusline, graphify |
+| `sigma onboard` | first-run setup: domains, API keys, codex sign-in, RTK, statusline, graphify |
 | `sigma setup-repo` | per-repo bootstrap: config + hook + CLAUDE.local + map |
 | `sigma doctor` | diagnose + confirm-gated fixes |
 | `sigma doctor --check` | read-only health (CI gate, exit 1 on fail) |

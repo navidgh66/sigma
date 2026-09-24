@@ -13,7 +13,6 @@ from __future__ import annotations
 from getpass import getpass
 from typing import Callable, List, Optional
 
-from cli import caveman as caveman_mod
 from cli import checks as checks_mod
 from cli import codex_login as codex_login_mod
 from cli import graphify as graphify_mod
@@ -47,7 +46,6 @@ def run_onboard(
     secret_input: Optional[Callable[[str], str]] = None,
     confirm: Optional[Callable[[str], bool]] = None,
     rtk_status_fn: Optional[Callable] = None,
-    caveman_status_fn: Optional[Callable] = None,
     statusline_status_fn: Optional[Callable] = None,
     graphify_status_fn: Optional[Callable] = None,
     codex_login_status_fn: Optional[Callable] = None,
@@ -111,21 +109,14 @@ def run_onboard(
     if changed:
         print("  ✓ RTK set up — restart Claude Code for it to take effect")
 
-    # 7. Caveman — confirm-gated terse-output mode (also touches global state).
-    cave_changed = caveman_mod.setup_caveman(
-        status_fn=caveman_status_fn, confirm=confirm, which=which, spawn=spawn
-    )
-    if cave_changed:
-        print("  ✓ caveman set up — restart Claude Code for it to take effect")
-
-    # 8. ccstatusline — confirm-gated status line (writes settings.json statusLine).
+    # 7. ccstatusline — confirm-gated status line (writes settings.json statusLine).
     sl_changed = statusline_mod.setup_statusline(
         status_fn=statusline_status_fn, confirm=confirm, which=which
     )
     if sl_changed:
         print("  ✓ ccstatusline configured — restart Claude Code for it to take effect")
 
-    # 9. graphify — confirm-gated install of the codebase knowledge-graph engine
+    # 8. graphify — confirm-gated install of the codebase knowledge-graph engine
     #    that `sigma learn` shells out to (isolated 3.10+ env; sigma stays 3.9).
     graph_changed = graphify_mod.setup_graphify(
         status_fn=graphify_status_fn, confirm=confirm, which=which, spawn=spawn
@@ -133,7 +124,7 @@ def run_onboard(
     if graph_changed:
         print("  ✓ graphify installed — `sigma learn` will build a knowledge graph")
 
-    # 9b. graphify post-commit hook — confirm-gated. Refreshes the knowledge graph
+    # 8b. graphify post-commit hook — confirm-gated. Refreshes the knowledge graph
     #     on each commit (AST-only, no API cost). No-op if graphify isn't installed
     #     or the hook is already present. graphify owns the hook + graph.json merge
     #     driver; sigma only invokes `graphify hook install`.
@@ -145,13 +136,13 @@ def run_onboard(
     if graph_hook_changed:
         print("  ✓ graphify post-commit hook installed — graph refreshes on each commit")
 
-    # 10. SessionStart hook — confirm-gated. Surfaces this repo's learn artifacts
+    # 9. SessionStart hook — confirm-gated. Surfaces this repo's learn artifacts
     #     (ARCHITECTURE.md / tour) at the start of every Claude Code session.
     hook_changed = session_hook_mod.setup_session_hook(confirm=confirm)
     if hook_changed:
         print("  ✓ session hook added — new sessions will read this repo's learn artifacts")
 
-    # 11. Build the learn artifacts now (confirm-gated). ARCHITECTURE.md + a tour
+    # 10. Build the learn artifacts now (confirm-gated). ARCHITECTURE.md + a tour
     #     persist in the repo and are read by Claude every session (via the hook or
     #     CLAUDE.local.md) — so the codebase is mapped ONCE, not re-explored each
     #     time. Useful even if you never run another sigma command. Skipped when

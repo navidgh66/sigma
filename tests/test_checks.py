@@ -77,30 +77,6 @@ def test_models_detects_gpt_via_codex_binary():
     assert "gpt" in c.detail
 
 
-# --------------------------- caveman --------------------------- #
-def test_caveman_ok_when_active():
-    c = checks.check_caveman(
-        status_fn=lambda: {"claude_cli": True, "installed": True, "hook_active": True}
-    )
-    assert c.status == OK
-
-
-def test_caveman_warn_offers_fix_when_not_installed():
-    c = checks.check_caveman(
-        status_fn=lambda: {"claude_cli": True, "installed": False, "hook_active": False}
-    )
-    assert c.status == WARN
-    assert c.fixable
-
-
-def test_caveman_warn_no_claude_cli_unfixable():
-    c = checks.check_caveman(
-        status_fn=lambda: {"claude_cli": False, "installed": False, "hook_active": False}
-    )
-    assert c.status == WARN
-    assert not c.fixable
-
-
 # --------------------------- secrets --------------------------- #
 def test_secrets_ok_when_present(monkeypatch, tmp_path):
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
@@ -121,7 +97,7 @@ def test_secrets_warn_when_missing(monkeypatch, tmp_path):
 
 # --------------------------- vendored skills --------------------------- #
 def test_vendored_skills_ok(tmp_path):
-    vendor = tmp_path / "skills" / "vendor" / "caveman"
+    vendor = tmp_path / "skills" / "vendor" / "code-tour"
     vendor.mkdir(parents=True)
     (vendor / "SKILL.md").write_text("x")
     c = checks.check_vendored_skills(home=tmp_path)

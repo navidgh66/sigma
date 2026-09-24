@@ -106,7 +106,7 @@ small capped lesson recall).
 
 ### Setup / health
 - `cli/config.py`, `cli/paths.py`, `cli/checks.py`, `cli/doctor.py`, `cli/onboard.py`, `cli/setup_repo.py`, `cli/uninstall.py`
-- `cli/secrets.py` (`~/.sigma/.env`, chmod 600), `cli/rtk.py`, `cli/caveman.py`, `cli/statusline.py`, `cli/codex_login.py`, `cli/render.py`
+- `cli/secrets.py` (`~/.sigma/.env`, chmod 600), `cli/rtk.py`, `cli/statusline.py`, `cli/codex_login.py`, `cli/render.py`
 
 ### Plugin content
 - `.claude-plugin/plugin.json` + `marketplace.json`
