@@ -30,7 +30,7 @@ def test_run_research_parallel_collects_all():
 def test_aggregate_reports_coverage():
     results = [
         ModelResult("claude", True, "Found X (src: http://a)"),
-        ModelResult("gemini", False, "", error="CLI not installed", skipped=True),
+        ModelResult("gpt", False, "", error="CLI not installed", skipped=True),
         ModelResult("gpt", False, "", error="boom"),
     ]
     doc = aggregate("my topic", results, today=date(2026, 6, 16))

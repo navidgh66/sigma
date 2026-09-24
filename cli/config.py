@@ -15,7 +15,9 @@ from cli.paths import (
     project_root,
 )
 
-DEFAULT_MODELS = ["claude", "gemini", "gpt"]
+DEFAULT_MODELS = ["claude", "gpt"]
+# Research lanes sigma no longer ships; dropped quietly from older configs.
+_RETIRED_MODELS = {"gemini"}
 DEFAULT_TOOLS: List[str] = []
 
 DEFAULT_COMMANDS = [
@@ -86,7 +88,7 @@ def _from_dict(data: dict) -> SigmaConfig:
     return SigmaConfig(
         name=profile.get("name", "my-project"),
         harness=profile.get("harness", "claude-code"),
-        models=list(research.get("models", DEFAULT_MODELS)),
+        models=[m for m in research.get("models", DEFAULT_MODELS) if m not in _RETIRED_MODELS],
         tools=list(research.get("tools", DEFAULT_TOOLS)),
         domains=list(data.get("domains", list(DOMAINS))),
         commands=list(data.get("commands", DEFAULT_COMMANDS)),

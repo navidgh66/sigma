@@ -87,7 +87,7 @@ def test_setup_spawns_login_on_confirm():
         confirm=lambda msg: True,
         spawn=lambda argv: spawned.append(argv) or 0,
     )
-    assert spawned == [["codex", "login"]]
+    assert spawned == [["codex", "login", "--device-auth"]]
     assert changed is True
 
 
@@ -98,3 +98,16 @@ def test_setup_reports_failure_when_spawn_fails():
         spawn=lambda argv: 1,
     )
     assert changed is False
+
+
+def test_login_uses_device_code_flow():
+    # Device auth prints a URL + one-time code and works headless (no local
+    # browser), so it fits cloud sessions and SSH as well as a laptop.
+    spawned = []
+    changed = codex_login.setup_codex_login(
+        status_fn=lambda: {"installed": True, "logged_in": False},
+        confirm=lambda msg: True,
+        spawn=lambda argv: spawned.append(argv) or 0,
+    )
+    assert changed is True
+    assert spawned == [["codex", "login", "--device-auth"]]

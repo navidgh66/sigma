@@ -126,3 +126,33 @@ def test_fix_failure_keeps_fail_exit(capsys):
         run_all=lambda **k: failing, auto_yes=True, use_rich=False
     )
     assert rc == 1
+
+
+def _fake_home(tmp_path, monkeypatch, version="9.9.9"):
+    home = tmp_path / "sigma-home"
+    (home / ".git").mkdir(parents=True)
+    (home / "cli").mkdir()
+    (home / "cli" / "__init__.py").write_text(f'__version__ = "{version}"\n')
+    monkeypatch.setenv("SIGMA_HOME", str(home))
+    return home
+
+
+def test_default_updater_reports_failed_cli_pull_loudly(tmp_path, monkeypatch, capsys):
+    # A refused `git pull` (e.g. local edits) must not look like a success:
+    # say the CLI did NOT update and print the exact fix.
+    home = _fake_home(tmp_path, monkeypatch)
+    doctor._default_updater(
+        spawn=lambda cmd: 1 if cmd[0] == "git" else 0,
+        which=lambda name: None,
+    )
+    out = capsys.readouterr().out
+    assert "CLI update failed" in out
+    assert f"git -C {home} stash" in out
+
+
+def test_default_updater_reports_new_cli_version_after_pull(tmp_path, monkeypatch, capsys):
+    # The running process still holds the OLD code, so read the pulled version
+    # from disk and show it (otherwise `sigma --version` looks stale).
+    _fake_home(tmp_path, monkeypatch, version="0.30.0")
+    doctor._default_updater(spawn=lambda cmd: 0, which=lambda name: None)
+    assert "CLI now at 0.30.0" in capsys.readouterr().out

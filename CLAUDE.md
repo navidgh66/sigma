@@ -14,12 +14,12 @@ multi-model `research`, `review`/`profile`, `learn`, and setup + hygiene.
 Research-first, spec-driven, loop-engineered: `/loop` runs every open task to done
 in-session with distinct implementer/verifier agents, a test tamper guard, and a
 Stop hook that keeps the run going until tasks settle (Opus 5.5 unattended-run
-pattern). 660 pytest tests, ruff clean.
+pattern). 662 pytest tests, ruff clean.
 
 ## Commands
 
 ```bash
-python3 -m pytest tests/ -q                           # run all 660 tests (must stay green)
+python3 -m pytest tests/ -q                           # run all 662 tests (must stay green)
 python3 -m ruff check cli/ tests/ hooks/ scripts/      # lint (py39 target)
 python3 -m cli.main --help                            # CLI help
 
@@ -132,8 +132,9 @@ tests/                   pytest; pure logic tested with fakes
   out); a failed claude CLI degrades to placeholder text. Search tools get the bare
   topic, not the LLM brief. Firecrawl scrapes the top-3 URLs only on `--deep`,
   deduped and capped (`_SCRAPE_TEXT_CAP`); `deep=False` issues zero scrape calls.
-- **Research is subscription-backed:** gpt via `codex exec` (ChatGPT login, not
-  `OPENAI_API_KEY`), gemini via `gemini -p --output-format json`, claude via `claude -p`.
+- **Research is subscription-backed:** gpt via `codex exec` (ChatGPT sign-in via
+  `codex login --device-auth`, not `OPENAI_API_KEY`), claude via `claude -p`. Older
+  configs that list a retired lane have it dropped on load (`config._RETIRED_MODELS`).
 - **Two learn paths:** the CLI (`cli/learn.py`) parses `=== ARCHITECTURE.md ===` /
   `=== TOUR.json ===` blocks from stdout and writes the files; the plugin path
   (`commands/learn.md`) must write files directly. The agent prompt must not start

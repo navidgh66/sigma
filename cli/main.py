@@ -594,7 +594,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pr = sub.add_parser("research", help="Multi-model research")
     pr.add_argument("topic")
-    pr.add_argument("--models", help="comma list: claude,gemini,gpt")
+    pr.add_argument("--models", help="comma list: claude,gpt")
     pr.add_argument("--deep", action="store_true",
                     help="web-grounded deep research (exhaustive live web search; slower)")
     pr.add_argument("--web", action="store_true",

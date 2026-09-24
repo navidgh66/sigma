@@ -54,7 +54,7 @@ Pick the domains a project needs; writes `sigma.config.yml`.
 $ sigma init --name churn-model --domains classic-ml,data-analysis
 → ✓ wrote /path/sigma.config.yml
     domains: classic-ml, data-analysis
-    models:  claude, gemini, gpt
+    models:  claude, gpt
 
 $ sigma init --domains nlp,rl           # name defaults to cwd
 $ sigma init --force                    # overwrite existing config
@@ -82,18 +82,18 @@ research` stays a CLI command for real parallel fan-out.)
 
 ### 2a. `sigma research` — multi-model, cited
 
-Fans out to Claude + Gemini + GPT in parallel (whichever CLIs are installed),
+Fans out to Claude + GPT (via codex) in parallel (whichever CLIs are installed),
 aggregates + dedupes + cites into `research.md`.
 
 ```bash
 $ sigma research "active learning for imbalanced fraud labels"
 → sigma research — topic='active learning for imbalanced fraud labels'
-    models requested: claude, gemini, gpt
-    models available: claude            # gemini/gpt skipped if CLI absent
+    models requested: claude, gpt
+    models available: claude            # gpt skipped if the codex CLI is absent
   ✓ wrote sigma/specs/2026-06-17-active-learning-for-imbalanced-fraud-labels/research.md
   → next: /propose
 
-$ sigma research "topic" --models claude,gemini   # restrict models
+$ sigma research "topic" --models claude          # restrict models
 $ sigma research "topic" --web                     # quick web-grounded pass
 $ sigma research "topic" --deep                    # exhaustive web research (slower, 900s)
 ```
@@ -263,9 +263,10 @@ $ sigma onboard
   1. classic-ml   2. deep-learning   …   9. llm-engineering
   Domains (e.g. 1,3 — blank = all): 3,4
   ✓ wrote sigma.config.yml (nlp, rl)
-  GEMINI_API_KEY (blank to skip): ******      # hidden; → ~/.sigma/.env (chmod 600)
   OPENAI_API_KEY (blank to skip):             # blank = skipped
-  ℹ present CLIs (auth as needed) — claude: …; gpt: `gpt auth login`
+  FIRECRAWL_API_KEY (blank to skip): ******   # hidden; → ~/.sigma/.env (chmod 600)
+  ℹ present CLIs (auth as needed) — claude: …; gpt: `codex login --device-auth`
+  Sign in to Codex now with a device code (open the printed URL, enter the code; …)? [y/N] y
   Install RTK (60-90% token saver) and activate it for Claude? [y/N] y
   ✓ RTK set up — restart Claude Code for it to take effect
   ✓ onboarding complete.

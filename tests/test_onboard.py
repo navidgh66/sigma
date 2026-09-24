@@ -50,10 +50,10 @@ def test_onboard_writes_config(tmp_path, monkeypatch):
 def test_onboard_captures_secret_to_env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SIGMA_HOME", str(tmp_path))
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-    provided = {"GEMINI_API_KEY": "secret-g", "OPENAI_API_KEY": ""}
+    provided = {"FIRECRAWL_API_KEY": "secret-g", "OPENAI_API_KEY": ""}
     onboard.run_onboard(
         name="p",
         domain_input=lambda: "",
@@ -65,7 +65,7 @@ def test_onboard_captures_secret_to_env(tmp_path, monkeypatch):
         domains=["nlp"],
     )
     env = secrets.read_env()
-    assert env.get("GEMINI_API_KEY") == "secret-g"
+    assert env.get("FIRECRAWL_API_KEY") == "secret-g"
     assert "OPENAI_API_KEY" not in env  # blank skipped
 
 
@@ -75,7 +75,7 @@ def test_onboard_secret_never_in_config(tmp_path, monkeypatch):
     onboard.run_onboard(
         name="p",
         domain_input=lambda: "",
-        secret_input=lambda key: "leaky" if key == "GEMINI_API_KEY" else "",
+        secret_input=lambda key: "leaky" if key == "FIRECRAWL_API_KEY" else "",
         confirm=lambda msg: False,
         run_all=lambda **k: [],
         which=lambda n: None,
@@ -150,7 +150,7 @@ def test_onboard_signs_in_to_codex_on_confirm(tmp_path, monkeypatch):
         use_rich=False,
         domains=["nlp"],
     )
-    assert ["codex", "login"] in spawned
+    assert ["codex", "login", "--device-auth"] in spawned
 
 
 def test_onboard_skips_codex_login_when_declined(tmp_path, monkeypatch):
@@ -193,7 +193,7 @@ def test_onboard_codex_login_noop_when_already_logged_in(tmp_path, monkeypatch):
         use_rich=False,
         domains=["nlp"],
     )
-    assert ["codex", "login"] not in spawned
+    assert ["codex", "login", "--device-auth"] not in spawned
 
 
 # --------------------------- graphify --------------------------- #

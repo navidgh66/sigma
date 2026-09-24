@@ -17,7 +17,7 @@ def test_claude_md_under_200_lines():
 def test_version_parity_and_release():
     plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
-    assert __version__ == plugin["version"] == "0.29.0"
+    assert __version__ == plugin["version"] == "0.30.0"
     assert market["plugins"][0]["version"] == market["metadata"]["version"] == __version__
 
 

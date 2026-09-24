@@ -29,11 +29,10 @@ Fix = Tuple[str, Callable[[], bool]]
 
 # Model CLIs sigma can fan out to during research, keyed by sigma model name with
 # the actual executable to probe on PATH (gpt is driven via the Codex CLI).
-_MODEL_EXES = {"claude": "claude", "gemini": "gemini", "gpt": "codex"}
+_MODEL_EXES = {"claude": "claude", "gpt": "codex"}
 # How to authenticate each, shown as guidance (never auto-run).
 _AUTH_HINT = {
-    "gemini": "gemini  (sign in with Google / GEMINI_API_KEY)",
-    "gpt": "codex login  (uses your ChatGPT subscription)",
+    "gpt": "codex login --device-auth  (device code, uses your ChatGPT subscription)",
     "claude": "claude  (already authed if you're running it)",
 }
 
@@ -243,7 +242,7 @@ def check_codex_login(status_fn: Optional[Callable[[], Dict]] = None) -> Check:
     if not st.get("logged_in"):
         return Check(
             "codex-login", WARN, "codex CLI installed but not signed in",
-            fix=("sign in to Codex (codex login)", _fix),
+            fix=("sign in to Codex (codex login --device-auth)", _fix),
         )
     return Check("codex-login", OK, "codex CLI signed in")
 
@@ -339,7 +338,7 @@ def run_all(
 
     `usage_which` is a DEDICATED injection point for `check_usage_tool`'s node-
     runtime probe (npx/bunx) — deliberately NOT the same `which` used above for
-    `check_models`/`check_model_auth` (model CLI detection: claude/gemini/codex).
+    `check_models`/`check_model_auth` (model CLI detection: claude/codex).
     Conflating the two would let a test's fake `which` for one silently affect
     the other. Defaults to None (real `shutil.which`), so existing callers are
     unaffected.

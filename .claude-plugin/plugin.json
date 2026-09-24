@@ -1,7 +1,7 @@
 {
   "name": "sigma",
   "description": "Personal AI workflow toolkit for data science & AI engineering. Research-first, spec-driven, loop-engineered pipeline (research → propose → blueprint → grill → spec → tasks → implement-task → verify → loop) with an in-session /loop, role agents, a Stop-hook loop guard, and adversarial grilling.",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "author": {
     "name": "Navid Ghayazi"
   },

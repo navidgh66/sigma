@@ -172,7 +172,7 @@ def aggregate(
         lines.append("## ⚠️ No models produced findings")
         lines.append("")
         lines.append("Every requested model was skipped or failed. Install at least "
-                     "one model CLI (claude / gemini / openai) and retry.")
+                     "one model CLI (claude / codex) and retry.")
         lines.append("")
         return "\n".join(lines)
 

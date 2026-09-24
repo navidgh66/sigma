@@ -1,6 +1,6 @@
 """Secret storage for sigma: API keys in ~/.sigma/.env, never the committed config.
 
-Keys (Gemini, OpenAI) are written to a `.env` file inside the sigma install dir
+Keys (OpenAI, Firecrawl) are written to a `.env` file inside the sigma install dir
 with `chmod 600` (owner-only) and git-ignored. They are NEVER written to
 `sigma.config.yml`, which is tracked in git. An ambient environment variable of
 the same name also counts as "present", so users who already export their keys
@@ -17,7 +17,7 @@ from typing import Dict, List
 from cli.paths import sigma_home
 
 # The model API keys sigma knows how to use.
-KNOWN_KEYS: List[str] = ["GEMINI_API_KEY", "OPENAI_API_KEY", "FIRECRAWL_API_KEY"]
+KNOWN_KEYS: List[str] = ["OPENAI_API_KEY", "FIRECRAWL_API_KEY"]
 
 ENV_FILENAME = ".env"
 _OWNER_RW = 0o600
