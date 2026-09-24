@@ -3,11 +3,14 @@
 ## What it is
 
 Sigma is a personal, portable AI workflow toolkit for data science and AI engineering.
-It is **plugin-first**: a Claude Code plugin (slash commands + skills) you carry into any
-repo, backed by a thin CLI for what Claude Code cannot do in-session.
+It is **plugin-first**: a Claude Code plugin (slash commands, role agents, a Stop hook,
+skills) you carry into any repo, backed by a thin CLI for what Claude Code cannot do
+in-session plus setup and hygiene.
 
-Design philosophy: the developer's output is not code — it is the **system that produces code**
-(specs → agents → tests → ratchet). Sigma is that system.
+Design philosophy: the developer's output is not code — it is the **system that produces
+code** (specs → agents → tests → ratchet). Sigma is that system. Every harness piece
+encodes an assumption about what the model cannot do alone; when a newer model makes one
+unnecessary, it goes (0.28.0 retired the CLI loop engine for an in-session `/loop`).
 
 ---
 
@@ -15,133 +18,118 @@ Design philosophy: the developer's output is not code — it is the **system tha
 
 | Surface | When to use |
 |---------|-------------|
-| **Claude Code plugin** (primary) | Pipeline stages (`/research` … `/verify`), `/grill`, `skills/sigma-*` — runs in-session with full domain context and human steering |
-| **CLI** (`sigma …`) | `research` (parallel multi-model), `loop`/`hermes` (autonomous escape hatch), `board`/`weave` (live TUI / artifact chain), `doctor`/`onboard` (setup) |
+| **Claude Code plugin** (primary) | Pipeline stages (`/research` … `/verify`), `/grill`, `/craft`, `/loop`, `/e2e`, `agents/`, `hooks/`, `skills/sigma-*` — in-session with domain context and human steering |
+| **CLI** (`sigma …`) | `research` (parallel multi-model), `review`/`profile`, `learn`, and setup + hygiene (`onboard`, `doctor`, `setup-repo`, `scout`, `prune`, `docs-check`, `claude-md-*`, `cost`, `usage`) |
 
 ---
 
 ## Pipeline
 
 ```
-research → propose → blueprint → [grill-blueprint] → spec → [grill-spec] → tasks → implement-task → verify → loop
+research → propose → blueprint → [grill] → spec → [grill] → tasks → implement-task → verify → loop
 ```
 
 Artifacts live under `sigma/specs/{YYYY-MM-DD}-{slug}/`. Each stage reads the prior
-stage's artifact as context. The `verify` stage reads the **whole chain** via `chain.json`
-(built by `sigma weave`). The two `grill-*` stages are adversarial gates that BLOCK the
-auto chain on a CRITICAL/HIGH logic flaw.
+stage's artifact. `/grill` is an adversarial gate that BLOCKs on a CRITICAL/HIGH flaw.
+`/craft` drives the back half (`spec → grill → tasks → loop`) from a design you bring.
 
-Stage list defined in `cli/pipeline.py:STAGES`.
+---
+
+## The in-session loop (`/loop`)
+
+```
+/loop (lead, commands/loop.md)
+  └─ write loop-state.json (one entry per open task in tasks.md)
+  └─ per task:
+       ├─ scripts/test_guard.py snapshot         (hash every test file)
+       ├─ [TDD] agents/sigma-test-writer          (effort low; failing test first)
+       ├─ agents/sigma-implementer                (effort medium; scenario + ≤5 lessons)
+       ├─ scripts/test_guard.py check            (edited/deleted old test → attempt fails)
+       ├─ agents/sigma-verifier                   (effort medium; no Edit/Write; runs tests, VERDICT)
+       ├─ [scenario] agents/sigma-e2e             (effort low; PASS / FAIL / ERROR)
+       └─ pass → tick tasks.md · fail → ≤2 retries → failed + ratchet a lesson
+  └─ finish: status done, recap
+
+hooks/hooks.json → Stop → hooks/loop_guard.py
+  running loop + open tasks + no blocker → block with a nudge naming them
+  ≤3 nudges without progress, then status "stopped"; fails open on any error
+```
+
+Design sources: the Opus 5.5 prompting guide (text-only end of turn is a report; checklist
++ capped continuations; named early stops; effort as the control; time-budget signals)
+and 2025-26 agent research (tests protected from the implementer; checkers that run code;
+small capped lesson recall).
 
 ---
 
 ## Module layout
 
 ### Entry point
-- `cli/main.py` — argparse CLI; one `cmd_*` function per subcommand; imports from pure modules only
+- `cli/main.py` — argparse CLI; one `cmd_*` function per subcommand; bare `sigma` prints help
 
-### Core abstractions
-- `cli/runner.py` — `AgentRunner` + `AgentResult`; single execution chokepoint; `claude -p <prompt>` subprocess; injectable `runner` for tests
-- `cli/pipeline.py` — `STAGES`, `execute_stage`, `chain_context` (full-chain verify context), `render_invocation`
-- `cli/loop.py` — `Task`, `CyclePlan`, `CycleOutcome`; `execute_cycle` (maker→checker, optional logic + TDD axes); `run_loop` (sequential or `--team` parallel via `ThreadPoolExecutor`)
-- `cli/hermes.py` — conductor: `route` → inject skill → `execute_stage` → append event → gate check; single-step or `--auto` chain
-- `cli/intent.py` — hybrid routing: `scan_state` (free, artifact-presence) → `classify` (one model call, only on override signals)
+### Core
+- `cli/runner.py` — `AgentRunner` (`executable`, `timeout`, `runner`, `model`) + `AgentResult`; the single `claude -p <prompt>` chokepoint for CLI agent runs
+- `cli/ratchet.py` — `render_skill` / `ratchet_to_skills` / `flag_contradiction`; never overwrites an earlier lesson (`-2`, `-3` suffix)
+- `cli/skills_recall.py` — `recall_lessons` (≤5 per domain, newest first by `created`) + `render_recall_block`
+- `cli/skills_index.py` — `topic_key`, `parse_skill_meta` (domain/topic/created), `find_contradictions`
 
-### State / memory
-- `cli/events.py` — append-only `events.jsonl`; board state spine
-- `cli/board.py` — pure `build_columns` projection + rich static/live render
-- `cli/skills_recall.py` — `recall_lessons(skills_dir, domain)` + `render_recall_block`; read side of learning loop
-- `cli/skills_index.py` — `topic_key` + `find_contradictions`; contradiction detection on ratchet
-- `cli/cost.py` — `estimate / record / calibrate / report`; append-only `sigma/costs.jsonl`
-- `cli/trajectory.py` — append-only `trajectory.jsonl` (one step per agent run) + `summarize` projection + `make_sink`; observability, pure like `events.py`
-
-### Evaluation
-- `cli/eval.py` — pure: parse eval set (markdown cases), LM-judge prompt, skeptical `parse_grade`, `aggregate`/`gate(threshold)`, `ensure_distinct` (SUT≠judge)
-- `cli/eval_run.py` — thin: prompt mode (run SUT → grade w/ distinct judge) or artifact mode, parallel grading, cost record, `--check` gate
+### Plugin runtime (stdlib only, no `cli.*` imports)
+- `hooks/loop_guard.py` + `hooks/hooks.json` — the `/loop` Stop hook
+- `scripts/test_guard.py` — test-file snapshot / check (tamper guard)
+- `agents/*.md` — `sigma-implementer`, `sigma-verifier`, `sigma-test-writer`, `sigma-e2e`
 
 ### Research
-- `cli/research.py` — parallel `ThreadPoolExecutor` fan-out to claude/gemini/gpt; `--web` / `--deep` modes
-- `cli/models.py` — per-model adapters (`claude -p`, `gemini -p --output-format json`, `codex exec`); `clean_output`
+- `cli/research.py` — parallel fan-out to model CLIs + search tools + real synthesis → cited `research.md`
+- `cli/research_brief.py` / `cli/research_docs.py` — brief templates + generated doc blocks
+- `cli/models.py` — model-CLI adapters (`claude -p`, `gemini -p --output-format json`, `codex exec`); `clean_output`
+- `cli/search_providers.py` — Firecrawl search tier (deep mode scrapes top-3 pages)
 
 ### Knowledge
-- `cli/learn.py` — agent-driven codebase walk → `ARCHITECTURE.md` + `.tours/<slug>.tour`
+- `cli/learn.py` — agent-driven codebase walk → `ARCHITECTURE.md` + `.tours/<slug>.tour`; injects vendored skills
 - `cli/graphify.py` — detect/install/run graphify (py3.10+ isolated env); inject `GRAPH_REPORT.md`
-- `cli/codetour.py` — pure CodeTour anchor validator
+- `cli/codetour.py` — CodeTour anchor validator
+- `cli/session_context.py` / `cli/session_hook.py` / `cli/claude_local.py` / `cli/claude_md_ref.py` — feed learn artifacts into every session
 
-### Context hygiene
-- `cli/scout.py` / `cli/scout_run.py` — skillsmp.com relevance-ranked discovery; never auto-installs
-- `cli/prune.py` / `cli/prune_run.py` — unused MCP/plugin surface; reversible disable via immutable settings merge
-- `cli/skill_map.py` — stage → bundled skill; `inject_skill` into prompt prefix
-- `cli/domains_index.py` — domain → implementer/verifier/logic-evaluator file paths
-
-### Artifacts
-- `cli/weave.py` — agent-driven `chain.html`; pure `weave_manifest.build_manifest` writes `chain.json` first (agent-independent)
-- `cli/weave_manifest.py` — pure `build_manifest` + `validate_chain_html`
-- `cli/review.py` / `cli/review_run.py` — 3-axis diff/PR review (code / ml-logic / system-logic); `ensure_distinct_axes`
+### Review
+- `cli/review.py` / `cli/review_run.py` — 3-axis diff/PR review (code / ml-logic / system-logic); `ensure_distinct_axes`; CRIT/HIGH findings ratchet
 - `cli/profile_manifest.py` / `cli/profile_run.py` — `logic-profile.md` (ML-logic + system-logic invariants)
+- `cli/graph_impact.py` — graph-impact section from graphify's `graph.json`
+- `cli/domains_index.py` — domain → implementer/verifier/logic-evaluator files
+
+### Hygiene
+- `cli/scout.py` / `cli/scout_run.py` — skillsmp.com relevance-ranked discovery; never auto-installs
+- `cli/prune.py` / `cli/prune_run.py` — unused MCP/plugin surface; reversible disable
+- `cli/docs_check.py` / `cli/docs_check_run.py` — version parity + stale test-count claims
+- `cli/claude_md_check*.py` / `cli/claude_md_scaffold*.py` — grade / scaffold CLAUDE.md
+- `cli/cost.py` — estimate / record / calibrate / report; `sigma/costs.jsonl`
+- `cli/usage.py` — ccusage wrapper for real Claude Code spend
 
 ### Setup / health
-- `cli/config.py` — `SigmaConfig` + `sigma.config.yml` load/write/validate
-- `cli/paths.py` — `DOMAINS` (9), `sigma_home`, `project_root`, `spec_workspace`, `slugify`
-- `cli/checks.py` — pure diagnostic probes (return `Check`, never print/mutate)
-- `cli/doctor.py` — `run_doctor`; confirm-gated fixes; `--check` CI gate; `--update` dual-surface
-- `cli/onboard.py` — first-run wizard
-- `cli/secrets.py` — `~/.sigma/.env` (chmod 600); never committed
-- `cli/rtk.py` — RTK token saver; confirm-gated; idempotent
-- `cli/caveman.py` — caveman terse-output mode; mirrors RTK shape
-- `cli/statusline.py` — ccstatusline; immutable settings merge; confirm-gated
-- `cli/render.py` — σ logo + rich/plain output helpers
-- `cli/keepawake.py` — macOS `caffeinate` wrapper; context manager; best-effort
-- `cli/gate.py` — `run_gate`: wakeAgent pre-check; defaults WAKE on error (fail-safe)
+- `cli/config.py`, `cli/paths.py`, `cli/checks.py`, `cli/doctor.py`, `cli/onboard.py`, `cli/setup_repo.py`, `cli/uninstall.py`
+- `cli/secrets.py` (`~/.sigma/.env`, chmod 600), `cli/rtk.py`, `cli/caveman.py`, `cli/statusline.py`, `cli/codex_login.py`, `cli/render.py`
 
-### Plugin / commands / skills
-- `.claude-plugin/plugin.json` — makes sigma a Claude Code plugin
-- `commands/*.md` — slash-command templates (YAML frontmatter + markdown body); one per stage + `/grill` + `/grill-loop` + special commands
-- `context-engines/<domain>/` — 9 domains; each has `implementers/`, `verifiers/`, `logic-evaluator.md`
-- `skills/sigma-*` — bundled skills loaded on demand (sigma-domains, sigma-grilling, sigma-grill-loop, sigma-scout, sigma-prune, sigma-cost, sigma-lessons, sigma-present)
-- `skills/vendor/` — upstream unmodified copies; do not edit in place
-
-### Tests
-- `tests/` — 482 pytest tests; pure logic tested with fakes (no real subprocesses)
+### Plugin content
+- `.claude-plugin/plugin.json` + `marketplace.json`
+- `commands/*.md` — slash commands (one per stage + `/grill`, `/grill-loop`, `/craft`, `/loop`, `/e2e`, `/learn`, `/scout`, `/prune`, `/profile`, `/review`, `/claude-md-*`, `/sigma-learn-lesson`)
+- `context-engines/<domain>/` — 9 domains; `implementers/` + `verifiers/` (with `logic-evaluator.md`)
+- `skills/sigma-*` — bundled skills; `skills/vendor/` — upstream copies (do not edit in place)
 
 ---
 
 ## Key invariants
 
-1. **Maker ≠ checker** — `execute_cycle` enforces `implementer is not verifier` via `ValueError`; same for logic checker and test writer
-2. **Skeptical verdicts** — missing `VERDICT: PASS` line → FAIL (loop, hermes, review gate)
-3. **Fail-safe everywhere** — missing files → degrade gracefully, never block
-4. **Append-only state** — `events.jsonl`, `costs.jsonl`, `loop-log.md`; callers pass `ts`, never generated in pure code
-5. **Pure/thin split** — business logic in `cli/*.py` (fully testable); side effects in `*_run.py`
-6. **Prompts via argv** — `claude -p <prompt>` never via shell; no injection risk
-
----
-
-## Data flow: autonomous loop cycle
-
-```
-run_loop
-  └─ pre-build recall per domain (skills_recall.recall_lessons)
-  └─ [--gate] run_gate → skip if wake=false
-  └─ execute_cycle(plan, workspace, skills_dir, implementer, verifier, ...)
-       ├─ [TDD] test_writer.run(TEST_PROMPT) → write tests/
-       ├─ implementer.run(IMPLEMENT_PROMPT + recall + test)
-       ├─ write impl/
-       ├─ verifier.run(VERIFY_PROMPT + recall)
-       ├─ write verify/
-       ├─ [logic] logic_checker.run(LOGIC_PROMPT)
-       ├─ write verify/*.logic.md
-       └─ on FAIL: ratchet_to_skills → SKILL.md + CONTRADICTIONS.md check
-                   [TDD] test_writer.run(REGRESSION_PROMPT) → write regressions/
-```
+1. **Maker ≠ checker** — distinct agents; the verifier and e2e agents have no edit tools; `review` axes must be distinct objects (`ValueError`)
+2. **Tests are the contract** — the tamper guard fails an attempt that edits or deletes a pre-existing test
+3. **Skeptical verdicts** — missing `VERDICT: PASS` → FAIL; missing grill `VERDICT: READY` → BLOCK; missing e2e verdict → ERROR (never a scored FAIL)
+4. **Fail-safe hooks** — the Stop hook and SessionStart hook never trap or break a session
+5. **Pure/thin split** — business logic in pure modules; side effects in `*_run.py`
+6. **Prompts via argv** — `claude -p <prompt>`, never via a shell
 
 ---
 
 ## Where to start
 
-- **Adding a new pipeline stage**: add to `STAGES` in `cli/pipeline.py`, create `commands/<name>.md`
-- **Adding a new CLI subcommand**: add `cmd_<name>` in `cli/main.py`, add parser in `build_parser`
-- **Adding a new domain**: add to `DOMAINS` in `cli/paths.py`, create `context-engines/<domain>/`
-- **Understanding loop logic**: `cli/loop.py` — all pure, no subprocess, fully testable
-- **Understanding routing**: `cli/intent.py` — state-driven by default, model call only on override
-- **Understanding cost tracking**: `cli/cost.py` — estimate before, record after, calibrate from ledger
+- **Changing the loop**: `commands/loop.md` (the lead's workflow), `agents/*.md` (roles), `hooks/loop_guard.py` (stop rules)
+- **Adding a CLI subcommand**: `cmd_<name>` in `cli/main.py` + a parser in `build_parser`
+- **Adding a domain**: `DOMAINS` in `cli/paths.py` + `context-engines/<domain>/`
+- **Understanding lessons**: `cli/ratchet.py` (write) and `cli/skills_recall.py` (read)

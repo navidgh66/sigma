@@ -70,7 +70,7 @@ for step in range(MAX_STEPS):                 # hard cap — never unbounded
   back. The model paces itself inside the budget; set it above the target and keep your own hard
   timeout (the budget is advisory).
 - Progress updates arrive as thinking blocks between tool calls; set `thinking.display: "updates"`
-  to show them. If a turn stays silent for ~5 tool steps, append a short reminder, at most 2-3.
+  (beta header `anthropic-beta: thinking-display-updates-2026-08-18`) to show them. If a turn stays silent for ~5 tool steps, append a short reminder, at most 2-3.
 - Source: https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5
 
 ## Pitfalls
