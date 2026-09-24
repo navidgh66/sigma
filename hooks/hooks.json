@@ -1,0 +1,16 @@
+{
+  "description": "sigma /loop guard: keep an unattended loop running until its tasks settle.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/loop_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
