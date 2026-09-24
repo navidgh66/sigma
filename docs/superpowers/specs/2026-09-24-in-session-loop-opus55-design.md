@@ -248,8 +248,9 @@ Docs:
 
 - Stop hook: fail open on every error path (rule 1). Never raises; `main()` catches all
   exceptions and exits 0 with no output.
-- Hook write-back failure (read-only FS): still print the decision; counters just do not
-  advance (worst case the 8-block Claude Code cap ends the turn).
+- Hook write-back failure (read-only FS): allow the stop. The nudge counter could not
+  advance, so blocking would risk repeating past the cap (fail open).
+- Invalid or non-object hook input on stdin: allow the stop (fail open).
 - Verifier output without a verdict line: FAIL (skeptical, as today).
 - e2e output without a verdict line: ERROR (inconclusive, never gates, as today).
 - Tamper guard outside a git repo: skip the guard and note it in the task `note`.

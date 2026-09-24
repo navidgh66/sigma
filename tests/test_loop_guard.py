@@ -115,3 +115,21 @@ def test_hooks_json_registers_stop_guard():
     cfg = json.loads((_PATH.parent / "hooks.json").read_text())
     cmd = cfg["hooks"]["Stop"][0]["hooks"][0]["command"]
     assert "loop_guard.py" in cmd and "${CLAUDE_PLUGIN_ROOT}" in cmd
+
+
+def test_main_fail_open_on_garbage_stdin_even_with_running_loop(tmp_path, monkeypatch):
+    _write(tmp_path / "sigma" / "specs" / "a", _state())
+    monkeypatch.chdir(tmp_path)
+    assert lg.main("{broken", now=NOW) == (0, "")
+    assert lg.main("[]", now=NOW) == (0, "")
+    assert lg.main("", now=NOW) == (0, "")
+
+
+def test_main_fail_open_when_state_cannot_be_written(tmp_path, monkeypatch):
+    _write(tmp_path / "sigma" / "specs" / "a", _state())
+
+    def boom(self, *a, **k):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(lg.Path, "write_text", boom)
+    assert lg.main(json.dumps({"cwd": str(tmp_path)}), now=NOW) == (0, "")

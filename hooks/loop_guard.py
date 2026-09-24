@@ -121,11 +121,11 @@ def find_running_state(cwd: Path) -> Optional[Path]:
 def main(stdin_text: str, now: Optional[datetime] = None) -> Tuple[int, str]:
     try:
         try:
-            hook_input = json.loads(stdin_text) if stdin_text.strip() else {}
+            hook_input = json.loads(stdin_text)
         except ValueError:
-            hook_input = {}
+            return 0, ""  # no valid hook input: fail open
         if not isinstance(hook_input, dict):
-            hook_input = {}
+            return 0, ""
         cwd = Path(hook_input.get("cwd") or os.getcwd())
         path = find_running_state(cwd)
         if path is None:
@@ -136,7 +136,9 @@ def main(stdin_text: str, now: Optional[datetime] = None) -> Tuple[int, str]:
             try:
                 path.write_text(json.dumps(decision.state, indent=2) + "\n")
             except OSError:
-                pass
+                # The nudge counter cannot advance, so blocking could repeat past
+                # the cap: fail open instead.
+                return 0, ""
         if decision.block:
             return 0, json.dumps({"decision": "block", "reason": decision.reason})
         return 0, ""
