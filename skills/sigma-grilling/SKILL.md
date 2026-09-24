@@ -22,9 +22,9 @@ Age of Vibe Coding*).
 
 **Two laws (non-negotiable, sigma-wide):**
 - **Maker ≠ griller** — the griller is a *distinct agent* from the artifact's
-  author. No self-grading (same separation `cli/loop.py` enforces).
+  author. No self-grading: an author grading their own artifact misses the gaps they wrote.
 - **Default to BLOCK on doubt** — an inconclusive or silent grill is never READY
-  (skeptical, like `_verdict_pass`). Demand evidence; quote the exact line.
+  (missing `VERDICT: READY` means BLOCK). Demand evidence; quote the exact line.
 
 ## When to grill what
 

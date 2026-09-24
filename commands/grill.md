@@ -58,7 +58,7 @@ FINDING | <CRITICAL|HIGH|MEDIUM|LOW> | <artifact section/anchor> | <one-line iss
 End with `VERDICT: READY` or `VERDICT: BLOCK` as the FINAL line (what the gate parses).
 
 - **BLOCK** on any axis carrying a CRITICAL/HIGH finding, OR if the grill is inconclusive (a
-  dead/silent pass is never READY — skeptical, like `_verdict_pass`).
+  dead or silent grill is never READY).
 - **READY** only when no axis carries a CRITICAL/HIGH.
 
 ## Gate (blocking, human override)
@@ -73,7 +73,7 @@ End with `VERDICT: READY` or `VERDICT: BLOCK` as the FINAL line (what the gate p
 - Griller is a **separate agent** from the author — no self-grading.
 - Demand evidence; quote the exact ambiguous/untestable line.
 - Don't rewrite the artifact — name the flaw and what must be decided/added.
-- YAGNI: no auto-fix, no new CLI subcommand (stages are plugin-only).
+- Don't auto-fix findings here; `/grill-loop` is the auto-fix path.
 
 ## Next
 

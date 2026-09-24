@@ -82,8 +82,8 @@ ADAPTERS: Dict[str, ModelAdapter] = {
         name="claude",
         executable="claude",
         arg_template=["{exe}", "-p", "{prompt}"],
-        # claude has no web-search CLI flag; the deep brief instructs it instead.
-        deep_args=[],
+        # -p mode can't prompt for permission; allow the web tools the web/deep brief asks for.
+        deep_args=["--allowedTools", "WebSearch", "WebFetch"],
         model_args=["--model", "{model}"],
     ),
     "gpt": ModelAdapter(

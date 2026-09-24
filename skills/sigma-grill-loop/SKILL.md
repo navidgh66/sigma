@@ -21,7 +21,7 @@ maker→checker discipline applied to a spec. It composes with `sigma-grilling`
 
 **Three laws (non-negotiable):**
 - **Editor ≠ griller** — two distinct agents per round. The agent that edits the
-  spec never grades it (games its own test — same separation `cli/loop.py` enforces).
+  spec never grades it (an agent grading its own edits games its own test).
 - **Mechanical-only auto-edit** — only meaning-preserving fixes apply automatically;
   anything that could change intent is SURFACED to a human, never silently rewritten.
 - **Bounded + honest** — a hard round cap, a no-progress early stop, and a result
@@ -67,7 +67,7 @@ STOP → emit final verdict (READY | SURFACED) + the human queue
 When unsure → SURFACE. Erring toward surfacing protects intent; erring toward
 auto-edit corrupts it.
 
-## Convergence — three ways to stop
+## Convergence: four ways to stop
 
 1. **READY** — griller passes within the cap. Done.
 2. **Round cap** — N rounds elapsed (default 3). Stop, surface remainder.

@@ -31,13 +31,18 @@ description: Writing tool schemas, descriptions, and error messages that LLMs us
 - State **what it does, when to use it, when NOT to**, and what it returns.
 - Disambiguate from sibling tools explicitly ("does not X — use Y for that"). Overlap causes misfires.
 - Mention preconditions/ordering ("call search_orders first").
-- Keep it tight but complete — this is high-leverage prompt real estate.
+- Err toward complete: 3-4+ sentences covering what, when, when-not, parameters, caveats, and what
+  it does not return. Keep worked examples and conversational steering out of the description.
 
 ## Schema discipline
 - Use `enum` for closed sets, `minimum`/`maximum` for ranges, `default` for optionals.
 - Mark only truly-required fields `required`; over-requiring forces hallucinated values.
 - Validate input server-side anyway — the model can and will send malformed args.
 - Prefer flat, typed params over a single free-text blob the tool must parse.
+- Set `strict: true` (schema with `additionalProperties: false`) when arguments must match the
+  schema. Forced `tool_choice` (`any`/`tool`) returns a 400 on Claude Opus 5.5: name the tool in the
+  prompt under `auto` and check that a call happened, or use structured outputs when you only need
+  JSON back.
 
 ## Error messages are part of the API
 ```python

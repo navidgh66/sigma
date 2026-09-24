@@ -17,7 +17,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-662%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-665%20passing-brightgreen.svg)](tests/)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin--first-8A2BE2.svg)](https://docs.anthropic.com/claude-code)
 [![Ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -45,6 +45,12 @@ research) plus setup and hygiene.
 
 ## 🆕 What's new
 
+- **0.31.0**: every command, agent, skill and domain guide was audited against the
+  Opus 5.5 prompting guide. `/craft` gives a one-line update per stage and a recap;
+  `/research` gives its parallel lanes a time budget; `/verify` dispatches the
+  read-only `sigma-verifier` agent. Domain guides now teach structured outputs,
+  `strict` tools, and the request params that return 400 on Opus 5.5. The claude
+  research lane can use WebSearch/WebFetch in `--web`/`--deep` mode.
 - **0.30.0** — research is **Claude + Codex** only (Gemini removed; old configs
   that list it still load). Codex sign-in uses the **device-code flow**
   (`codex login --device-auth`). `sigma doctor --update` now says clearly when
@@ -413,7 +419,7 @@ uninstall) and **never guesses**: with no usage evidence it prunes nothing.
 
 ## 📦 What's inside
 
-- **662 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
+- **665 pytest tests, ruff-clean** — pure logic (config, research routing, parsing,
   lesson ratchet + recall, the Stop-hook decision, the tamper guard, cost,
   graph/scout/prune) is separated from subprocess execution and tested with fakes.
   No real agent, network, or settings file is touched by the suite.

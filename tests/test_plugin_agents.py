@@ -100,3 +100,17 @@ def test_plugin_manifest_mentions_only_kept_features():
     desc = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["description"]
     for gone in ["Hermes", "kanban", "HTML artifact"]:
         assert gone not in desc
+
+
+def test_craft_gives_progress_updates_per_stage():
+    # Opus 5.5: predictable progress updates (intent before, recap after) help in
+    # human-in-the-loop chains like /craft.
+    craft = (ROOT / "commands" / "craft.md").read_text()
+    assert "Progress updates" in craft
+    assert "one line" in craft and "recap" in craft
+
+
+def test_research_gives_parallel_lanes_a_time_budget():
+    # Opus 5.5: time signals (elapsed / budget) help agent teams finish sooner.
+    research = (ROOT / "commands" / "research.md").read_text()
+    assert "elapsed" in research and "budget" in research

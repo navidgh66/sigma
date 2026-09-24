@@ -17,11 +17,21 @@ and anchors behavior. Put the variable query LAST.
 
 ## Be specific and bound the output
 ```python
-system = """You are a support classifier. Classify each ticket into exactly one of:
-billing, technical, account, other. Respond ONLY with the JSON: {"label": "<one>"}.
-If unclear, use "other". Do not explain."""
+resp = client.messages.create(
+    model="claude-opus-5-5",
+    max_tokens=16_000,
+    system="Classify the support ticket into one of: billing, technical, account, other. "
+           "Use other when it fits none of the first three.",
+    output_config={"format": {"type": "json_schema", "schema": {
+        "type": "object",
+        "properties": {"label": {"type": "string",
+                                 "enum": ["billing", "technical", "account", "other"]}},
+        "required": ["label"], "additionalProperties": False}}},
+    messages=[{"role": "user", "content": ticket}],
+)
 ```
-- State the exact output format and forbid extras. Ambiguity -> drift.
+- Pin machine-read output with structured outputs (`output_config.format`), not "respond ONLY
+  with JSON" prose, prefill, or parse-retry loops. For human-read output, state the format in prose.
 - Use delimiters (XML tags, ```fences) to separate instructions from data — prevents the model
   treating pasted content as instructions (also a light injection guard).
 - For text a user pasted from elsewhere, wrap each block in tags carrying a random id the
@@ -41,6 +51,8 @@ If unclear, use "other". Do not explain."""
 - Make exemplars cover edge cases and the hard classes, not just easy ones.
 - Keep label distribution sane (don't bias by ordering all positives first).
 - Diminishing returns past ~5 examples; long exemplars eat context + cost.
+- Vary exemplars deliberately (length, tone, structure) and label them illustrative; the model
+  matches whatever a single example does.
 
 ## Thinking and effort (Claude 5 family)
 ```python
@@ -78,8 +90,8 @@ messages=[{"role":"user","content":[
     {"type":"text","text": user_query},
 ]}]
 ```
-- Cache the large, unchanging prefix (system prompt, tool defs, big context). 5-10x cheaper +
-  faster on cache hits.
+- Cache the large, unchanging prefix (system prompt, tool defs, big context). Cache reads bill at a
+  fraction of base input (0.1x on most Claude models, 0.05x on Claude Opus 5.5) and cut latency.
 - Order matters: cached content must be a stable prefix; put volatile content after it.
 
 ## Pitfalls
@@ -91,7 +103,7 @@ messages=[{"role":"user","content":[
 - Volatile content before cached prefix -> cache never hits.
 
 ## Checklist
-- [ ] Output format explicitly pinned; extras forbidden
+- [ ] Machine-read output pinned by a schema (structured outputs), not prose
 - [ ] Instructions vs data delimited
 - [ ] Few-shot only when format-by-example helps; edge cases covered
 - [ ] Effort set explicitly and measured; no reasoning-in-response instructions

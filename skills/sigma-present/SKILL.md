@@ -15,8 +15,7 @@ origin: sigma
 Transform a sigma artifact into a **single portable `.html`** that opens
 anywhere, prints to PDF, and looks intentional — not a generic template.
 
-This skill is an **artifact transform**, not a freeform deck designer. (For
-building a presentation from scratch / from a topic, use `frontend-slides`.)
+This skill is an **artifact transform**, not a freeform deck designer.
 Here the input is always an existing sigma markdown artifact and the output is a
 deterministic, citation-aware deck or report.
 
@@ -71,8 +70,10 @@ user says slides/deck/present. A pitch/talk → **DECK**.
 - **Single file** whenever possible. CDN by default; fully inlined on request.
 - **Charts** via Chart.js (CDN, or inlined for offline). Treat charts as part of
   the theme — pass the CSS-variable palette into chart colors.
-- **No template look.** See the web design-quality bar: hierarchy via scale,
-  intentional rhythm, real type pairing, designed hover/focus states.
+- **No default look.** Avoid the patterns that mark generated pages: purple or
+  blue gradients, emoji section icons, identical rounded cards in a grid, and
+  centered hero text over everything. Build hierarchy with type scale and spacing,
+  pair a display face with a text face, and design hover and focus states.
 
 ## Files in this skill
 

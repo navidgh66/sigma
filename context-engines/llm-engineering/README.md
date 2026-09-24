@@ -3,7 +3,7 @@
 Domain knowledge for **LLM application engineering**.
 
 ## Scope
-- Prompt engineering (structure, few-shot, CoT, output formatting, prompt caching)
+- Prompt engineering (structure, few-shot, thinking/effort, output formatting, prompt caching)
 - RAG (chunking, embeddings, retrieval, reranking, hybrid search, eval)
 - Fine-tuning (when to vs RAG vs prompt, data curation, LoRA/QLoRA, DPO)
 - Eval frameworks (LLM-as-judge, golden sets, regression suites, rubrics)

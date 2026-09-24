@@ -259,7 +259,7 @@ class Gate:
 def gate(results: Sequence[AxisResult]) -> Gate:
     """Decide PASS/FAIL: fail on any CRITICAL/HIGH finding OR an inconclusive axis.
 
-    Skeptical, mirroring `loop._verdict_pass`: an axis that did not run is NOT a
+    Skeptical (default-deny): an axis that did not run is NOT a
     pass — its silence cannot be read as approval. The blocking-severity gate is
     Q5 verdict=3 (findings always reported; gate trips only on CRITICAL/HIGH).
     """

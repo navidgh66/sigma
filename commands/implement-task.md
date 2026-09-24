@@ -84,17 +84,10 @@ Then hand to `/verify` (separate checker — maker ≠ checker).
 
 ## Build discipline (every task)
 
-**Reuse-first laziness ladder** — before writing any new code, walk this ladder
-in order and stop at the first hit (be lazy about the *solution*, never about
-understanding the problem — still read and trace the real flow first):
-
-1. Does it need to exist at all? (YAGNI — if not, skip it)
-2. Already in this codebase? → reuse it, don't re-implement
-3. In the standard library? → use it
-4. A native platform / framework feature? → use it
-5. An already-installed dependency? → use it
-6. A one-liner? → write the one-liner
-7. Only then → the smallest working implementation
+**Reuse first.** Understand the real flow before choosing a solution, then write
+the least new code that works: skip what isn't needed (YAGNI), and prefer what
+already exists in this codebase, the standard library, the framework, or an
+installed dependency over new code.
 
 Record any shortcut you defer (a "do it later") in `impl/{task_id}.md` so "later"
 doesn't become "never".

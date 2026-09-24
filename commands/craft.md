@@ -70,6 +70,13 @@ Run these stages in order, in-session, each loading its domain context-engine
    verifier agents, the test tamper guard, the e2e check for tasks with a scenario,
    capped retries, and lessons ratcheted into `skills/` on failure.
 
+## Progress updates
+
+Before each stage, say in one line what you are about to do and which artifact it
+produces; after it, give a one-line result (written file, grill verdict, task
+count, loop outcome). At the end, recap in a few lines: which stages ran, where
+each artifact is, what the loop passed or failed, and anything waiting on the user.
+
 ## Gates (stop for a human, don't barrel through)
 
 - **grill BLOCK** — a CRITICAL/HIGH flaw in the spec. Fix the design/spec, then
